@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +9,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&display=swap');
 
         body {
-            font-family: "MS Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+            font-family: "Yu Gothic", "YuGothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
             background-color: #f0f0f0;
             margin: 0;
             padding: 20px;
@@ -21,7 +22,7 @@
             min-height: 297mm;
             background-color: white;
             padding: 15mm;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             box-sizing: border-box;
             position: relative;
         }
@@ -41,7 +42,8 @@
             margin-bottom: 15px;
         }
 
-        th, td {
+        th,
+        td {
             border: 1px solid #000;
             padding: 8px;
             vertical-align: middle;
@@ -63,23 +65,37 @@
             vertical-align: top;
         }
 
-        .col-no { width: 5%; text-align: center; }
-        .col-danger { width: 40%; }
-        .col-measure { width: 40%; }
-        .col-check { width: 15%; }
+        .col-no {
+            width: 5%;
+            text-align: center;
+        }
+
+        .col-danger {
+            width: 40%;
+        }
+
+        .col-measure {
+            width: 40%;
+        }
+
+        .col-check {
+            width: 15%;
+        }
 
         .handwritten {
             font-family: "Kaisei Decol", "楷書", "KaiTi", cursive, serif;
-            color: #000080; /* Blue-black pen color */
+            color: #000080;
+            /* Blue-black pen color */
             font-size: 11pt;
             line-height: 1.6;
         }
-        
+
         /* Fallback for handwritten font if not available */
         @font-face {
             font-family: 'HandwrittenFallback';
             src: local('HGSGyoshotai'), local('HGS行書体'), local('Yu Kyokasho');
         }
+
         .handwritten {
             font-family: 'HandwrittenFallback', sans-serif;
         }
@@ -87,7 +103,8 @@
         .stamp-box {
             width: 60px;
             height: 60px;
-            border: 1px solid #ccc; /* Printed grid usually light */
+            border: 1px solid #ccc;
+            /* Printed grid usually light */
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -98,7 +115,7 @@
             margin: 5px;
             transform: rotate(-5deg);
         }
-        
+
         .seal-container {
             display: flex;
             justify-content: space-around;
@@ -132,10 +149,19 @@
         }
 
         /* Helper classes */
-        .text-center { text-align: center; }
-        .bg-gray { background-color: #f5f5f5; }
-        .vertical-text { writing-mode: vertical-rl; text-orientation: upright; }
-        
+        .text-center {
+            text-align: center;
+        }
+
+        .bg-gray {
+            background-color: #f5f5f5;
+        }
+
+        .vertical-text {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+        }
+
         .round-header {
             background-color: #333;
             color: white;
@@ -146,153 +172,157 @@
         }
     </style>
 </head>
+
 <body>
 
-<div class="sheet">
-    <h1>危険予知活動表</h1>
+    <div class="sheet">
+        <h1>危険予知活動表</h1>
 
-    <table class="header-table">
-        <tr>
-            <td width="15%" class="bg-gray text-center">工事名称</td>
-            <td width="55%" class="handwritten">○○新築工事　（A棟 北側工区）</td>
-            <td width="10%" class="bg-gray text-center">月日</td>
-            <td width="20%" class="handwritten">令和8年 1月 20日 (月)</td>
-        </tr>
-        <tr>
-            <td class="bg-gray text-center">作業内容</td>
-            <td class="handwritten">外部足場 組立作業（3層目）</td>
-            <td class="bg-gray text-center">天候</td>
-            <td class="handwritten">曇り / 気温 5℃</td>
-        </tr>
-    </table>
+        <table class="header-table">
+            <tr>
+                <td width="15%" class="bg-gray text-center">工事名称</td>
+                <td width="55%" class="handwritten">○○新築工事　（A棟 北側工区）</td>
+                <td width="10%" class="bg-gray text-center">月日</td>
+                <td width="20%" class="handwritten">令和8年 1月 20日 (月)</td>
+            </tr>
+            <tr>
+                <td class="bg-gray text-center">作業内容</td>
+                <td class="handwritten">外部足場 組立作業（3層目）</td>
+                <td class="bg-gray text-center">天候</td>
+                <td class="handwritten">曇り / 気温 5℃</td>
+            </tr>
+        </table>
 
-    <table class="main-table">
-        <thead>
-            <tr>
-                <th class="col-no">No</th>
-                <th class="col-danger">第1・2R　どんな危険がひそんでいるか<br><span style="font-size:0.8em; font-weight:normal;">※重要危険には◎・○をつける</span></th>
-                <th class="col-measure">第3R　私達はこうする（対策）<br><span style="font-size:0.8em; font-weight:normal;">※具体的かつ実行可能な対策</span></th>
-                <th class="col-check">担当</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td class="text-center">1</td>
-                <td>
-                    <div class="handwritten">
-                        資材の荷下ろし時、手元が滑って足場材が落下し、下にいる作業員に当たる。<br>
-                        <span style="color:red; font-weight:bold;">(○)</span>
-                    </div>
-                </td>
-                <td>
-                    <div class="handwritten">
-                        荷下ろし区域を立入禁止区画し、監視員を配置して声を掛け合う。
-                    </div>
-                </td>
-                <td class="text-center handwritten">田中</td>
-            </tr>
-            <tr>
-                <td class="text-center">2</td>
-                <td>
-                    <div class="handwritten">
-                        布板（アンチ）の設置時、強風にあおられてバランスを崩し、開口部から墜落する。<br>
-                        <span style="color:red; font-weight:bold; font-size:1.2em;">(◎)</span>
-                    </div>
-                </td>
-                <td>
-                    <div class="handwritten">
-                        <span style="color:red; font-weight:bold;">安全帯（フルハーネス）を親綱へ確実に掛け、</span>2人1組で声を掛け合って作業する。
-                    </div>
-                </td>
-                <td class="text-center handwritten">全員</td>
-            </tr>
-            <tr>
-                <td class="text-center">3</td>
-                <td>
-                    <div class="handwritten">
-                        手すり未設置の端部で作業中、身を乗り出して転落する。<br>
-                        <span style="color:red; font-weight:bold;">(○)</span>
-                    </div>
-                </td>
-                <td>
-                    <div class="handwritten">
-                        手すり先行工法を遵守し、端部には直ちに手すりを設置するまで親綱を使用する。
-                    </div>
-                </td>
-                <td class="text-center handwritten">佐藤</td>
-            </tr>
-            <tr>
-                <td class="text-center">4</td>
-                <td>
-                    <div class="handwritten">
-                        &nbsp;
-                    </div>
-                </td>
-                <td>
-                    <div class="handwritten">
-                        &nbsp;
-                    </div>
-                </td>
-                <td class="text-center handwritten"></td>
-            </tr>
-             <tr>
-                <td class="text-center">5</td>
-                <td>
-                    <div class="handwritten">
-                        &nbsp;
-                    </div>
-                </td>
-                <td>
-                    <div class="handwritten">
-                        &nbsp;
-                    </div>
-                </td>
-                <td class="text-center handwritten"></td>
-            </tr>
-        </tbody>
-    </table>
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th class="col-no">No</th>
+                    <th class="col-danger">第1・2R　どんな危険がひそんでいるか<br><span
+                            style="font-size:0.8em; font-weight:normal;">※重要危険には◎・○をつける</span></th>
+                    <th class="col-measure">第3R　私達はこうする（対策）<br><span
+                            style="font-size:0.8em; font-weight:normal;">※具体的かつ実行可能な対策</span></th>
+                    <th class="col-check">担当</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center">1</td>
+                    <td>
+                        <div class="handwritten">
+                            資材の荷下ろし時、手元が滑って足場材が落下し、下にいる作業員に当たる。<br>
+                            <span style="color:red; font-weight:bold;">(○)</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="handwritten">
+                            荷下ろし区域を立入禁止区画し、監視員を配置して声を掛け合う。
+                        </div>
+                    </td>
+                    <td class="text-center handwritten">田中</td>
+                </tr>
+                <tr>
+                    <td class="text-center">2</td>
+                    <td>
+                        <div class="handwritten">
+                            布板（アンチ）の設置時、強風にあおられてバランスを崩し、開口部から墜落する。<br>
+                            <span style="color:red; font-weight:bold; font-size:1.2em;">(◎)</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="handwritten">
+                            <span style="color:red; font-weight:bold;">安全帯（フルハーネス）を親綱へ確実に掛け、</span>2人1組で声を掛け合って作業する。
+                        </div>
+                    </td>
+                    <td class="text-center handwritten">全員</td>
+                </tr>
+                <tr>
+                    <td class="text-center">3</td>
+                    <td>
+                        <div class="handwritten">
+                            手すり未設置の端部で作業中、身を乗り出して転落する。<br>
+                            <span style="color:red; font-weight:bold;">(○)</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="handwritten">
+                            手すり先行工法を遵守し、端部には直ちに手すりを設置するまで親綱を使用する。
+                        </div>
+                    </td>
+                    <td class="text-center handwritten">佐藤</td>
+                </tr>
+                <tr>
+                    <td class="text-center">4</td>
+                    <td>
+                        <div class="handwritten">
+                            &nbsp;
+                        </div>
+                    </td>
+                    <td>
+                        <div class="handwritten">
+                            &nbsp;
+                        </div>
+                    </td>
+                    <td class="text-center handwritten"></td>
+                </tr>
+                <tr>
+                    <td class="text-center">5</td>
+                    <td>
+                        <div class="handwritten">
+                            &nbsp;
+                        </div>
+                    </td>
+                    <td>
+                        <div class="handwritten">
+                            &nbsp;
+                        </div>
+                    </td>
+                    <td class="text-center handwritten"></td>
+                </tr>
+            </tbody>
+        </table>
 
-    <div class="goal-box">
-        <div class="goal-title">第4R　★ 私達の行動目標（指差呼称） ★</div>
-        <div class="goal-content handwritten">
-            <span class="yoshi-icon">👉</span>
-            安全帯ヨシ！ 足元ヨシ！
-            <span class="yoshi-icon">👈</span>
+        <div class="goal-box">
+            <div class="goal-title">第4R　★ 私達の行動目標（指差呼称） ★</div>
+            <div class="goal-content handwritten">
+                <span class="yoshi-icon">👉</span>
+                安全帯ヨシ！ 足元ヨシ！
+                <span class="yoshi-icon">👈</span>
+            </div>
+        </div>
+
+        <table style="margin-top: 20px;">
+            <tr>
+                <td width="20%" class="bg-gray text-center">危険予知<br>実施時間</td>
+                <td width="30%" class="handwritten text-center">8:05 ～ 8:12 （7分）</td>
+                <td width="50%" rowspan="2">
+                    <div style="font-size: 0.9em; margin-bottom: 5px;">確認欄</div>
+                    <div class="seal-container">
+                        <div style="text-align:center">
+                            <div style="font-size:0.8em">現場代理人</div>
+                            <div class="stamp-box">承認</div>
+                        </div>
+                        <div style="text-align:center">
+                            <div style="font-size:0.8em">職長</div>
+                            <div class="stamp-box">山本</div>
+                        </div>
+                        <div style="text-align:center">
+                            <div style="font-size:0.8em">安全当番</div>
+                            <div class="stamp-box">鈴木</div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td class="bg-gray text-center">参加人数</td>
+                <td class="handwritten text-center">4 名</td>
+            </tr>
+        </table>
+
+        <div style="font-size: 0.8em; text-align: right; margin-top: 10px;">
+            日本建設業連合会 参考様式準拠
         </div>
     </div>
 
-    <table style="margin-top: 20px;">
-        <tr>
-            <td width="20%" class="bg-gray text-center">危険予知<br>実施時間</td>
-            <td width="30%" class="handwritten text-center">8:05 ～ 8:12 （7分）</td>
-            <td width="50%" rowspan="2">
-                <div style="font-size: 0.9em; margin-bottom: 5px;">確認欄</div>
-                <div class="seal-container">
-                    <div style="text-align:center">
-                        <div style="font-size:0.8em">現場代理人</div>
-                        <div class="stamp-box">承認</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div style="font-size:0.8em">職長</div>
-                        <div class="stamp-box">山本</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div style="font-size:0.8em">安全当番</div>
-                        <div class="stamp-box">鈴木</div>
-                    </div>
-                </div>
-            </td>
-        </tr>
-        <tr>
-            <td class="bg-gray text-center">参加人数</td>
-            <td class="handwritten text-center">4 名</td>
-        </tr>
-    </table>
-
-    <div style="font-size: 0.8em; text-align: right; margin-top: 10px;">
-        日本建設業連合会 参考様式準拠
-    </div>
-</div>
-
 </body>
+
 </html>
