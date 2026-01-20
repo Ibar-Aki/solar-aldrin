@@ -1,0 +1,13 @@
+name = "voice-ky-api"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# 環境変数はダッシュボードで設定
+# OPENAI_API_KEY = "sk-xxx"
+# WEATHER_API_KEY = "xxx"
+
+# 開発時の設定
+[dev]
+port = 8787
+local_protocol = "http"

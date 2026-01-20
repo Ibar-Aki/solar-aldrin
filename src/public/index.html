@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="description" content="音声でKY活動を完了 - Voice KY Assistant">
+
+    <title>Voice KY Assistant</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/css/reset.css">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- 画面はJSで動的に描画 -->
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>読み込み中...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/state.js"></script>
+    <script src="/js/storage.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/speech.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/screens/home.js"></script>
+    <script src="/js/screens/chat.js"></script>
+    <script src="/js/screens/confirm.js"></script>
+    <script src="/js/screens/done.js"></script>
+    <script src="/js/screens/history.js"></script>
+    <script src="/js/router.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+
+</html>

@@ -26,11 +26,38 @@
 - [ ] AI対話フロー詳細設計（プロンプト設計）
 - [ ] 技術検証（音声認識精度）
 
-### 実装フェーズ（後）
+### 実装フェーズ（進行中）
 
-- [ ] MVP開発
-- [ ] テスト
-- [ ] パイロット運用
+- [x] プロジェクトセットアップ
+  - [x] ディレクトリ構成作成
+  - [x] PWA基盤（manifest.json, sw.js）
+  - [x] index.html + 基本CSS
+- [x] フロントエンド実装
+  - [x] 状態管理（state.js）
+  - [x] 画面遷移（router.js）
+  - [x] ホーム画面（home.js）
+  - [x] 対話画面（chat.js）
+  - [x] 確認画面（confirm.js）
+  - [x] 完了画面（done.js）
+  - [x] 履歴画面（history.js）
+- [x] 音声モジュール実装
+  - [x] 音声認識（speech.js）
+  - [x] 音声合成（tts）
+- [x] API連携
+  - [x] API通信モジュール（api.js）
+  - [x] ローカルストレージ（storage.js）
+- [x] PDF生成
+  - [x] pdf.js実装（done.js内）
+- [x] バックエンド実装
+  - [x] Cloudflare Workers設定
+  - [x] /api/chat エンドポイント
+  - [x] /api/advice エンドポイント
+  - [x] /api/weather エンドポイント
+  - [x] /api/records エンドポイント
+  - [x] /api/sync エンドポイント
+- [/] テスト・検証
+  - [ ] 動作確認
+  - [ ] パイロット運用
 
 ---
 

@@ -1,103 +1,89 @@
-# 🏗️ Voice KY Assistant
+# Voice KY Assistant
 
-> **「話すだけで、質の高いKYが完了する」**  
-> 建設現場のKY（危険予知）活動をAI音声対話でサポートするシステム
+🏗️ 音声でKY活動を完了するPWAアプリ
 
----
+## 概要
 
-## 🎯 このプロジェクトについて
+建設現場の作業員が、音声対話を通じてKY（危険予知）活動を簡単に実施できるアプリケーションです。AIアシスタント「KY記録くん」が対話をファシリテートし、危険・対策・合言葉を記録してPDF出力します。
 
-建設現場のKY活動は「**書くのが面倒**」「**考えるのが苦手**」という二重の壁があり、形骸化が進んでいます。  
-本システムは、作業員がスマートフォンに話しかけるだけで、**AIが対話を通じて思考を引き出し**、質の高いKYを実現します。
+## 特徴
 
-### ✨ 特徴
+- 📱 **PWA対応** - ホーム画面に追加してネイティブアプリのように使用
+- 🎙️ **音声ファースト** - 手が塞がっていても操作可能
+- 📝 **テキストフォールバック** - 騒音環境でもテキスト入力で対応
+- 📄 **PDF出力** - 監査用の記録をPDFで保存
+- 📶 **オフライン対応** - 電波が悪い現場でも使用可能
 
-| 機能 | 説明 |
-|------|------|
-| 🎙️ **音声入力** | 手ぶらでKYが完了。テキスト入力もフォールバックとして用意 |
-| 🤖 **AI深掘り質問** | 「落ちそう」→「どの作業の時に？」と具体化を促す |
-| 📄 **PDF自動生成** | 対話内容が構造化されたKY記録PDFに自動変換 |
-| 💡 **KYアドバイス** | AIが回答を評価し、改善ヒントを提示 |
-
-### 🛡️ 設計思想
-
-- **AIは「新人アシスタント」**: 上から目線の指導ではなく、記録係・相棒として振る舞う
-- **音声は選択肢の一つ**: 騒音環境・iOS制約対策としてテキスト入力も同等に扱う
-- **監査対応はアナログ併用**: PDF印刷後に自署・押印する運用フローを前提とする
-
----
-
-## 📁 ドキュメント構成
-
-```
-docs/
-├── planning/                    # 企画・設計ドキュメント
-│   ├── 01_企画書.md            # ビジョン・MVP定義・コスト試算
-│   ├── 02_要件定義書.md        # 機能要件・非機能要件・技術構成
-│   ├── 03_徹底検証レポート.md  # 批判的検証と対策
-│   └── task.md                 # タスク管理
-│
-├── reference/                   # 参考資料
-│   ├── KY活動表サンプル.md     # 足場設置の記入例
-│   ├── ky_sheet_mockup.html    # HTMLモックアップ
-│   └── ky_sheet_sample.png     # スクリーンショット
-│
-└── design/                      # UI/UX設計（後で追加）
-```
-
----
-
-## 🚀 開発ステータス
-
-### フェーズ: 企画・要件定義 ✅
-
-- [x] 企画書作成
-- [x] 要件定義書作成
-- [x] 批判的検証・リスク対策レポート作成
-- [ ] **UI/UXモックアップ作成** ← 次のステップ
-- [ ] 技術検証（音声認識・AI応答）
-- [ ] MVP開発
-
-### タイムライン（予定）
-
-| フェーズ | 期間 | 内容 |
-|----------|------|------|
-| Phase 1: MVP | 3週間 | 基本的な音声KY機能 |
-| Phase 2: 拡張 | 2週間 | 危険候補提案・RAG導入 |
-| Phase 3: 分析 | 後日 | ダッシュボード・データ活用 |
-
----
-
-## 💻 技術スタック（予定）
+## 技術スタック
 
 | 領域 | 技術 |
 |------|------|
-| **フロントエンド** | PWA (HTML/CSS/JS), Web Speech API |
-| **バックエンド** | Cloudflare Workers or Vercel Edge Functions |
-| **AI** | OpenAI GPT-4o-mini |
-| **データベース** | Supabase or Cloudflare D1 |
-| **天候API** | OpenWeatherMap |
+| フロントエンド | Vanilla JS + PWA |
+| 音声認識 | Web Speech API |
+| バックエンド | Cloudflare Workers |
+| AI | OpenAI GPT-4o-mini |
+| DB | Supabase (計画中) |
+| 天候API | OpenWeatherMap |
 
----
+## ディレクトリ構成
 
-## 📖 主要ドキュメント
+```
+src/
+├── public/           # フロントエンド（PWA）
+│   ├── index.html    # エントリーポイント
+│   ├── manifest.json # PWAマニフェスト
+│   ├── sw.js         # Service Worker
+│   ├── css/          # スタイルシート
+│   ├── js/           # JavaScriptモジュール
+│   └── assets/       # アイコン等
+└── workers/          # Cloudflare Workers（バックエンド）
+    ├── index.js      # APIエンドポイント
+    └── wrangler.toml # Workers設定
+```
 
-| ドキュメント | 内容 |
-|--------------|------|
-| [企画書](docs/planning/01_企画書.md) | ビジョン・MVP機能・コスト試算 |
-| [要件定義書](docs/planning/02_要件定義書.md) | 機能要件・非機能要件・技術構成 |
-| [徹底検証レポート](docs/planning/03_徹底検証レポート.md) | 批判的検証・回答・深掘り |
+## 開発
 
----
+### 必要条件
 
-## 📋 Quick Links
+- Node.js 18+
+- Cloudflare Wrangler CLI（バックエンド開発時）
 
-- 🎯 **なぜこのシステムが必要か？** → [企画書 §1](docs/planning/01_企画書.md#1-エグゼクティブサマリー)
-- 🔧 **どう作るか？** → [要件定義書 §3](docs/planning/02_要件定義書.md#3-機能要件)
-- ⚠️ **何がリスクか？** → [徹底検証レポート](docs/planning/03_徹底検証レポート.md)
+### ローカル開発
 
----
+```bash
+# フロントエンド（ローカルサーバー起動）
+npm run dev
+
+# バックエンド（Workersローカル起動）
+npm run dev:workers
+```
+
+### デプロイ
+
+```bash
+# Cloudflare Workersにデプロイ
+npm run deploy:workers
+
+# Cloudflare Pagesにデプロイ
+npm run deploy:pages
+```
+
+### 環境変数（Workers）
+
+Cloudflareダッシュボードで以下を設定：
+
+- `OPENAI_API_KEY` - OpenAI APIキー
+- `WEATHER_API_KEY` - OpenWeatherMap APIキー
+- `SUPABASE_URL` - Supabase URL（将来）
+- `SUPABASE_KEY` - Supabase Key（将来）
+
+## ドキュメント
+
+- [企画書](docs/planning/01_企画書.md)
+- [要件定義書](docs/planning/02_要件定義書.md)
+- [徹底検証レポート](docs/planning/03_徹底検証レポート.md)
+- [詳細設計書](docs/planning/04_詳細設計書.md)
 
 ## ライセンス
 
-**Private** - 社内利用のみ
+MIT

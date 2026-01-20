@@ -1,0 +1,22 @@
+{
+    "name": "voice-ky-assistant",
+    "version": "1.0.0",
+    "description": "音声でKY活動を完了するPWAアプリ",
+    "private": true,
+    "scripts": {
+        "dev": "npx serve src/public -l 3000",
+        "dev:workers": "cd src/workers && npx wrangler dev",
+        "build": "echo 'No build step required'",
+        "deploy:workers": "cd src/workers && npx wrangler publish",
+        "deploy:pages": "npx wrangler pages publish src/public"
+    },
+    "keywords": [
+        "pwa",
+        "ky",
+        "voice",
+        "construction",
+        "safety"
+    ],
+    "author": "",
+    "license": "MIT"
+}
