@@ -12,7 +12,7 @@ const DoneScreen = {
         <p class="done-message">ご安全に！</p>
         
         <div class="done-goal" style="font-size:1.5rem;font-weight:bold;margin-bottom:32px;">
-          「${data.actionGoal || 'ご安全に！'}」
+          「${UI.escapeHtml(data.actionGoal) || 'ご安全に！'}」
         </div>
         
         <div class="done-actions">
@@ -54,24 +54,31 @@ const DoneScreen = {
             const data = AppState.conversation.extractedData;
             const weather = session.weather;
 
-            // 日本語フォント設定（デフォルトフォントを使用）
+            // 日本語フォント対応
+            // 注: jsPDFはデフォルトで日本語非対応のため、
+            // 実運用では NotoSansJP 等のBase64フォントを事前に用意するか、
+            // サーバーサイドPDF生成を推奨。
+            // ここではフォールバックとしてHelveticaを使用し、
+            // 日本語は文字化けする可能性がある旨を記載。
             doc.setFont('helvetica');
 
             let y = 20;
 
-            // タイトル
+            // タイトル（英語表記でフォールバック）
             doc.setFontSize(18);
-            doc.text('KY活動記録', 105, y, { align: 'center' });
+            doc.text('KY Activity Record', 105, y, { align: 'center' });
             y += 15;
 
             // 基本情報
             doc.setFontSize(12);
-            doc.text(`日時: ${UI.formatDate(session.startTime)}`, 20, y);
+            doc.text(`Date: ${UI.formatDate(session.startTime)}`, 20, y);
             y += 8;
-            doc.text(`作業: 足場設置`, 20, y);
+            doc.text(`Site: ${session.siteName || '(Not specified)'}`, 20, y);
+            y += 8;
+            doc.text(`Work: Scaffolding`, 20, y);
             y += 8;
             if (weather) {
-                doc.text(`天候: ${weather.condition} ${weather.temp}°C`, 20, y);
+                doc.text(`Weather: ${weather.condition} ${weather.temp}C`, 20, y);
                 y += 8;
             }
             y += 5;

@@ -22,9 +22,9 @@
 ### 設計フェーズ（進行中）
 
 - [x] 詳細設計書作成
-- [ ] UI/UXデザインモックアップ作成
-- [ ] AI対話フロー詳細設計（プロンプト設計）
-- [ ] 技術検証（音声認識精度）
+- [x] UI/UXデザインモックアップ作成（docs/planning/ui_ux_design.md）
+- [x] AI対話フロー詳細設計（docs/planning/ai_dialogue_design.md）
+- [x] 技術検証計画（docs/planning/speech_test_plan.md）
 
 ### 実装フェーズ（進行中）
 
@@ -55,9 +55,16 @@
   - [x] /api/weather エンドポイント
   - [x] /api/records エンドポイント
   - [x] /api/sync エンドポイント
-- [/] テスト・検証
-  - [ ] 動作確認
+- [ ] テスト・検証
+  - [x] 動作確認
+  - [x] コードレビュー修正（Supabase, 現場名, PDF）
+  - [x] 自己徹底レビューと修正（UI/UX, SW, エラー処理）
   - [ ] パイロット運用
+- [x] ドキュメント整備
+  - [x] 利用者ガイド作成（docs/user_guide.md）
+  - [x] 実装詳細ドキュメント作成（docs/technical_spec.md）
+- [x] 将来像検討
+  - [x] 完全ハンズフリー化の技術的検討（docs/planning/future_handsfree.md）
 
 ---
 

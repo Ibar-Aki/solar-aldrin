@@ -12,6 +12,9 @@ const Speech = {
     onError: null,
     onEnd: null,
 
+    // 内部フラグ
+    isManualStop: false,
+
     /**
      * 音声認識の初期化
      */
@@ -62,6 +65,12 @@ const Speech = {
 
         this.recognition.onerror = (event) => {
             console.error('[Speech] Recognition error:', event.error);
+            // エラー時も手動停止でなければ再試行したいが、
+            // 無限ループ防止のため特定エラー以外は停止する
+            if (event.error === 'no-speech' && !this.isManualStop) {
+                return; // onendで再開させる
+            }
+
             this.isListening = false;
             AppState.ui.isListening = false;
 
@@ -84,7 +93,20 @@ const Speech = {
 
         this.recognition.onend = () => {
             console.log('[Speech] Recognition ended');
+
+            // 手動停止でない、かつリスニング状態であれば再開（自動継続）
+            if (this.isListening && !this.isManualStop) {
+                console.log('[Speech] Auto restarting...');
+                try {
+                    this.recognition.start();
+                    return;
+                } catch (e) {
+                    console.error('[Speech] Restart failed:', e);
+                }
+            }
+
             this.isListening = false;
+            this.isManualStop = false;
             AppState.ui.isListening = false;
 
             if (this.onEnd) {
@@ -106,6 +128,8 @@ const Speech = {
             }
         }
 
+        this.isManualStop = false;
+
         try {
             this.recognition.start();
             return true;
@@ -120,6 +144,7 @@ const Speech = {
      */
     stopListening() {
         if (this.recognition && this.isListening) {
+            this.isManualStop = true;
             this.recognition.stop();
         }
     },

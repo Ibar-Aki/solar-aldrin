@@ -7,7 +7,7 @@ const ChatScreen = {
     render(container) {
         const weather = AppState.session.weather;
         const weatherInfo = weather
-            ? `${UI.getWeatherIcon(weather.condition)} ${weather.condition} ${weather.temp}℃`
+            ? `${UI.getWeatherIcon(weather.condition)} ${UI.escapeHtml(weather.condition)} ${UI.escapeHtml(String(weather.temp))}℃`
             : '';
 
         container.innerHTML = `
@@ -58,8 +58,16 @@ const ChatScreen = {
             }
         });
 
-        // 初回メッセージを送信してAIの挨拶を取得
-        this.startConversation();
+        // 既存の会話履歴があれば復元（修正から戻ってきた場合）
+        const existingMessages = AppState.conversation.messages;
+        if (existingMessages && existingMessages.length > 0) {
+            existingMessages.forEach(m => {
+                this.addMessageToUI(m.role, m.content);
+            });
+        } else {
+            // 初回メッセージを送信してAIの挨拶を取得
+            this.startConversation();
+        }
     },
 
     /**
@@ -125,11 +133,11 @@ const ChatScreen = {
         } catch (error) {
             console.error('[Chat] Failed to start:', error);
             // オフライン時のフォールバック
-            this.addMessageToUI('assistant',
-                AppState.session.weather
-                    ? `今日は${AppState.session.weather.condition}ですね。足場設置作業で、どんな危険がありそうですか？`
-                    : '足場設置作業で、どんな危険がありそうですか？'
-            );
+            const fallbackMessage = AppState.session.weather
+                ? `今日は${AppState.session.weather.condition}ですね。足場設置作業で、どんな危険がありそうですか？`
+                : '足場設置作業で、どんな危険がありそうですか？';
+            this.addMessageToUI('assistant', fallbackMessage);
+            addMessage('assistant', fallbackMessage); // ログにも保存
         } finally {
             AppState.ui.isProcessing = false;
         }
@@ -200,9 +208,10 @@ const ChatScreen = {
     addMessageToUI(role, content) {
         const messageEl = document.createElement('div');
         messageEl.className = `message message-${role}`;
+        const escapedContent = UI.escapeHtml(content);
         messageEl.innerHTML = `
       <div class="message-role">${role === 'assistant' ? '🤖 KY記録くん' : '👤 あなた'}</div>
-      <div class="message-content">${content}</div>
+      <div class="message-content">${escapedContent}</div>
     `;
         this.messagesEl.appendChild(messageEl);
 

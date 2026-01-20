@@ -247,9 +247,46 @@ async function handleWeather(request, env) {
 async function handleSaveRecord(request, env) {
     const body = await request.json();
 
-    // Supabaseに保存（実装時に追加）
-    // ここでは成功レスポンスを返す
-    console.log('Saving record:', body.id);
+    // Supabase設定がある場合のみ保存
+    if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+        try {
+            const dbUrl = `${env.SUPABASE_URL}/rest/v1/ky_records`;
+            const response = await fetch(dbUrl, {
+                method: 'POST',
+                headers: {
+                    'apikey': env.SUPABASE_KEY,
+                    'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({
+                    id: body.id,
+                    created_at: body.createdAt,
+                    work_type: body.workType,
+                    site_name: body.siteName,
+                    weather_condition: body.weather?.condition,
+                    weather_temp: body.weather?.temp,
+                    weather_wind: body.weather?.windSpeed,
+                    hazards: body.hazards,
+                    countermeasures: body.countermeasures,
+                    action_goal: body.actionGoal,
+                    duration_sec: body.durationSec,
+                    advice: body.advice
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.warn(`Supabase save failed: ${response.status} ${errorText}`);
+                return jsonResponse({ error: 'Database error', details: errorText }, 500);
+            }
+        } catch (e) {
+            console.error('Supabase connection error:', e);
+            return jsonResponse({ error: e.message }, 500);
+        }
+    } else {
+        console.log('Mock saving record (No Supabase keys):', body.id);
+    }
 
     return jsonResponse({ success: true, id: body.id });
 }
@@ -258,7 +295,27 @@ async function handleSaveRecord(request, env) {
  * 記録一覧取得
  */
 async function handleGetRecords(request, env) {
-    // Supabaseから取得（実装時に追加）
+    if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+        try {
+            const dbUrl = `${env.SUPABASE_URL}/rest/v1/ky_records?select=*&order=created_at.desc&limit=20`;
+            const response = await fetch(dbUrl, {
+                method: 'GET',
+                headers: {
+                    'apikey': env.SUPABASE_KEY,
+                    'Authorization': `Bearer ${env.SUPABASE_KEY}`
+                }
+            });
+
+            if (response.ok) {
+                const records = await response.json();
+                return jsonResponse({ records });
+            }
+        } catch (e) {
+            console.error('Supabase fetch error:', e);
+        }
+    }
+
+    // フォールバック（空配列）
     return jsonResponse({ records: [] });
 }
 

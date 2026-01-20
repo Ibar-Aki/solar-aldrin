@@ -1,5 +1,5 @@
 // Service Worker for Voice KY Assistant
-const CACHE_NAME = 'voice-ky-v1';
+const CACHE_NAME = 'voice-ky-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -48,7 +48,7 @@ self.addEventListener('activate', (event) => {
 // Fetch: キャッシュ戦略
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
+
   // API呼び出しはNetwork First
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  
+
   // 静的アセットはCache First
   event.respondWith(
     caches.match(event.request).then((cached) => {

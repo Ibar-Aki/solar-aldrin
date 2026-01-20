@@ -9,6 +9,12 @@ const HomeScreen = {
         <h1 class="home-title">Voice KY Assistant</h1>
         <p class="home-subtitle">話すだけでKYが完了</p>
         
+        <div class="home-input-group" style="margin-bottom: 24px; width: 100%; max-width: 300px;">
+          <input type="text" id="siteInput" class="chat-text-input" placeholder="現場名を入力 (任意)" style="width: 100%; text-align: center; background: white;">
+        </div>
+
+
+        
         <button class="home-start-btn" id="startBtn">
           <span class="icon">🎙️</span>
           <span>KY開始</span>
@@ -22,8 +28,12 @@ const HomeScreen = {
     init() {
         // KY開始ボタン
         document.getElementById('startBtn').addEventListener('click', async () => {
+            const siteInput = document.getElementById('siteInput');
+            const siteName = siteInput ? siteInput.value.trim() : '';
+
             // セッションをリセット
             resetSession();
+            AppState.session.siteName = siteName;
 
             // 天候取得を試みる
             await this.fetchWeather();
