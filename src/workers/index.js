@@ -3,15 +3,14 @@
  */
 
 // CORS設定
-const ALLOWED_ORIGINS = [
-    'https://voice-ky-assistant.pages.dev'
-];
+// CORS設定
+const ALLOWED_DOMAIN = 'voice-ky-assistant.pages.dev';
 const LOCAL_ORIGIN_REGEX = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
 
 // CORS設定（動的生成）
 function getCorsHeaders(origin) {
-    const isAllowed = origin && (ALLOWED_ORIGINS.includes(origin) || LOCAL_ORIGIN_REGEX.test(origin));
-    const allowOrigin = isAllowed ? origin : ALLOWED_ORIGINS[0];
+    const isAllowed = isAllowedOrigin(origin);
+    const allowOrigin = isAllowed ? origin : `https://${ALLOWED_DOMAIN}`;
     return {
         'Access-Control-Allow-Origin': allowOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -21,7 +20,8 @@ function getCorsHeaders(origin) {
 }
 
 function isAllowedOrigin(origin) {
-    return !!origin && (ALLOWED_ORIGINS.includes(origin) || LOCAL_ORIGIN_REGEX.test(origin));
+    if (!origin) return false;
+    return origin.endsWith(ALLOWED_DOMAIN) || LOCAL_ORIGIN_REGEX.test(origin);
 }
 
 // ルーティング
