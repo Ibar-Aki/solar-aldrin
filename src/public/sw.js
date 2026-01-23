@@ -1,10 +1,12 @@
 // Service Worker for Voice KY Assistant
-const CACHE_NAME = 'voice-ky-v4';
+const CACHE_NAME = 'voice-ky-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/reset.css',
   '/css/app.css',
+  '/js/libs/html2canvas.min.js',
+  '/js/libs/jspdf.umd.min.js',
   '/js/main.js',
   '/js/state.js',
   '/js/storage.js',

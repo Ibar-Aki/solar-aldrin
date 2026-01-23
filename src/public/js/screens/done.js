@@ -36,14 +36,21 @@ const DoneScreen = {
     /**
      * PDF生成（html2canvas方式で日本語対応）
      */
+    /**
+     * PDF生成（html2canvas方式で日本語対応）
+     */
     async generatePDF() {
         try {
-            // ライブラリを動的ロード
+            // ライブラリを動的ロード (ローカル)
             await this.loadLibraries();
 
             const session = AppState.session;
             const data = AppState.conversation.extractedData;
             const weather = session.weather;
+
+            // 安全対策：配列でない場合は空配列にする
+            const hazards = Array.isArray(data.hazards) ? data.hazards : [];
+            const countermeasures = Array.isArray(data.countermeasures) ? data.countermeasures : [];
 
             // PDF用のHTMLテンプレートを作成
             const template = document.createElement('div');
@@ -76,14 +83,14 @@ const DoneScreen = {
                 <div style="margin-bottom: 20px;">
                     <h2 style="font-size: 16px; color: #d32f2f; margin-bottom: 10px;">⚠️ 危険ポイント</h2>
                     <ul style="padding-left: 20px; font-size: 14px;">
-                        ${data.hazards.map(h => `<li style="margin-bottom: 5px;">${UI.escapeHtml(h)}</li>`).join('')}
+                        ${hazards.length > 0 ? hazards.map(h => `<li style="margin-bottom: 5px;">${UI.escapeHtml(h)}</li>`).join('') : '<li>なし</li>'}
                     </ul>
                 </div>
                 
                 <div style="margin-bottom: 20px;">
                     <h2 style="font-size: 16px; color: #1976d2; margin-bottom: 10px;">🛡️ 対策</h2>
                     <ul style="padding-left: 20px; font-size: 14px;">
-                        ${data.countermeasures.map(c => `<li style="margin-bottom: 5px;">${UI.escapeHtml(c)}</li>`).join('')}
+                        ${countermeasures.length > 0 ? countermeasures.map(c => `<li style="margin-bottom: 5px;">${UI.escapeHtml(c)}</li>`).join('') : '<li>なし</li>'}
                     </ul>
                 </div>
                 
@@ -119,39 +126,51 @@ const DoneScreen = {
                 format: 'a4'
             });
 
+            const pageHeight = 297;
             const imgWidth = 210;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+            // 1ページに収まらない場合は縮小して収める (Fit to Page)
+            if (imgHeight > pageHeight) {
+                const scale = pageHeight / imgHeight;
+                const scaledWidth = imgWidth * scale;
+                const x = (210 - scaledWidth) / 2; // 中央寄せ
+                doc.addImage(canvas.toDataURL('image/png'), 'PNG', x, 0, scaledWidth, pageHeight);
+            } else {
+                doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+            }
 
-            // PDF表示
-            const pdfBlob = doc.output('blob');
-            const url = URL.createObjectURL(pdfBlob);
-            window.open(url, '_blank');
+            // PDFダウンロード（モバイルでも動作安定）
+            const fileName = `KY記録_${new Date().toISOString().slice(0, 10)}.pdf`;
+            doc.save(fileName);
 
         } catch (error) {
             console.error('[Done] PDF generation failed:', error);
-            UI.showError('PDF生成に失敗しました');
+            UI.showError('PDF生成に失敗しました: ' + error.message);
         }
     },
 
     /**
-     * ライブラリを動的ロード
+     * ライブラリを動的ロード（ローカルから）
      */
     async loadLibraries() {
         const load = (src) => new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src="${src}"]`)) {
+                resolve(); // 既にロード済みならスキップ
+                return;
+            }
             const script = document.createElement('script');
             script.src = src;
             script.onload = resolve;
-            script.onerror = reject;
+            script.onerror = () => reject(new Error(`Failed to load ${src}`));
             document.head.appendChild(script);
         });
 
         if (!window.html2canvas) {
-            await load('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+            await load('/js/libs/html2canvas.min.js');
         }
         if (!window.jspdf) {
-            await load('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+            await load('/js/libs/jspdf.umd.min.js');
         }
     }
 };
