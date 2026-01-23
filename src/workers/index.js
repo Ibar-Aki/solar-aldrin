@@ -3,20 +3,25 @@
  */
 
 // CORS設定
-const ALLOWED_ORIGIN = 'https://voice-ky-assistant.pages.dev';
+const ALLOWED_ORIGINS = [
+    'https://voice-ky-assistant.pages.dev'
+];
+const LOCAL_ORIGIN_REGEX = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
 
 // CORS設定（動的生成）
 function getCorsHeaders(origin) {
-    // 開発環境(localhost)または本番URLからのアクセスを許可
-    const isAllowed = origin === ALLOWED_ORIGIN ||
-        (origin && (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')));
-
+    const isAllowed = origin && (ALLOWED_ORIGINS.includes(origin) || LOCAL_ORIGIN_REGEX.test(origin));
+    const allowOrigin = isAllowed ? origin : ALLOWED_ORIGINS[0];
     return {
-        'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGIN,
+        'Access-Control-Allow-Origin': allowOrigin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Custom-Auth',
+        'Access-Control-Allow-Headers': 'Content-Type',
         'Content-Type': 'application/json'
     };
+}
+
+function isAllowedOrigin(origin) {
+    return !!origin && (ALLOWED_ORIGINS.includes(origin) || LOCAL_ORIGIN_REGEX.test(origin));
 }
 
 // ルーティング
@@ -34,10 +39,9 @@ export default {
         const path = url.pathname;
 
         try {
-            // API認証チェック (ヘルルスチェック以外)
-            if (path !== '/api/health') {
-                const authError = checkAuth(request, env);
-                if (authError) return authError;
+            // Originが許可されていない場合は拒否（ブラウザ以外の直叩きを抑制）
+            if (!isAllowedOrigin(origin)) {
+                return jsonResponse({ error: 'Forbidden' }, 403, corsHeaders);
             }
 
             // ルーティング
@@ -75,23 +79,6 @@ export default {
 };
 
 /**
- * 簡易API認証チェック
- */
-function checkAuth(request, env) {
-    const authHeader = request.headers.get('X-Custom-Auth');
-    const secretKey = env.API_SECRET_KEY;
-
-    // キーが未設定の場合はチェックスキップ（開発初期など）
-    if (!secretKey) return null;
-
-    if (authHeader !== secretKey) {
-        const origin = request.headers.get('Origin');
-        return jsonResponse({ error: 'Unauthorized' }, 401, getCorsHeaders(origin));
-    }
-    return null;
-}
-
-/**
  * JSON レスポンスヘルパー
  */
 function jsonResponse(data, status = 200, headers = {}) {
@@ -111,10 +98,13 @@ async function handleChat(request, env, corsHeaders) {
     // システムプロンプト
     const systemPrompt = buildChatSystemPrompt(context);
 
+    // クライアント提供の履歴は制限・無害化
+    const safeHistory = normalizeHistory(context?.history);
+
     // メッセージ履歴を構築
     const messages = [
         { role: 'system', content: systemPrompt },
-        ...(context.history || []).map(m => ({ role: m.role, content: m.content })),
+        ...safeHistory.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: message }
     ];
 
@@ -134,6 +124,19 @@ async function handleChat(request, env, corsHeaders) {
             data: { hazards: [], countermeasures: [], goal: null }
         }, 200, corsHeaders);
     }
+}
+
+function normalizeHistory(history) {
+    if (!Array.isArray(history)) return [];
+    const maxMessages = 10;
+    const maxChars = 300;
+    return history
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant'))
+        .slice(-maxMessages)
+        .map(m => ({
+            role: m.role,
+            content: String(m.content || '').slice(0, maxChars)
+        }));
 }
 
 /**
@@ -314,12 +317,11 @@ async function handleSaveRecord(request, env, corsHeaders) {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                // console.warn(`Supabase save failed: ${response.status} ${errorText}`);
-                return jsonResponse({ error: 'Database error', details: errorText }, 500, corsHeaders);
+                return jsonResponse({ error: 'Database error' }, 500, corsHeaders);
             }
         } catch (e) {
             console.error('Supabase connection error:', e);
-            return jsonResponse({ error: e.message }, 500, corsHeaders);
+            return jsonResponse({ error: 'Database error' }, 500, corsHeaders);
         }
     } else {
         console.log('Mock saving record (No Supabase keys):', body.id);

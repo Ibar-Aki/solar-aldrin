@@ -3,6 +3,7 @@
  */
 const Storage = {
     db: null,
+    isReady: false,
     DB_NAME: 'VoiceKYDB',
     DB_VERSION: 1,
     STORE_DRAFTS: 'ky_drafts',
@@ -22,6 +23,7 @@ const Storage = {
 
             request.onsuccess = () => {
                 this.db = request.result;
+                this.isReady = true;
                 console.log('[Storage] IndexedDB initialized');
                 resolve();
             };
@@ -49,6 +51,7 @@ const Storage = {
      * 下書き保存
      */
     async saveDraft(draft) {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(this.STORE_DRAFTS, 'readwrite');
             const store = tx.objectStore(this.STORE_DRAFTS);
@@ -66,6 +69,7 @@ const Storage = {
      * KY記録を保存
      */
     async saveRecord(record) {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         const recordWithMeta = {
             id: record.id || generateUUID(),
             createdAt: record.createdAt || new Date().toISOString(),
@@ -91,6 +95,7 @@ const Storage = {
      * 全記録を取得（新しい順）
      */
     async getAllRecords() {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(this.STORE_RECORDS, 'readonly');
             const store = tx.objectStore(this.STORE_RECORDS);
@@ -109,6 +114,7 @@ const Storage = {
      * 未同期の記録を取得
      */
     async getPendingRecords() {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(this.STORE_RECORDS, 'readonly');
             const store = tx.objectStore(this.STORE_RECORDS);
@@ -124,6 +130,7 @@ const Storage = {
      * 同期ステータス更新
      */
     async updateSyncStatus(id, status, error = null) {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(this.STORE_RECORDS, 'readwrite');
             const store = tx.objectStore(this.STORE_RECORDS);
@@ -153,6 +160,7 @@ const Storage = {
      */
     async syncPendingRecords() {
         try {
+            if (!this.isReady) throw new Error('IndexedDB not initialized');
             const pending = await this.getPendingRecords();
             console.log(`[Storage] Syncing ${pending.length} pending records...`);
 
@@ -180,6 +188,7 @@ const Storage = {
      * 特定の記録を取得
      */
     async getRecord(id) {
+        if (!this.isReady) return Promise.reject(new Error('IndexedDB not initialized'));
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(this.STORE_RECORDS, 'readonly');
             const store = tx.objectStore(this.STORE_RECORDS);

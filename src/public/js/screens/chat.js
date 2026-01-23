@@ -217,14 +217,14 @@ const ChatScreen = {
         // 抽出データ更新
         if (response.data) {
             const extracted = AppState.conversation.extractedData;
-            if (response.data.hazards?.length) {
+            if (Array.isArray(response.data.hazards)) {
                 extracted.hazards = response.data.hazards;
             }
-            if (response.data.countermeasures?.length) {
+            if (Array.isArray(response.data.countermeasures)) {
                 extracted.countermeasures = response.data.countermeasures;
             }
-            if (response.data.goal) {
-                extracted.actionGoal = response.data.goal;
+            if ('goal' in response.data) {
+                extracted.actionGoal = response.data.goal || null;
             }
         }
 

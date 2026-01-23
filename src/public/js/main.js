@@ -26,6 +26,7 @@
             console.log('[App] Initialization complete');
         } catch (error) {
             console.error('[App] Initialization error:', error);
+            UI.showError('初期化に失敗しました。再読み込みしてください。');
         }
 
         // エラーがあってもホーム画面を表示

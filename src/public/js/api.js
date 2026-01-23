@@ -2,9 +2,6 @@
  * API通信モジュール
  */
 const API = {
-    // 簡易認証キー（サーバー側の API_SECRET_KEY と一致させる）
-    API_KEY: 'solar-aldrin-secret-key-2026',
-
     // ベースURL（開発時はローカル、本番時はWorkers）
     baseUrl: (window.location.hostname === 'localhost' || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname))
         ? `http://${window.location.hostname}:8787`
@@ -18,7 +15,6 @@ const API = {
         const config = {
             headers: {
                 'Content-Type': 'application/json',
-                'X-Custom-Auth': this.API_KEY,
                 ...options.headers
             },
             ...options
