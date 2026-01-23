@@ -193,9 +193,6 @@ Phase 7: done → 「ありがとうございます！ご安全に！」
 /**
  * アドバイス生成処理
  */
-/**
- * アドバイス生成処理
- */
 async function handleAdvice(request, env, corsHeaders) {
     const body = await request.json();
     const { workType, weather, hazards, countermeasures, actionGoal } = body;
@@ -233,9 +230,6 @@ async function handleAdvice(request, env, corsHeaders) {
     }
 }
 
-/**
- * 天候情報取得
- */
 /**
  * 天候情報取得
  */
@@ -284,9 +278,6 @@ async function handleWeather(request, env, corsHeaders) {
     }, 200, corsHeaders);
 }
 
-/**
- * 記録保存
- */
 /**
  * 記録保存
  */
@@ -340,9 +331,6 @@ async function handleSaveRecord(request, env, corsHeaders) {
 /**
  * 記録一覧取得
  */
-/**
- * 記録一覧取得
- */
 async function handleGetRecords(request, env, corsHeaders) {
     if (env.SUPABASE_URL && env.SUPABASE_KEY) {
         try {
@@ -368,9 +356,6 @@ async function handleGetRecords(request, env, corsHeaders) {
     return jsonResponse({ records: [] }, 200, corsHeaders);
 }
 
-/**
- * 同期処理
- */
 /**
  * 同期処理
  */
