@@ -3,71 +3,108 @@
  */
 
 // CORS設定
-const CORS_HEADERS = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json'
-};
+const ALLOWED_ORIGIN = 'https://voice-ky-assistant.pages.dev';
+
+// CORS設定（動的生成）
+function getCorsHeaders(origin) {
+    // 開発環境(localhost)または本番URLからのアクセスを許可
+    const isAllowed = origin === ALLOWED_ORIGIN ||
+        (origin && (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')));
+
+    return {
+        'Access-Control-Allow-Origin': isAllowed ? origin : ALLOWED_ORIGIN,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Custom-Auth',
+        'Content-Type': 'application/json'
+    };
+}
 
 // ルーティング
 export default {
     async fetch(request, env, ctx) {
+        const origin = request.headers.get('Origin');
+        const corsHeaders = getCorsHeaders(origin);
+
         // CORS preflight
         if (request.method === 'OPTIONS') {
-            return new Response(null, { headers: CORS_HEADERS });
+            return new Response(null, { headers: corsHeaders });
         }
 
         const url = new URL(request.url);
         const path = url.pathname;
 
         try {
-            // ルーティング
-            if (path === '/api/chat' && request.method === 'POST') {
-                return handleChat(request, env);
-            }
-            if (path === '/api/advice' && request.method === 'POST') {
-                return handleAdvice(request, env);
-            }
-            if (path === '/api/weather' && request.method === 'GET') {
-                return handleWeather(request, env);
-            }
-            if (path === '/api/records' && request.method === 'POST') {
-                return handleSaveRecord(request, env);
-            }
-            if (path === '/api/records' && request.method === 'GET') {
-                return handleGetRecords(request, env);
-            }
-            if (path === '/api/sync' && request.method === 'POST') {
-                return handleSync(request, env);
-            }
-            if (path === '/api/health') {
-                return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
+            // API認証チェック (ヘルルスチェック以外)
+            if (path !== '/api/health') {
+                const authError = checkAuth(request, env);
+                if (authError) return authError;
             }
 
-            return jsonResponse({ error: 'Not Found' }, 404);
+            // ルーティング
+            if (path === '/api/chat' && request.method === 'POST') {
+                return handleChat(request, env, corsHeaders);
+            }
+            if (path === '/api/advice' && request.method === 'POST') {
+                return handleAdvice(request, env, corsHeaders);
+            }
+            if (path === '/api/weather' && request.method === 'GET') {
+                return handleWeather(request, env, corsHeaders);
+            }
+            if (path === '/api/records' && request.method === 'POST') {
+                return handleSaveRecord(request, env, corsHeaders);
+            }
+            if (path === '/api/records' && request.method === 'GET') {
+                return handleGetRecords(request, env, corsHeaders);
+            }
+            if (path === '/api/sync' && request.method === 'POST') {
+                return handleSync(request, env, corsHeaders);
+            }
+            if (path === '/api/health') {
+                return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() }, 200, corsHeaders);
+            }
+
+            return jsonResponse({ error: 'Not Found' }, 404, corsHeaders);
 
         } catch (error) {
             console.error('Error:', error);
-            return jsonResponse({ error: error.message }, 500);
+            // 本番環境ではエラー詳細を隠す
+            const errorMessage = env.ENVIRONMENT === 'development' ? error.message : 'Internal Server Error';
+            return jsonResponse({ error: errorMessage }, 500, corsHeaders);
         }
     }
 };
 
 /**
+ * 簡易API認証チェック
+ */
+function checkAuth(request, env) {
+    const authHeader = request.headers.get('X-Custom-Auth');
+    const secretKey = env.API_SECRET_KEY;
+
+    // キーが未設定の場合はチェックスキップ（開発初期など）
+    if (!secretKey) return null;
+
+    if (authHeader !== secretKey) {
+        const origin = request.headers.get('Origin');
+        return jsonResponse({ error: 'Unauthorized' }, 401, getCorsHeaders(origin));
+    }
+    return null;
+}
+
+/**
  * JSON レスポンスヘルパー
  */
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, headers = {}) {
     return new Response(JSON.stringify(data), {
         status,
-        headers: CORS_HEADERS
+        headers: headers // 動的なCORSヘッダーを使用
     });
 }
 
 /**
  * AI対話処理
  */
-async function handleChat(request, env) {
+async function handleChat(request, env, corsHeaders) {
     const body = await request.json();
     const { sessionId, message, context } = body;
 
@@ -87,7 +124,7 @@ async function handleChat(request, env) {
     // レスポンスをパース
     try {
         const parsed = JSON.parse(response);
-        return jsonResponse(parsed);
+        return jsonResponse(parsed, 200, corsHeaders);
     } catch (e) {
         // JSONパース失敗時はテキストをそのまま返す
         return jsonResponse({
@@ -95,7 +132,7 @@ async function handleChat(request, env) {
             phase: 'hazard_main',
             done: false,
             data: { hazards: [], countermeasures: [], goal: null }
-        });
+        }, 200, corsHeaders);
     }
 }
 
@@ -156,7 +193,10 @@ Phase 7: done → 「ありがとうございます！ご安全に！」
 /**
  * アドバイス生成処理
  */
-async function handleAdvice(request, env) {
+/**
+ * アドバイス生成処理
+ */
+async function handleAdvice(request, env, corsHeaders) {
     const body = await request.json();
     const { workType, weather, hazards, countermeasures, actionGoal } = body;
 
@@ -187,22 +227,25 @@ async function handleAdvice(request, env) {
 
     try {
         const advices = JSON.parse(response);
-        return jsonResponse({ advices });
+        return jsonResponse({ advices }, 200, corsHeaders);
     } catch (e) {
-        return jsonResponse({ advices: [{ type: 'good', text: 'KY実施お疲れ様でした！' }] });
+        return jsonResponse({ advices: [{ type: 'good', text: 'KY実施お疲れ様でした！' }] }, 200, corsHeaders);
     }
 }
 
 /**
  * 天候情報取得
  */
-async function handleWeather(request, env) {
+/**
+ * 天候情報取得
+ */
+async function handleWeather(request, env, corsHeaders) {
     const url = new URL(request.url);
     const lat = url.searchParams.get('lat');
     const lon = url.searchParams.get('lon');
 
     if (!lat || !lon) {
-        return jsonResponse({ error: 'lat and lon required' }, 400);
+        return jsonResponse({ error: 'lat and lon required' }, 400, corsHeaders);
     }
 
     const apiKey = env.WEATHER_API_KEY;
@@ -213,7 +256,7 @@ async function handleWeather(request, env) {
             temp: 15,
             windSpeed: 3,
             humidity: 50
-        });
+        }, 200, corsHeaders);
     }
 
     const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric&lang=ja`;
@@ -238,13 +281,16 @@ async function handleWeather(request, env) {
         temp: Math.round(data.main?.temp || 0),
         windSpeed: Math.round(data.wind?.speed || 0),
         humidity: data.main?.humidity || 0
-    });
+    }, 200, corsHeaders);
 }
 
 /**
  * 記録保存
  */
-async function handleSaveRecord(request, env) {
+/**
+ * 記録保存
+ */
+async function handleSaveRecord(request, env, corsHeaders) {
     const body = await request.json();
 
     // Supabase設定がある場合のみ保存
@@ -277,24 +323,27 @@ async function handleSaveRecord(request, env) {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.warn(`Supabase save failed: ${response.status} ${errorText}`);
-                return jsonResponse({ error: 'Database error', details: errorText }, 500);
+                // console.warn(`Supabase save failed: ${response.status} ${errorText}`);
+                return jsonResponse({ error: 'Database error', details: errorText }, 500, corsHeaders);
             }
         } catch (e) {
             console.error('Supabase connection error:', e);
-            return jsonResponse({ error: e.message }, 500);
+            return jsonResponse({ error: e.message }, 500, corsHeaders);
         }
     } else {
         console.log('Mock saving record (No Supabase keys):', body.id);
     }
 
-    return jsonResponse({ success: true, id: body.id });
+    return jsonResponse({ success: true, id: body.id }, 200, corsHeaders);
 }
 
 /**
  * 記録一覧取得
  */
-async function handleGetRecords(request, env) {
+/**
+ * 記録一覧取得
+ */
+async function handleGetRecords(request, env, corsHeaders) {
     if (env.SUPABASE_URL && env.SUPABASE_KEY) {
         try {
             const dbUrl = `${env.SUPABASE_URL}/rest/v1/ky_records?select=*&order=created_at.desc&limit=20`;
@@ -308,7 +357,7 @@ async function handleGetRecords(request, env) {
 
             if (response.ok) {
                 const records = await response.json();
-                return jsonResponse({ records });
+                return jsonResponse({ records }, 200, corsHeaders);
             }
         } catch (e) {
             console.error('Supabase fetch error:', e);
@@ -316,13 +365,16 @@ async function handleGetRecords(request, env) {
     }
 
     // フォールバック（空配列）
-    return jsonResponse({ records: [] });
+    return jsonResponse({ records: [] }, 200, corsHeaders);
 }
 
 /**
  * 同期処理
  */
-async function handleSync(request, env) {
+/**
+ * 同期処理
+ */
+async function handleSync(request, env, corsHeaders) {
     const body = await request.json();
     const { records } = body;
 
@@ -332,7 +384,7 @@ async function handleSync(request, env) {
         results.push({ id: record.id, status: 'ok' });
     }
 
-    return jsonResponse({ results });
+    return jsonResponse({ results }, 200, corsHeaders);
 }
 
 /**
