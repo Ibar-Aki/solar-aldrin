@@ -13,10 +13,10 @@
 
 ```bash
 # フロントエンド (ポート3000)
-npx serve src/public -l 3000 --cors
+npx serve apps/v1-legacy/src/public -l 3000 --cors
 
 # バックエンド (ポート8787)
-cd src/workers
+cd apps/v1-legacy/src/workers
 npx wrangler dev --port 8787
 ```
 
