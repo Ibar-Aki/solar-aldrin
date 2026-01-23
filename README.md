@@ -2,6 +2,8 @@
 
 🏗️ 音声でKY活動を完了するPWAアプリ
 
+> **Demo:** [Voice KY Assistant](https://voice-ky-assistant.pages.dev)
+
 ## 概要
 
 建設現場の作業員が、音声対話を通じてKY（危険予知）活動を簡単に実施できるアプリケーションです。AIアシスタント「KY記録くん」が対話をファシリテートし、危険・対策・合言葉を記録してPDF出力します。

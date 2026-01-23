@@ -34,15 +34,84 @@ const DoneScreen = {
     },
 
     /**
-     * PDF生成
+     * PDF生成（html2canvas方式で日本語対応）
      */
     async generatePDF() {
         try {
-            // jsPDFを動的ロード
-            if (!window.jspdf) {
-                await this.loadJsPDF();
-            }
+            // ライブラリを動的ロード
+            await this.loadLibraries();
 
+            const session = AppState.session;
+            const data = AppState.conversation.extractedData;
+            const weather = session.weather;
+
+            // PDF用のHTMLテンプレートを作成
+            const template = document.createElement('div');
+            template.id = 'pdf-template';
+            template.style.cssText = `
+                position: fixed;
+                left: -9999px;
+                top: 0;
+                width: 794px;
+                padding: 40px;
+                background: white;
+                font-family: 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+                color: #333;
+            `;
+
+            template.innerHTML = `
+                <h1 style="text-align: center; font-size: 24px; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                    危険予知活動記録
+                </h1>
+                
+                <div style="margin-bottom: 20px; font-size: 14px;">
+                    <p><strong>日時:</strong> ${UI.formatDate(session.startTime)}</p>
+                    <p><strong>現場名:</strong> ${UI.escapeHtml(session.siteName) || '（未指定）'}</p>
+                    <p><strong>作業内容:</strong> 足場設置</p>
+                    ${weather ? `<p><strong>天候:</strong> ${UI.escapeHtml(weather.condition)} ${weather.temp}℃</p>` : ''}
+                </div>
+                
+                <hr style="border: 1px solid #ddd; margin: 20px 0;">
+                
+                <div style="margin-bottom: 20px;">
+                    <h2 style="font-size: 16px; color: #d32f2f; margin-bottom: 10px;">⚠️ 危険ポイント</h2>
+                    <ul style="padding-left: 20px; font-size: 14px;">
+                        ${data.hazards.map(h => `<li style="margin-bottom: 5px;">${UI.escapeHtml(h)}</li>`).join('')}
+                    </ul>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h2 style="font-size: 16px; color: #1976d2; margin-bottom: 10px;">🛡️ 対策</h2>
+                    <ul style="padding-left: 20px; font-size: 14px;">
+                        ${data.countermeasures.map(c => `<li style="margin-bottom: 5px;">${UI.escapeHtml(c)}</li>`).join('')}
+                    </ul>
+                </div>
+                
+                <div style="margin-bottom: 30px; padding: 15px; background: #fff3e0; border-radius: 8px; text-align: center;">
+                    <h2 style="font-size: 16px; color: #e65100; margin-bottom: 10px;">🎯 本日の行動目標</h2>
+                    <p style="font-size: 20px; font-weight: bold;">「${UI.escapeHtml(data.actionGoal) || 'ご安全に！'}」</p>
+                </div>
+                
+                <hr style="border: 1px solid #ddd; margin: 20px 0;">
+                
+                <div style="font-size: 14px;">
+                    <p style="margin-bottom: 15px;">作業員: _____________________ 印</p>
+                    <p>確認者: _____________________ 印</p>
+                </div>
+            `;
+
+            document.body.appendChild(template);
+
+            // html2canvasでキャプチャ
+            const canvas = await html2canvas(template, {
+                scale: 2,
+                useCORS: true,
+                logging: false
+            });
+
+            document.body.removeChild(template);
+
+            // jsPDFでPDF化
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({
                 orientation: 'portrait',
@@ -50,82 +119,10 @@ const DoneScreen = {
                 format: 'a4'
             });
 
-            const session = AppState.session;
-            const data = AppState.conversation.extractedData;
-            const weather = session.weather;
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            // 日本語フォント対応
-            // 注: jsPDFはデフォルトで日本語非対応のため、
-            // 実運用では NotoSansJP 等のBase64フォントを事前に用意するか、
-            // サーバーサイドPDF生成を推奨。
-            // ここではフォールバックとしてHelveticaを使用し、
-            // 日本語は文字化けする可能性がある旨を記載。
-            doc.setFont('helvetica');
-
-            let y = 20;
-
-            // タイトル（英語表記でフォールバック）
-            doc.setFontSize(18);
-            doc.text('KY Activity Record', 105, y, { align: 'center' });
-            y += 15;
-
-            // 基本情報
-            doc.setFontSize(12);
-            doc.text(`Date: ${UI.formatDate(session.startTime)}`, 20, y);
-            y += 8;
-            doc.text(`Site: ${session.siteName || '(Not specified)'}`, 20, y);
-            y += 8;
-            doc.text(`Work: Scaffolding`, 20, y);
-            y += 8;
-            if (weather) {
-                doc.text(`Weather: ${weather.condition} ${weather.temp}C`, 20, y);
-                y += 8;
-            }
-            y += 5;
-
-            // 区切り線
-            doc.line(20, y, 190, y);
-            y += 10;
-
-            // 危険
-            doc.setFontSize(14);
-            doc.text('■ 危険', 20, y);
-            y += 8;
-            doc.setFontSize(11);
-            data.hazards.forEach(h => {
-                doc.text(`・${h}`, 25, y);
-                y += 7;
-            });
-            y += 5;
-
-            // 対策
-            doc.setFontSize(14);
-            doc.text('■ 対策', 20, y);
-            y += 8;
-            doc.setFontSize(11);
-            data.countermeasures.forEach(c => {
-                doc.text(`・${c}`, 25, y);
-                y += 7;
-            });
-            y += 5;
-
-            // 合言葉
-            doc.setFontSize(14);
-            doc.text('■ 合言葉', 20, y);
-            y += 8;
-            doc.setFontSize(12);
-            doc.text(data.actionGoal || '', 25, y);
-            y += 15;
-
-            // 区切り線
-            doc.line(20, y, 190, y);
-            y += 10;
-
-            // 署名欄
-            doc.setFontSize(12);
-            doc.text('作業員: ___________________  印', 20, y);
-            y += 12;
-            doc.text('確認者: ___________________  印', 20, y);
+            doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
 
             // PDF表示
             const pdfBlob = doc.output('blob');
@@ -139,15 +136,22 @@ const DoneScreen = {
     },
 
     /**
-     * jsPDFを動的ロード
+     * ライブラリを動的ロード
      */
-    loadJsPDF() {
-        return new Promise((resolve, reject) => {
+    async loadLibraries() {
+        const load = (src) => new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+            script.src = src;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
         });
+
+        if (!window.html2canvas) {
+            await load('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+        }
+        if (!window.jspdf) {
+            await load('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        }
     }
 };

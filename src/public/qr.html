@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: #f0f0f0;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        input {
+            padding: 10px;
+            width: 300px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+        }
+
+        #qrcode {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .note {
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .current-url {
+            font-weight: bold;
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>📱 iPhoneへ送る</h1>
+
+    <div class="current-url" id="displayUrl"></div>
+    <input type="text" id="urlInput" placeholder="URLをここに貼り付け" value="">
+
+    <div id="qrcode"></div>
+
+    <p class="note">iPhoneのカメラアプリでスキャンしてください</p>
+
+    <script>
+        const qrcode = new QRCode(document.getElementById("qrcode"), {
+            width: 256,
+            height: 256
+        });
+
+        const input = document.getElementById('urlInput');
+        const display = document.getElementById('displayUrl');
+
+        function generate() {
+            const url = input.value;
+            if (!url) return;
+            qrcode.clear();
+            qrcode.makeCode(url);
+            display.textContent = url;
+            localStorage.setItem('last_qr_url', url);
+        }
+
+        input.addEventListener('input', generate);
+
+        // Restore last used URL or use default
+        const lastUrl = localStorage.getItem('last_qr_url');
+        if (lastUrl) {
+            input.value = lastUrl;
+            generate();
+        } else {
+            input.value = "https://cyan-pears-prove.loca.lt"; // Default to current
+            generate();
+        }
+    </script>
+</body>
+
+</html>

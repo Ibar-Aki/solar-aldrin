@@ -11,6 +11,10 @@ build/
 .env.local
 .env.*.local
 
+# Wrangler secrets (API keys)
+.dev.vars
+.wrangler/
+
 # IDE
 .vscode/
 .idea/

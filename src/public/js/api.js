@@ -3,9 +3,10 @@
  */
 const API = {
     // ベースURL（開発時はローカル、本番時はWorkers）
-    baseUrl: window.location.hostname === 'localhost'
-        ? 'http://localhost:8787'
-        : '',
+    // ベースURL（開発時はローカル/IP、本番時はWorkers）
+    baseUrl: (window.location.hostname === 'localhost' || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(window.location.hostname))
+        ? `http://${window.location.hostname}:8787`
+        : 'https://voice-ky-api.solar-aldrin-ky.workers.dev',
 
     /**
      * 汎用リクエスト

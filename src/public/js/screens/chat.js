@@ -14,6 +14,14 @@ const ChatScreen = {
       ${UI.createHeader('🏗️ 足場設置 KY')}
       
       <div class="screen chat">
+        <!-- 会話開始ボタン（初回のみ表示） -->
+        <div id="startConversationBanner" class="start-conversation-banner">
+          <p style="margin-bottom: 12px; color: #666;">タップして会話を開始してください</p>
+          <button id="startConversationBtn" class="btn btn-primary btn-lg">
+            🔊 会話を開始
+          </button>
+        </div>
+        
         <div class="chat-messages" id="chatMessages">
           <!-- メッセージがここに追加される -->
         </div>
@@ -45,11 +53,14 @@ const ChatScreen = {
         this.micBtn = document.getElementById('micBtn');
         this.sendBtn = document.getElementById('sendBtn');
         this.interimEl = document.getElementById('interimText');
+        this.startBanner = document.getElementById('startConversationBanner');
+        this.startBtn = document.getElementById('startConversationBtn');
 
         // 音声認識セットアップ
         this.setupSpeech();
 
         // イベントリスナー
+        this.startBtn.addEventListener('click', () => this.onStartConversationClick());
         this.micBtn.addEventListener('click', () => this.toggleMic());
         this.sendBtn.addEventListener('click', () => this.sendTextInput());
         this.textInput.addEventListener('keypress', (e) => {
@@ -61,13 +72,24 @@ const ChatScreen = {
         // 既存の会話履歴があれば復元（修正から戻ってきた場合）
         const existingMessages = AppState.conversation.messages;
         if (existingMessages && existingMessages.length > 0) {
+            // バナーを非表示にして履歴を表示
+            this.startBanner.style.display = 'none';
             existingMessages.forEach(m => {
                 this.addMessageToUI(m.role, m.content);
             });
-        } else {
-            // 初回メッセージを送信してAIの挨拶を取得
-            this.startConversation();
         }
+        // ★ 変更: 初回はstartConversation()を呼ばない（ボタンクリックを待つ）
+    },
+
+    /**
+     * 会話開始ボタンクリックハンドラ
+     */
+    async onStartConversationClick() {
+        // バナーを非表示
+        this.startBanner.style.display = 'none';
+
+        // 会話開始
+        await this.startConversation();
     },
 
     /**
@@ -96,13 +118,21 @@ const ChatScreen = {
     },
 
     /**
-     * マイクトグル
+     * マイクトグル（R4, R8対応）
      */
     toggleMic() {
+        // 発話中なら停止（R8対応）
+        Speech.stopSpeaking();
+
         if (Speech.isListening) {
             Speech.stopListening();
             this.micBtn.classList.remove('listening');
         } else {
+            // HTTPS判定（R4対応）
+            if (!Speech.isSecureContext()) {
+                UI.showError('音声入力はHTTPS接続でのみ利用可能です。キーボードで入力してください。');
+                return;
+            }
             if (Speech.startListening()) {
                 this.micBtn.classList.add('listening');
             }
@@ -137,7 +167,9 @@ const ChatScreen = {
                 ? `今日は${AppState.session.weather.condition}ですね。足場設置作業で、どんな危険がありそうですか？`
                 : '足場設置作業で、どんな危険がありそうですか？';
             this.addMessageToUI('assistant', fallbackMessage);
-            addMessage('assistant', fallbackMessage); // ログにも保存
+            addMessage('assistant', fallbackMessage);
+            // R6対応: フォールバックメッセージも音声再生
+            Speech.speak(fallbackMessage);
         } finally {
             AppState.ui.isProcessing = false;
         }

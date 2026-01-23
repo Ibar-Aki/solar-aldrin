@@ -16,6 +16,13 @@ const Speech = {
     isManualStop: false,
 
     /**
+     * HTTPS接続かどうか判定
+     */
+    isSecureContext() {
+        return window.isSecureContext || window.location.protocol === 'https:';
+    },
+
+    /**
      * 音声認識の初期化
      */
     init() {
@@ -121,9 +128,14 @@ const Speech = {
      * 音声認識開始
      */
     startListening() {
+        // HTTP環境では音声認識不可
+        if (!this.isSecureContext()) {
+            console.warn('[Speech] Recognition requires HTTPS');
+            return false;
+        }
+
         if (!this.recognition) {
             if (!this.init()) {
-                UI.showError('この端末では音声認識を利用できません');
                 return false;
             }
         }
@@ -150,38 +162,54 @@ const Speech = {
     },
 
     /**
-     * 音声読み上げ
+     * 音声リストがロードされるまで待機（タイムアウト付き）
      */
-    speak(text, options = {}) {
-        return new Promise((resolve, reject) => {
-            if (!this.synthesis) {
-                console.warn('[Speech] Speech synthesis not supported');
-                resolve();
-                return;
-            }
-
-            // 読み上げ中なら停止
-            this.synthesis.cancel();
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ja-JP';
-            utterance.rate = options.rate || 1.0;
-            utterance.pitch = options.pitch || 1.0;
-            utterance.volume = options.volume || 1.0;
-
-            // 日本語音声を探す
+    async waitForVoices(timeoutMs = 3000) {
+        return new Promise((resolve) => {
+            if (!this.synthesis) { resolve([]); return; }
             const voices = this.synthesis.getVoices();
-            const japaneseVoice = voices.find(v => v.lang.startsWith('ja'));
-            if (japaneseVoice) {
-                utterance.voice = japaneseVoice;
-            }
+            if (voices.length > 0) { resolve(voices); return; }
 
+            const timer = setTimeout(() => resolve([]), timeoutMs);
+            this.synthesis.addEventListener('voiceschanged', () => {
+                clearTimeout(timer);
+                resolve(this.synthesis.getVoices());
+            }, { once: true });
+        });
+    },
+
+    /**
+     * 音声読み上げ（改善版）
+     */
+    async speak(text, options = {}) {
+        if (!this.synthesis) {
+            console.warn('[Speech] Speech synthesis not supported');
+            return;
+        }
+
+        // 読み上げ中なら停止
+        this.synthesis.cancel();
+
+        // 音声がロードされるまで待機
+        const voices = await this.waitForVoices();
+        const japaneseVoice = voices.find(v => v.lang.startsWith('ja'));
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.rate = options.rate || 1.0;
+        utterance.pitch = options.pitch || 1.0;
+        utterance.volume = options.volume || 1.0;
+
+        if (japaneseVoice) {
+            utterance.voice = japaneseVoice;
+        }
+
+        return new Promise((resolve) => {
             utterance.onend = () => resolve();
             utterance.onerror = (e) => {
                 console.error('[Speech] Synthesis error:', e);
-                resolve(); // エラーでも続行
+                resolve();
             };
-
             this.synthesis.speak(utterance);
         });
     },

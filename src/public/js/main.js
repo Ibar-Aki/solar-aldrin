@@ -10,22 +10,26 @@
     async function init() {
         console.log('[App] Initializing Voice KY Assistant...');
 
-        // Service Worker登録
-        await registerServiceWorker();
+        try {
+            // Service Worker登録
+            await registerServiceWorker();
 
-        // IndexedDB初期化
-        await Storage.init();
+            // IndexedDB初期化
+            await Storage.init();
 
-        // オンライン復帰時の同期
-        window.addEventListener('online', () => {
-            console.log('[App] Online - syncing...');
-            Storage.syncPendingRecords();
-        });
+            // オンライン復帰時の同期
+            window.addEventListener('online', () => {
+                console.log('[App] Online - syncing...');
+                Storage.syncPendingRecords();
+            });
 
-        // ホーム画面を表示
+            console.log('[App] Initialization complete');
+        } catch (error) {
+            console.error('[App] Initialization error:', error);
+        }
+
+        // エラーがあってもホーム画面を表示
         Router.navigate('home');
-
-        console.log('[App] Initialization complete');
     }
 
     /**
