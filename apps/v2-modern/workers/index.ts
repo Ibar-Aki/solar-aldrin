@@ -10,6 +10,7 @@ type Bindings = {
     WEATHER_API_BASE_URL: string
     RATE_LIMIT_KV?: KVNamespace
     ASSETS?: { fetch: (request: Request) => Promise<Response> }
+    API_TOKEN?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -48,6 +49,26 @@ app.use('*', cors({
 
 // レート制限（全API）
 app.use('/api/*', rateLimit({ maxRequests: 20, windowMs: 60000 }))
+
+// API認証ミドルウェア
+app.use('/api/*', async (c, next) => {
+    // ヘルスチェックは除外
+    if (c.req.path === '/api/health') {
+        return next()
+    }
+
+    const authHeader = c.req.header('Authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null
+
+    // 環境変数に設定された正規のトークン（未設定ならチェックしない＝開発中など）
+    const validToken = c.env.API_TOKEN
+
+    if (validToken && token !== validToken) {
+        return c.json({ error: 'Unauthorized' }, 401)
+    }
+
+    await next()
+})
 
 // ヘルスチェック
 app.get('/api/health', (c) => {

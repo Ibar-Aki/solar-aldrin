@@ -114,6 +114,12 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
                     return
                 }
 
+                // 致命的なエラーの場合は自動再開を無効化
+                if (event.error === 'not-allowed' || event.error === 'audio-capture') {
+                    setAutoRestart(false)
+                    isStoppingRef.current = true // 意図的な停止とみなす
+                }
+
                 const errorMessage = getErrorMessage(event.error)
                 setError(errorMessage)
                 onError?.(errorMessage)

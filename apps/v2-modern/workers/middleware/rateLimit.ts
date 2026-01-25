@@ -35,7 +35,9 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
     const cfg = { ...defaultConfig, ...config }
 
     return async (c: Context<{ Bindings: Bindings }>, next: Next) => {
-        const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown'
+        // Cloudflare環境では cf-connecting-ip が信頼できるクライアントIP
+        // 開発環境などは x-forwarded-for や unknown にフォールバック
+        const ip = c.req.header('cf-connecting-ip') || 'unknown'
         const key = `${cfg.keyPrefix}${ip}`
 
         try {

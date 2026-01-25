@@ -2378,7 +2378,7 @@ var memoryStore = /* @__PURE__ */ new Map();
 function rateLimit(config = {}) {
   const cfg = { ...defaultConfig, ...config };
   return async (c, next) => {
-    const ip = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "unknown";
+    const ip = c.req.header("cf-connecting-ip") || "unknown";
     const key = `${cfg.keyPrefix}${ip}`;
     try {
       if (c.env.RATE_LIMIT_KV) {
@@ -2449,6 +2449,18 @@ app.use("*", cors({
   allowHeaders: ["Content-Type"]
 }));
 app.use("/api/*", rateLimit({ maxRequests: 20, windowMs: 6e4 }));
+app.use("/api/*", async (c, next) => {
+  if (c.req.path === "/api/health") {
+    return next();
+  }
+  const authHeader = c.req.header("Authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
+  const validToken = c.env.API_TOKEN;
+  if (validToken && token !== validToken) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  await next();
+});
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", version: "v2" });
 });

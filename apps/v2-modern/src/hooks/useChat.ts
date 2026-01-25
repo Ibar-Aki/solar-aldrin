@@ -55,8 +55,9 @@ export function useChat() {
         if (!currentWorkItem.workDescription &&
             (lowerAi.includes('作業') || lowerAi.includes('危険')) &&
             !lowerAi.includes('行動目標')) {
-            // 最初のユーザー入力を作業内容として設定
-            if (messages.length <= 2) {
+            // 作業内容が未設定、または「違う」「訂正」などの言葉が含まれる場合は更新
+            if (!currentWorkItem.workDescription ||
+                (userText.length > 5 && (userText.includes('作業') || userText.includes('変更')))) {
                 updateCurrentWorkItem({ workDescription: userText })
             }
         }
@@ -115,6 +116,7 @@ export function useChat() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN || ''}`,
                 },
                 body: JSON.stringify({
                     messages: [
