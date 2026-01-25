@@ -33,8 +33,10 @@ export function KYSessionPage() {
     }, [session, navigate])
 
     // 初回メッセージ
+    const initialized = useRef(false)
     useEffect(() => {
-        if (session && messages.length === 0) {
+        if (session && messages.length === 0 && !initialized.current) {
+            initialized.current = true
             initializeChat()
         }
     }, [session, messages.length, initializeChat])

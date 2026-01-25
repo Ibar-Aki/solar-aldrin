@@ -5,10 +5,7 @@
 import { useCallback } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 
-// API URL（開発環境と本番環境で切り替え）
-const API_BASE = import.meta.env.DEV
-    ? 'http://localhost:8787'
-    : ''
+// API URL（Vite Proxyを使用するため常に相対パス）
 
 export function useChat() {
     const {
@@ -114,7 +111,7 @@ export function useChat() {
 
         try {
             // API呼び出し
-            const response = await fetch(`${API_BASE}/api/chat`, {
+            const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

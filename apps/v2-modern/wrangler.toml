@@ -1,13 +1,13 @@
+# Cloudflare Pages Configuration
 name = "voice-ky-v2"
-main = "workers/index.ts"
 compatibility_date = "2024-01-01"
+pages_build_output_dir = "./dist"
 
 [vars]
 # 環境変数は wrangler secret で設定
-# OPENAI_API_KEY = ""
-# SUPABASE_URL = ""
-# SUPABASE_ANON_KEY = ""
-# WEATHER_API_BASE_URL = ""
 
-# 開発時は v2-dev、本番は v2 を使い分け
-# route = { pattern = "v2.example.com/*", zone_name = "example.com" }
+# Workers (Backend) Configuration
+# Pages Functionsとして動作させるための設定は自動的に読み込まれるが、
+# HonoをPagesで動かす場合は _worker.js を出力するか、functionsディレクトリを使う。
+# ここではシンプルに、フロントエンドとバックエンドを統合デプロイするための準備のみ記載。
+

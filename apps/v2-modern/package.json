@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host",
     "dev:workers": "wrangler dev workers/index.ts",
     "build": "tsc -b && vite build",
     "deploy:workers": "wrangler deploy workers/index.ts",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:iphone": "npx playwright codegen --device='iPhone 13' http://localhost:5173"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.0",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^24.10.9",
     "@types/react": "^19.2.5",

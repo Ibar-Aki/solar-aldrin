@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { chat } from './routes/chat'
-import { rateLimitMemory } from './middleware/rateLimit'
+import { rateLimit, KVNamespace } from './middleware/rateLimit'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -9,6 +9,7 @@ type Bindings = {
     SUPABASE_ANON_KEY: string
     WEATHER_API_BASE_URL: string
     RATE_LIMIT_KV?: KVNamespace
+    ASSETS?: { fetch: (request: Request) => Promise<Response> }
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -45,8 +46,8 @@ app.use('*', cors({
     allowHeaders: ['Content-Type'],
 }))
 
-// レート制限（チャットAPI）
-app.use('/api/chat/*', rateLimitMemory({ maxRequests: 10, windowMs: 60000 }))
+// レート制限（全API）
+app.use('/api/*', rateLimit({ maxRequests: 20, windowMs: 60000 }))
 
 // ヘルスチェック
 app.get('/api/health', (c) => {
@@ -63,7 +64,18 @@ app.onError((err, c) => {
 })
 
 // 404
-app.notFound((c) => {
+// 404の前に、静的アセットへのフォールバックを試みる
+app.get('*', async (c) => {
+    // APIリクエストはここで処理しない（上のルートで捕捉済みのはずだが念のため）
+    if (c.req.path.startsWith('/api/')) {
+        return c.json({ error: 'Not found' }, 404)
+    }
+
+    // Cloudflare Pagesの静的アセットを取得
+    if (c.env.ASSETS) {
+        return await c.env.ASSETS.fetch(c.req.raw)
+    }
+
     return c.json({ error: 'Not found' }, 404)
 })
 

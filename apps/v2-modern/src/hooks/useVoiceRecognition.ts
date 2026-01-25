@@ -139,8 +139,12 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
         const interval = setInterval(() => {
             if (Date.now() - lastSpeechTimeRef.current > SILENCE_TIMEOUT) {
-                console.log('Silence timeout, stopping recognition')
-                stop()
+                console.log('Silence timeout, restarting recognition')
+                // 意図的な停止ではないため、isStoppingRef は立てずに stop する
+                // これにより onend で autoRestart が発動する
+                if (recognitionRef.current) {
+                    recognitionRef.current.stop()
+                }
             }
         }, 1000)
 

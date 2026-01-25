@@ -29,7 +29,7 @@ const chat = new Hono<{ Bindings: Bindings }>()
 // 最大会話履歴数
 const MAX_HISTORY_TURNS = 10
 // 最大入力文字数
-const MAX_INPUT_LENGTH = 2000
+const MAX_INPUT_LENGTH = 3000
 // 最大出力トークン数
 const MAX_TOKENS = 500
 
@@ -56,14 +56,22 @@ chat.post('/', async (c) => {
         return c.json({ error: 'messages is required' }, 400)
     }
 
-    // 入力サニタイズ
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage.content.length > MAX_INPUT_LENGTH) {
-        return c.json({ error: `メッセージは${MAX_INPUT_LENGTH}文字以下にしてください` }, 400)
+    // 入力サニタイズ（Systemロールの無効化と文字数制限）
+    let totalLength = 0
+    const cleanMessages = messages.map(msg => {
+        totalLength += msg.content.length
+        if (msg.role === 'system') {
+            return { ...msg, role: 'user' as const } // Systemロールはユーザーとして扱う
+        }
+        return msg
+    })
+
+    if (totalLength > MAX_INPUT_LENGTH) {
+        return c.json({ error: `メッセージ全体の合計が${MAX_INPUT_LENGTH}文字を超えています（現在: ${totalLength}文字）` }, 400)
     }
 
     // 会話履歴を制限
-    const limitedHistory = messages.slice(-MAX_HISTORY_TURNS * 2)
+    const limitedHistory = cleanMessages.slice(-MAX_HISTORY_TURNS * 2)
 
     // システムプロンプトの構築
     let systemPrompt = SOLO_KY_SYSTEM_PROMPT

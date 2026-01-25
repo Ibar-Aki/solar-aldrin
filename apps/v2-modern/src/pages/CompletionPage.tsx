@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,10 +16,13 @@ export function CompletionPage() {
     const [nearMissNote, setNearMissNote] = useState('')
     const [isCompleting, setIsCompleting] = useState(false)
 
-    if (!session) {
-        navigate('/')
-        return null
-    }
+    useEffect(() => {
+        if (!session) {
+            navigate('/', { replace: true })
+        }
+    }, [session, navigate])
+
+    if (!session) return null
 
     const handleComplete = async () => {
         if (!actionGoal.trim()) return

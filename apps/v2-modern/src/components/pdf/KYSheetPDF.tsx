@@ -9,7 +9,7 @@ import type { SoloKYSession } from '@/types/ky'
 // 注意: フォントファイルは public/fonts/ に配置する必要があります
 Font.register({
     family: 'NotoSansJP',
-    src: '/fonts/NotoSansJP-Regular.ttf',
+    src: '/fonts/Noto_Sans_JP/static/NotoSansJP-Regular.ttf',
 })
 
 // スタイル定義

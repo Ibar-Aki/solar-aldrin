@@ -24,13 +24,15 @@ export function usePDFGenerator() {
 
         try {
             // PDFドキュメントを生成
-            const doc = <KYSheetPDF session={ session } />
+            const doc = <KYSheetPDF session={session} />
             const blob = await pdf(doc).toBlob()
 
             // ファイル名を生成
             const date = new Date(session.createdAt)
             const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
-            const fileName = `KY活動記録_${session.siteName}_${dateStr}.pdf`
+            // ファイル名サニタイズ（/ \ : * ? " < > | を置換）
+            const safeSiteName = session.siteName.replace(/[\\/:*?"<>|]/g, '_')
+            const fileName = `KY活動記録_${safeSiteName}_${dateStr}.pdf`
 
             // ダウンロード
             const url = URL.createObjectURL(blob)
@@ -63,7 +65,7 @@ export function usePDFGenerator() {
         setError(null)
 
         try {
-            const doc = <KYSheetPDF session={ session } />
+            const doc = <KYSheetPDF session={session} />
             const blob = await pdf(doc).toBlob()
             return blob
         } catch (e) {
