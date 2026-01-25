@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useKYStore } from '@/stores/kyStore'
+import { usePDFGenerator } from '@/hooks/usePDFGenerator'
 
 export function CompletionPage() {
     const navigate = useNavigate()
     const { session, completeSession, clearSession } = useKYStore()
+    const { generateAndDownload, isGenerating } = usePDFGenerator()
 
     const [actionGoal, setActionGoal] = useState('')
     const [pointingConfirmed, setPointingConfirmed] = useState(false)
@@ -36,8 +38,8 @@ export function CompletionPage() {
                 hadNearMiss,
                 nearMissNote: hadNearMiss ? nearMissNote : undefined,
             })
-            // TODO: PDF生成へ遷移
-            alert('KY活動が完了しました！（PDF出力は次のステップで実装）')
+            // PDF生成へ遷移はせず、完了画面でダウンロードさせる
+            // alert('KY活動が完了しました！（PDF出力は次のステップで実装）')
         } finally {
             setIsCompleting(false)
         }
@@ -68,7 +70,16 @@ export function CompletionPage() {
                                 <p>作業数: {session.workItems.length}件</p>
                                 <p>完了日時: {new Date(session.completedAt).toLocaleString('ja-JP')}</p>
                             </div>
-                            <Button onClick={handleNewSession} className="w-full">
+
+                            <Button
+                                onClick={() => generateAndDownload(session)}
+                                disabled={isGenerating}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                            >
+                                {isGenerating ? 'PDF生成中...' : '📄 PDFをダウンロード'}
+                            </Button>
+
+                            <Button onClick={handleNewSession} variant="outline" className="w-full">
                                 新しいKY活動を開始
                             </Button>
                         </CardContent>
