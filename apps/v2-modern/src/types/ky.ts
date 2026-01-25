@@ -1,0 +1,95 @@
+/**
+ * KY セッションの型定義
+ * 一人KY活動用のデータ構造
+ */
+
+/** 作業単位（作業 + 危険 + なぜ + 対策 のセット） */
+export interface WorkItem {
+    /** 一意識別子 (uuid) */
+    id: string
+    /** 作業内容の詳細 */
+    workDescription: string
+    /** 危険内容 */
+    hazardDescription: string
+    /** 危険度（1〜5の数値評価） */
+    riskLevel: 1 | 2 | 3 | 4 | 5
+    /** なぜ危険か（複数の理由） */
+    whyDangerous: string[]
+    /** 対策（複数） */
+    countermeasures: string[]
+}
+
+/** 一人KYセッション */
+export interface SoloKYSession {
+    /** セッションID (uuid) */
+    id: string
+
+    // === 基本情報 ===
+    /** 作業者名 */
+    userName: string
+    /** 現場名 */
+    siteName: string
+    /** 天候 */
+    weather: string
+    /** 気温（℃） */
+    temperature: number | null
+    /** 作業開始時刻 (ISO 8601) */
+    workStartTime: string
+    /** 作業終了時刻 (ISO 8601) */
+    workEndTime: string | null
+    /** セッション作成日時 (ISO 8601) */
+    createdAt: string
+
+    // === 環境リスク ===
+    /** AI自動生成の環境リスク情報 */
+    environmentRisk: string | null
+
+    // === 作業と危険 ===
+    /** 作業項目リスト */
+    workItems: WorkItem[]
+
+    // === 行動目標と確認 ===
+    /** 今日の行動目標 */
+    actionGoal: string | null
+    /** 指差し確認実施フラグ */
+    pointingConfirmed: boolean | null
+
+    // === 完了確認 ===
+    /** 全対策実施フラグ */
+    allMeasuresImplemented: boolean | null
+    /** ヒヤリハット発生フラグ */
+    hadNearMiss: boolean | null
+    /** ヒヤリハット備考 */
+    nearMissNote: string | null
+    /** セッション完了日時 (ISO 8601) */
+    completedAt: string | null
+}
+
+/** セッションステータス */
+export type SessionStatus =
+    | 'basic_info'    // 基本情報入力中
+    | 'work_items'    // 作業・危険入力中
+    | 'action_goal'   // 行動目標設定中
+    | 'confirmation'  // 完了確認中
+    | 'completed'     // 完了
+
+/** AI から抽出されるデータ */
+export interface ExtractedData {
+    /** 作業項目の部分データ */
+    workItem?: Partial<WorkItem>
+    /** 行動目標 */
+    actionGoal?: string
+    /** セッション完了フラグ */
+    isComplete?: boolean
+    /** 次のアクション指示 */
+    nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm'
+}
+
+/** チャットメッセージ */
+export interface ChatMessage {
+    id: string
+    role: 'user' | 'assistant' | 'system'
+    content: string
+    timestamp: string  // ISO 8601
+    extractedData?: ExtractedData
+}

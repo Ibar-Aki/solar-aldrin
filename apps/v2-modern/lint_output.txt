@@ -1,0 +1,60 @@
+
+> voice-ky-v2@0.0.1 lint
+> eslint .
+
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\components\ui\button.tsx
+  64:18  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\hooks\useChat.ts
+  103:8  warning  React Hook useCallback has a missing dependency: 'extractAndUpdateData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\hooks\useVoiceRecognition.ts
+   28:51  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+   46:46  error  Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\hooks\useVoiceRecognition.ts:46:46
+  44 |
+  45 |     const recognitionRef = useRef<InstanceType<typeof SpeechRecognition> | null>(null)
+> 46 |     const lastSpeechTimeRef = useRef<number>(Date.now())
+     |                                              ^^^^^^^^^^ Cannot call impure function
+  47 |     const isStoppingRef = useRef(false)
+  48 |
+  49 |     const isSupported = !!SpeechRecognition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              react-hooks/purity
+   84:44  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+  109:43  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+  129:29  error  Error: Cannot access variable before it is declared
+
+`start` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\hooks\useVoiceRecognition.ts:129:29
+  127 |                     setTimeout(() => {
+  128 |                         if (!isStoppingRef.current) {
+> 129 |                             start()
+      |                             ^^^^^ `start` accessed before it is declared
+  130 |                         }
+  131 |                     }, 500)
+  132 |                 }
+
+C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\src\hooks\useVoiceRecognition.ts:62:5
+   60 |     }, [])
+   61 |
+>  62 |     const start = useCallback(() => {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  63 |         if (!isSupported) {
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  64 |             setError('縺薙・繝悶Λ繧ｦ繧ｶ縺ｯ髻ｳ螢ｰ隱崎ｭ倥↓蟇ｾ蠢懊＠縺ｦ縺・∪縺帙ｓ')
+      窶ｦ
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 142 |         }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 143 |     }, [isSupported, lang, continuous, autoRestart, onResult, onError])
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `start` is declared here
+  144 |
+  145 |     // 辟｡髻ｳ繧ｿ繧､繝繧｢繧ｦ繝医メ繧ｧ繝・け
+  146 |     useEffect(() => {  react-hooks/immutability
+
+笨・7 problems (6 errors, 1 warning)
+

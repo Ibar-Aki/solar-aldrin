@@ -1,5 +1,73 @@
-# Voice KY Assistant v2 (Modern)
+# Voice KY Assistant v2
 
-Phase 2 ロードマップに基づき、ここにモダンな技術スタック（Vite + TypeScript + Hono）を用いた新アプリを構築予定です。
+Phase 2の音声KYアシスタントアプリ。
 
-詳細は [Phase 2 Roadmap](../../docs/00_planning/02_Phase2%E3%83%AD%E3%83%BC%E3%83%89%E3%83%9E%E3%83%83%E3%83%97_Phase2_Roadmap.md) を参照してください。
+## Tech Stack
+
+- **Frontend**: React + TypeScript + Vite
+- **Styling**: Tailwind CSS + Shadcn/ui
+- **State Management**: Zustand
+- **Backend**: Hono (Cloudflare Workers)
+- **Database**: Supabase (予定)
+
+## 開発
+
+### フロントエンド開発サーバー起動
+
+```bash
+cd apps/v2-modern
+npm install
+npm run dev
+```
+
+ブラウザで `http://localhost:5173/` を開く。
+
+### Workers開発サーバー起動
+
+```bash
+npm run dev:workers
+```
+
+### ビルド
+
+```bash
+npm run build
+```
+
+### デプロイ（Workers）
+
+```bash
+npm run deploy:workers
+```
+
+## ディレクトリ構造
+
+```text
+apps/v2-modern/
+├── src/
+│   ├── components/ui/   # shadcn/uiコンポーネント
+│   ├── hooks/           # カスタムフック
+│   ├── pages/           # ページコンポーネント
+│   ├── stores/          # Zustandストア
+│   ├── types/           # TypeScript型定義
+│   └── lib/             # ユーティリティ
+├── workers/             # Hono API (Cloudflare Workers)
+├── public/              # 静的ファイル
+└── implementation_plan.md  # 実装計画
+```
+
+## 実装計画
+
+詳細は [implementation_plan.md](./implementation_plan.md) を参照。
+
+## 開発状況
+
+- [x] プロジェクトスキャフォールド
+- [x] Tailwind CSS + shadcn/ui セットアップ
+- [x] Zustand状態管理
+- [x] Honoバックエンドスタブ
+- [ ] 音声認識統合
+- [ ] OpenAI API連携
+- [ ] ハンズフリー機能
+- [ ] PDF出力
+- [ ] Supabase認証
