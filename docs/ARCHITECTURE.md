@@ -1,5 +1,8 @@
 # System Architecture
 
+**統合先**: `./30_design/01_システムアーキテクチャ_System_Architecture.md`  
+本ファイルは概要のみを維持します。詳細設計は統合先を参照してください。
+
 Voice KY Assistant v2 のシステム構成図です。
 
 ```mermaid
