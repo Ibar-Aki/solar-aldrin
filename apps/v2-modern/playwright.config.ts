@@ -12,6 +12,8 @@ export default defineConfig({
         trace: 'on-first-retry',
     },
 
+    testMatch: /.*\.spec\.ts/,
+
     /* Configure projects for major browsers */
     projects: [
         {

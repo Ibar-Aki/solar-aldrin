@@ -1,4 +1,7 @@
+import { useEffect, useRef } from 'react'
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition'
+import { useTTSStore } from '@/stores/useTTSStore'
+import { Mic, Square } from 'lucide-react'
 
 interface MicButtonProps {
     onTranscript: (text: string) => void
@@ -6,6 +9,12 @@ interface MicButtonProps {
 }
 
 export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
+    const isTTSSpeaking = useTTSStore((s) => s.isSpeaking)
+
+    /** ユーザーが手動で停止したかどうか（強制停止と区別するため） */
+    const userStoppedRef = useRef(false)
+    /** 強制停止前にリスニング中だったか（復帰判定用） */
+    const wasListeningBeforePauseRef = useRef(false)
 
     const {
         isListening,
@@ -14,7 +23,7 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
         stop,
         error
     } = useVoiceRecognition({
-        autoRestart: true,
+        autoRestart: false, // 手動制御に切り替え
         onResult: (transcript, isFinal) => {
             if (isFinal && transcript.trim()) {
                 onTranscript(transcript.trim())
@@ -22,18 +31,40 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
         },
     })
 
+    /** 強制停止が必要な条件 */
+    const shouldForcePause = disabled || isTTSSpeaking
+
+    // 強制停止/再開のエフェクト
+    useEffect(() => {
+        if (!isSupported) return
+
+        if (shouldForcePause) {
+            // 停止が必要な場合
+            if (isListening) {
+                wasListeningBeforePauseRef.current = true
+                stop()
+            }
+        } else {
+            // 条件解除 → ユーザーが手動停止していなければ再開
+            if (wasListeningBeforePauseRef.current && !userStoppedRef.current) {
+                wasListeningBeforePauseRef.current = false
+                start()
+            }
+        }
+    }, [shouldForcePause, isListening, start, stop, isSupported])
+
     // 音声非対応ブラウザでは表示しない
+    // Note: Hooks are now called before this check
     if (!isSupported) {
         return null
     }
 
-    // TTS発話中は音声認識を停止（将来的にはTTSとの連携を実装）
-    const effectivelyDisabled = disabled
-
     const handleClick = () => {
         if (isListening) {
+            userStoppedRef.current = true
             stop()
         } else {
+            userStoppedRef.current = false
             start()
         }
     }
@@ -43,7 +74,7 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
             <button
                 type="button"
                 onClick={handleClick}
-                disabled={effectivelyDisabled}
+                disabled={shouldForcePause}
                 className={`
           w-16 h-16 rounded-full flex items-center justify-center
           transition-all duration-200
@@ -51,24 +82,19 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
                         ? 'bg-red-500 text-white animate-pulse'
                         : 'bg-blue-500 text-white hover:bg-blue-600'
                     }
-          ${effectivelyDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${shouldForcePause ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         `}
                 aria-label={isListening ? '音声認識を停止' : '音声認識を開始'}
             >
                 {isListening ? (
-                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="6" y="6" width="12" height="12" rx="1" />
-                    </svg>
+                    <Square className="w-8 h-8" />
                 ) : (
-                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                    </svg>
+                    <Mic className="w-8 h-8" />
                 )}
             </button>
 
             <span className="text-xs text-gray-500">
-                {isListening ? '聞いています...' : 'タップして話す'}
+                {shouldForcePause ? '一時停止中...' : isListening ? '聞いています...' : 'タップして話す'}
             </span>
 
             {error && (
@@ -77,3 +103,4 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
         </div>
     )
 }
+

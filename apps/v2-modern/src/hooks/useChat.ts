@@ -4,8 +4,7 @@
  */
 import { useCallback } from 'react'
 import { useKYStore } from '@/stores/kyStore'
-
-// API URL（Vite Proxyを使用するため常に相対パス）
+import { client } from '@/lib/api'
 
 export function useChat() {
     const {
@@ -111,14 +110,9 @@ export function useChat() {
         addMessage('user', text)
 
         try {
-            // API呼び出し
-            const response = await fetch('/api/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN || ''}`,
-                },
-                body: JSON.stringify({
+            // Hono RPC呼び出し
+            const res = await client.api.chat.$post({
+                json: {
                     messages: [
                         ...messages.map(m => ({ role: m.role, content: m.content })),
                         { role: 'user' as const, content: text },
@@ -129,14 +123,18 @@ export function useChat() {
                         weather: session.weather,
                         workItemCount: session.workItems.length,
                     },
-                }),
+                },
+                header: {
+                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN || ''}`,
+                }
             })
 
-            if (!response.ok) {
-                throw new Error('AI応答の取得に失敗しました')
+            if (!res.ok) {
+                const errorData = await res.json()
+                throw new Error((errorData as { error?: string }).error || 'AI応答の取得に失敗しました')
             }
 
-            const data = await response.json() as { reply: string }
+            const data = await res.json()
 
             // AI応答を追加
             addMessage('assistant', data.reply)
@@ -153,8 +151,6 @@ export function useChat() {
             setLoading(false)
         }
     }, [session, messages, addMessage, setLoading, setError, extractAndUpdateData])
-
-
 
     return {
         initializeChat,

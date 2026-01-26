@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MicButton } from './MicButton'
 
 interface ChatInputProps {
     onSend: (message: string) => void
@@ -33,8 +34,13 @@ export function ChatInput({ onSend, disabled = false, placeholder = 'メッセ�
         }
     }
 
+    const handleTranscript = (text: string) => {
+        setValue((prev) => (prev ? `${prev} ${text}` : text))
+    }
+
     return (
-        <div className="flex gap-2 p-4 border-t bg-white">
+        <div className="flex gap-2 p-4 border-t bg-white items-center">
+            <MicButton onTranscript={handleTranscript} disabled={disabled} />
             <Input
                 ref={inputRef}
                 value={value}

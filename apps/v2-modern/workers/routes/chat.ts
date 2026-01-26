@@ -3,25 +3,12 @@
  * OpenAI GPT-4o mini を使用
  */
 import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
 import { SOLO_KY_SYSTEM_PROMPT, EXTRACTION_PROMPT } from '../prompts/soloKY'
+import { ChatRequestSchema, ExtractionRequestSchema } from '../../src/lib/schema'
 
 type Bindings = {
     OPENAI_API_KEY: string
-}
-
-interface ChatMessage {
-    role: 'user' | 'assistant' | 'system'
-    content: string
-}
-
-interface ChatRequest {
-    messages: ChatMessage[]
-    sessionContext?: {
-        userName: string
-        siteName: string
-        weather: string
-        workItemCount: number
-    }
 }
 
 const chat = new Hono<{ Bindings: Bindings }>()
@@ -37,24 +24,17 @@ const MAX_TOKENS = 500
  * POST /api/chat
  * AIとの対話
  */
-chat.post('/', async (c) => {
+chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
+    if (!result.success) {
+        return c.json({ error: 'Validation Error', details: result.error as any }, 400)
+    }
+}), async (c) => {
     const apiKey = c.env.OPENAI_API_KEY
     if (!apiKey) {
         return c.json({ error: 'OpenAI API key not configured' }, 500)
     }
 
-    let body: ChatRequest
-    try {
-        body = await c.req.json<ChatRequest>()
-    } catch {
-        return c.json({ error: 'Invalid JSON' }, 400)
-    }
-
-    const { messages, sessionContext } = body
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-        return c.json({ error: 'messages is required' }, 400)
-    }
+    const { messages, sessionContext } = c.req.valid('json')
 
     // 入力サニタイズ（Systemロールの無効化と文字数制限）
     let totalLength = 0
@@ -137,22 +117,13 @@ chat.post('/', async (c) => {
  * POST /api/chat/extract
  * 会話からKYデータを抽出
  */
-chat.post('/extract', async (c) => {
+chat.post('/extract', zValidator('json', ExtractionRequestSchema), async (c) => {
     const apiKey = c.env.OPENAI_API_KEY
     if (!apiKey) {
         return c.json({ error: 'OpenAI API key not configured' }, 500)
     }
 
-    let body: { conversation: string }
-    try {
-        body = await c.req.json()
-    } catch {
-        return c.json({ error: 'Invalid JSON' }, 400)
-    }
-
-    if (!body.conversation) {
-        return c.json({ error: 'conversation is required' }, 400)
-    }
+    const { conversation } = c.req.valid('json')
 
     try {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -165,9 +136,9 @@ chat.post('/extract', async (c) => {
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: EXTRACTION_PROMPT },
-                    { role: 'user', content: body.conversation },
+                    { role: 'user', content: conversation },
                 ],
-                max_tokens: 500,
+                max_tokens: MAX_TOKENS,
                 temperature: 0,
                 response_format: { type: 'json_object' },
             }),

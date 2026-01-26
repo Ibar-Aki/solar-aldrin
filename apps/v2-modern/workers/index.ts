@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { chat } from './routes/chat'
-import { rateLimit, KVNamespace } from './middleware/rateLimit'
+import { rateLimit, type KVNamespace } from './middleware/rateLimit'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -75,29 +75,10 @@ app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: 'v2' })
 })
 
-// チャットルート
-app.route('/api/chat', chat)
+// 既存の app 変数宣言の後に追加
+const route = app.route('/api/chat', chat)
 
-// エラーハンドリング
-app.onError((err, c) => {
-    console.error('Unhandled error:', err)
-    return c.json({ error: 'Internal server error' }, 500)
-})
-
-// 404
-// 404の前に、静的アセットへのフォールバックを試みる
-app.get('*', async (c) => {
-    // APIリクエストはここで処理しない（上のルートで捕捉済みのはずだが念のため）
-    if (c.req.path.startsWith('/api/')) {
-        return c.json({ error: 'Not found' }, 404)
-    }
-
-    // Cloudflare Pagesの静的アセットを取得
-    if (c.env.ASSETS) {
-        return await c.env.ASSETS.fetch(c.req.raw)
-    }
-
-    return c.json({ error: 'Not found' }, 404)
-})
+// クライアント側で使う型定義をエクスポート
+export type AppType = typeof route
 
 export default app

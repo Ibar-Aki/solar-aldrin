@@ -2,7 +2,7 @@
  * レート制限ミドルウェア
  * Cloudflare Workers KV を使用
  */
-import { Context, Next } from 'hono'
+import type { Context, Next } from 'hono'
 
 // シンプルなKV型定義（ライブラリ依存回避）
 export interface KVNamespace {

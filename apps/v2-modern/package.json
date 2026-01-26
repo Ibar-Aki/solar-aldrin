@@ -14,6 +14,7 @@
     "test:iphone": "npx playwright codegen --device='iPhone 13' http://localhost:5173"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-pdf/renderer": "^4.3.2",
     "class-variance-authority": "^0.7.1",
