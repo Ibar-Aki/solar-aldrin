@@ -14,26 +14,31 @@
 
 ---
 
-## 🏗️ アーキテクチャ設計
+## 🏗️ アーキテクチャ設計（現状反映）
 
-### 1. フロントエンド (`apps/v2-modern/client`)
+### 1. フロントエンド (`apps/v2-modern`)
 
-- **Framework**: React 18+ (via Vite)
+- **Framework**: React 18+ (Vite)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS (Shadcn/ui 採用で「モダンな白基調」を安価に実現)
-- **State**: Zustand (軽量ステート管理)
-- **Audio**: Web Speech API wrapper (自動再起動ロジック実装)
+- **Styling**: Tailwind CSS + shadcn/ui
+- **State**: Zustand
+- **Audio**:
+  - Web Speech API（音声認識・音声合成）
+  - **手動開始/停止 + 強制停止連携**（TTS中は認識停止）
+  - 無音タイムアウト/自動再開はフック側に実装済みだが、UIは手動制御が基本
 
-### 2. バックエンド (`apps/v2-modern/server`)
+### 2. バックエンド (`apps/v2-modern/workers`)
 
 - **Runtime**: Cloudflare Workers
-- **Framework**: Hono (軽量・型安全)
-- **AI**: OpenAI API (GPT-4o mini)
-- **DB**: Supabase (PostgreSQL via REST API)
+- **Framework**: Hono
+- **AI**: OpenAI API（GPT-4o mini）
+- **Rate Limit**: Workers KV（IP/セッション単位の簡易制限）
+- **DB**: Supabase（未着手）
 
 ### 3. デプロイ
 
-- **Cloudflare Pages**: フロントエンドとバックエンド(Functions)を統合ホスティング。
+- **Cloudflare Pages**: フロントエンド
+- **Cloudflare Workers**: API（Hono）
 - **URL**: `v2-preview.voice-ky-assistant.pages.dev` (仮)
 
 ---
@@ -46,15 +51,18 @@
 - **対応ブラウザ**: Web Speech APIは主にChromium系で安定。非対応環境は**プッシュトゥトーク**や**テキスト入力**へフォールバック。
 - **ユーザー操作必須**: 初回はユーザー操作でマイク開始が必須。権限拒否時の再導線を用意。
 
-### 1. ハンズフリー音声操作 (Hands-free)
+### 1. 音声操作 (Voice)
 
-Web Speech APIの仕様（無音で停止、iOSでの制限）を回避するため、以下の段階的実装を行います。
+Web Speech APIの仕様（無音で停止、iOSでの制限）を踏まえ、現在は**手動操作中心**の設計です。
 
-- **Step 1（基本）**: `continuous: true` + `onend` イベントでの自動再開ループ。
-  - これにより「聞き続ける」挙動を擬似的に再現。
-  - システム発話中（TTS）は認識を一時停止する制御を入れる（自分自身の声を拾わないように）。
-  - `visibilitychange` / `pagehide` での停止・復帰、エラー時の再試行間隔も設計。
-- **Step 2（高度・将来）**: これで不十分な場合、`AudioWorklet` + `VAD (Voice Activity Detection)` ライブラリの導入を検討。
+- **現状（実装済み）**:
+  - 音声認識は**ユーザーの開始/停止操作**で制御。
+  - **TTS中は認識を強制停止**し、誤認識を回避。
+  - **無音タイムアウト**で自動停止し、再開ロジックはフック側に実装。
+  - `visibilitychange` での停止を実装済み。
+- **将来検討**:
+  - `AudioWorklet` + `VAD (Voice Activity Detection)` の導入。
+  - iOS Safari対策としてテキスト入力/プッシュトゥトークの強化。
 
 ### 2. コスト管理 (Cost Strategy)
 
@@ -80,34 +88,38 @@ Web Speech APIの仕様（無音で停止、iOSでの制限）を回避するた
 
 ---
 
-## 📅 開発ステップ (Step-by-Step)
+## 📅 開発ステップ（現状反映）
 
 ### Step 1: プロジェクトセットアップ
 
-- [ ] `apps/v2-modern` に Vite + React + Hono 環境構築
-- [ ] Tailwind CSS + Shadcn/ui 導入
-- [ ] Hello World デプロイ (Cloudflare Pages)
+- [x] `apps/v2-modern` に Vite + React 環境構築
+- [x] Tailwind CSS + shadcn/ui 導入
+- [x] Zustand ストア導入
+- [x] Cloudflare Workers（Hono）雛形
+- [ ] Cloudflare Pages デプロイ（未実施）
 
-### Step 2: コア機能移植 & ハンズフリー実装
+### Step 2: コア機能（チャット + 音声）
 
-- [ ] Web Speech API ラッパー実装（自動再開ロジック）
-- [ ] Hono バックエンドでの OpenAI API 接続
-- [ ] チャットUI実装
-- [ ] TTS再生（SpeechSynthesis もしくは外部TTS）とミュート制御
-- [ ] 非対応ブラウザ向けフォールバックUI（プッシュトゥトーク / テキスト）
+- [x] Web Speech API ラッパー実装（無音停止・再開ロジック含む）
+- [x] 音声認識 UI（マイクボタン・手動制御）
+- [x] TTS再生（SpeechSynthesis）と**認識の強制停止連携**
+- [x] Hono バックエンドでの OpenAI API 接続
+- [x] チャットUI実装（KYセッション画面）
+- [x] フォールバックUI（テキスト入力）
+- [ ] 自動継続のハンズフリー体験（常時待機の調整・検証）
 
-### Step 3: DB接続 & 認証
+### Step 3: DB接続 & 認証（未着手）
 
-- [ ] Supabase プロジェクト作成（またはv1用を流用しテーブル分離）
+- [ ] Supabase プロジェクト作成（またはv1流用）
 - [ ] DBスキーマ設計（`v2_*` テーブル、必要インデックス）
 - [ ] RLS/権限設計（ログインユーザー）
 - [ ] ゲスト用API（サーバー経由）とセッション保護
 
-### Step 4: 仕上げ
+### Step 4: 仕上げ（未着手）
 
-- [ ] PDF生成（今回は `react-pdf` 等のモダンライブラリ検討）
+- [ ] PDF生成（`react-pdf` 等の検討）
 - [ ] UIブラッシュアップ
-- [ ] 主要ブラウザでの動作検証（Chromium系 + iOSはフォールバック確認）
+- [ ] 主要ブラウザでの動作検証（Chromium + iOSフォールバック）
 - [ ] コスト/レート制限の挙動確認
 
 ---
