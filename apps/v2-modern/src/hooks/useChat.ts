@@ -95,7 +95,7 @@ export function useChat() {
             commitWorkItem()
         }
 
-    }, [currentWorkItem, messages, updateCurrentWorkItem, commitWorkItem])
+    }, [currentWorkItem, updateCurrentWorkItem, commitWorkItem])
 
     /**
      * メッセージを送信してAI応答を取得

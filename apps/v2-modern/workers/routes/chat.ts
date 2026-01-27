@@ -19,6 +19,12 @@ const MAX_HISTORY_TURNS = 10
 const MAX_INPUT_LENGTH = 3000
 // 最大出力トークン数
 const MAX_TOKENS = 500
+// 禁止語（最小セット）
+const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
+
+function hasBannedWord(text: string): boolean {
+    return BANNED_WORDS.some(word => text.includes(word))
+}
 
 /**
  * POST /api/chat
@@ -26,7 +32,7 @@ const MAX_TOKENS = 500
  */
 chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     if (!result.success) {
-        return c.json({ error: 'Validation Error', details: result.error as any }, 400)
+        return c.json({ error: 'Validation Error', details: result.error.flatten() }, 400)
     }
 }), async (c) => {
     const apiKey = c.env.OPENAI_API_KEY
@@ -36,22 +42,21 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     const { messages, sessionContext } = c.req.valid('json')
 
-    // 入力サニタイズ（Systemロールの無効化と文字数制限）
+    // 入力検証（禁止語・文字数制限）
     let totalLength = 0
-    const cleanMessages = messages.map(msg => {
+    for (const msg of messages) {
         totalLength += msg.content.length
-        if (msg.role === 'system') {
-            return { ...msg, role: 'user' as const } // Systemロールはユーザーとして扱う
+        if (msg.role === 'user' && hasBannedWord(msg.content)) {
+            return c.json({ error: '禁止語が含まれています' }, 400)
         }
-        return msg
-    })
+    }
 
     if (totalLength > MAX_INPUT_LENGTH) {
         return c.json({ error: `メッセージ全体の合計が${MAX_INPUT_LENGTH}文字を超えています（現在: ${totalLength}文字）` }, 400)
     }
 
     // 会話履歴を制限
-    const limitedHistory = cleanMessages.slice(-MAX_HISTORY_TURNS * 2)
+    const limitedHistory = messages.slice(-MAX_HISTORY_TURNS * 2)
 
     // システムプロンプトの構築
     let systemPrompt = SOLO_KY_SYSTEM_PROMPT

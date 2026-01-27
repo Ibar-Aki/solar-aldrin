@@ -22,7 +22,7 @@ type Bindings = {
 
 const defaultConfig: RateLimitConfig = {
     windowMs: 60000,    // 1分
-    maxRequests: 10,    // 10回
+    maxRequests: 30,    // 30回
     keyPrefix: 'rl:',
 }
 
@@ -47,6 +47,7 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
                 const count = current ? parseInt(current, 10) : 0
 
                 if (count >= cfg.maxRequests) {
+                    c.header('Retry-After', String(Math.ceil(cfg.windowMs / 1000)))
                     return c.json(
                         { error: 'リクエストが多すぎます。しばらく待ってから再試行してください。' },
                         429
@@ -72,6 +73,8 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
                 }
 
                 if (record.count >= cfg.maxRequests) {
+                    const retryAfter = Math.max(1, Math.ceil((record.resetAt - now) / 1000))
+                    c.header('Retry-After', String(retryAfter))
                     return c.json(
                         { error: 'リクエストが多すぎます。しばらく待ってから再試行してください。' },
                         429

@@ -1,0 +1,71 @@
+# 運用ガイド (Operations Guide)
+
+本ドキュメントは、Voice KY Assistant v2 の運用・保守に関する手順をまとめたものです。
+
+---
+
+## 🔑 APIキー管理 (Key Management)
+
+### OpenAI APIキーのローテーション手順
+
+セキュリティリスク低減のため、定期的なキーのローテーション（交換）を推奨します。
+
+1. **新しいキーの発行**:
+    * OpenAI Platform の [API Keys](https://platform.openai.com/api-keys) ページにアクセス。
+    * "Create new secret key" をクリックし、新キーを発行 (`sk-new...`)。
+
+2. **Workersへの反映**:
+    * 以下のコマンドで、本番環境の環境変数を更新します。
+
+    ```bash
+    cd apps/v2-modern
+    npx wrangler secret put OPENAI_API_KEY
+    # プロンプトが表示されたら、新しいキー(sk-new...)を入力
+    ```
+
+3. **動作確認**:
+    * アプリでチャットを行い、正常に応答することを確認。
+
+4. **古いキーの無効化**:
+    * OpenAI Platform 上で、古いキー (`sk-old...`) を削除 (Delete) します。
+
+---
+
+## 🛡️ セキュリティ設定 (Security Settings)
+
+### レート制限 (Rate Limiting)
+
+* **現状設定**: 1分あたり **30リクエスト** / IP
+* **ファイル**: `workers/index.ts`
+* **変更方法**:
+
+    ```typescript
+    app.use('/api/*', rateLimit({ maxRequests: 50, windowMs: 60000 })) // 50回に変更する場合
+    ```
+
+### Origin制限 (CORS)
+
+* **許可リスト**:
+  * `DEFAULT_ALLOWED_ORIGINS` (コード内定義: localhost, *.pages.dev)
+  * 環境変数 `ALLOWED_ORIGINS`
+* **環境変数での追加**:
+  * `wrangler.toml` またはダッシュボードで `ALLOWED_ORIGINS` を設定（カンマ区切り）。
+  * 例: `https://my-custom-domain.com,https://partner-site.com`
+
+---
+
+## 🚨 トラブルシューティング
+
+### "429 Too Many Requests" が頻発する場合
+
+* **原因**: 特定のIPからのアクセスがレート制限を超えています。
+* **対応**:
+    1. DDoS攻撃でないか確認（Cloudflareダッシュボード）。
+    2. 正規の利用であれば、`workers/index.ts` の `maxRequests` を緩和してデプロイ。
+
+### "403 Forbidden" (CORS Error)
+
+* **原因**: 未許可のドメインからAPIを呼び出そうとしています。
+* **対応**:
+    1. ブラウザコンソールで `Origin` を確認。
+    2. 正規ドメインであれば、`ALLOWED_ORIGINS` 環境変数に追加。

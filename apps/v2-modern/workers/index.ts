@@ -11,44 +11,60 @@ type Bindings = {
     RATE_LIMIT_KV?: KVNamespace
     ASSETS?: { fetch: (request: Request) => Promise<Response> }
     API_TOKEN?: string
+    ALLOWED_ORIGINS?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// 許可するオリジン
-const ALLOWED_ORIGINS = [
+// デフォルトの許可オリジン
+const DEFAULT_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:3000',
     'https://v2.voice-ky-assistant.pages.dev',
 ]
 
-// CORS設定
-app.use('*', cors({
-    origin: (origin) => {
-        // 許可リストに含まれているか
-        if (ALLOWED_ORIGINS.includes(origin ?? '')) {
-            return origin ?? ''
-        }
-        // Cloudflare Pagesのプレビュー・プロダクションURL
-        if (origin?.endsWith('.voice-ky-assistant.pages.dev')) {
-            return origin
-        }
-        if (origin?.endsWith('.workers.dev')) {
-            return origin
-        }
-        // 開発環境のlocalhostを許可
-        if (origin?.startsWith('http://localhost:')) {
-            return origin
-        }
-        return ''
-    },
-    credentials: true,
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
-}))
+function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string): boolean {
+    if (!origin) return true
 
-// レート制限（全API）
-app.use('/api/*', rateLimit({ maxRequests: 20, windowMs: 60000 }))
+    const envList = envOrigins
+        ? envOrigins.split(',').map(o => o.trim()).filter(Boolean)
+        : []
+
+    if (envList.includes(origin)) return true
+    if (DEFAULT_ALLOWED_ORIGINS.includes(origin)) return true
+    if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
+    if (origin.endsWith('.workers.dev')) return true
+    if (origin.startsWith('http://localhost:')) return true
+    return false
+}
+
+// Origin拒否（即時403）
+app.use('*', async (c, next) => {
+    const origin = c.req.header('Origin')
+    if (!isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS)) {
+        return c.json({ error: 'Forbidden origin' }, 403)
+    }
+    return next()
+})
+
+// CORS設定
+app.use('*', async (c, next) => {
+    const corsMiddleware = cors({
+        origin: (origin) => {
+            if (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS)) {
+                return origin ?? ''
+            }
+            return ''
+        },
+        credentials: true,
+        allowMethods: ['GET', 'POST', 'OPTIONS'],
+        allowHeaders: ['Content-Type', 'Authorization'],
+    })
+    return corsMiddleware(c, next)
+})
+
+// レート制限（全API）- 1分あたり30回
+app.use('/api/*', rateLimit({ maxRequests: 30, windowMs: 60000 }))
 
 // API認証ミドルウェア
 app.use('/api/*', async (c, next) => {
@@ -75,10 +91,10 @@ app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: 'v2' })
 })
 
-// 既存の app 変数宣言の後に追加
-const route = app.route('/api/chat', chat)
+// ルーティングを適用
+const appWithRoutes = app.route('/api/chat', chat)
 
 // クライアント側で使う型定義をエクスポート
-export type AppType = typeof route
+export type AppType = typeof appWithRoutes
 
-export default app
+export default appWithRoutes
