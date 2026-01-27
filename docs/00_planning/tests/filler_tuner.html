@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>理想のフィラー探索機 (Filler Tuner)</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+            background: #eef2f6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            text-align: center;
+        }
+
+        p.desc {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .control-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        .presets {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .preset-chip {
+            background: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            border: 1px solid #ced4da;
+            transition: all 0.2s;
+        }
+
+        .preset-chip:hover {
+            background: #dee2e6;
+            transform: translateY(-1px);
+        }
+
+        .preset-chip.active {
+            background: #3182ce;
+            color: white;
+            border-color: #3182ce;
+        }
+
+        .play-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: white;
+            background: #28a745;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(40, 167, 69, 0.2);
+            transition: all 0.2s;
+        }
+
+        .play-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .play-btn:disabled {
+            background: #95c9a0;
+            cursor: progress;
+            transform: none;
+        }
+
+        .log-area {
+            margin-top: 20px;
+            padding: 15px;
+            background: #2d3436;
+            color: #dfe6e9;
+            border-radius: 8px;
+            font-family: monospace;
+            min-height: 100px;
+        }
+
+        .range-value {
+            float: right;
+            font-weight: normal;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>理想のフィラー探索機 🎧</h1>
+        <p class="desc">「タイミング」と「言葉」を調整して、現場に最適な設定を見つけてください。</p>
+
+        <div class="control-panel">
+            <div class="control-group">
+                <label>プリセット (おすすめ設定)</label>
+                <div class="presets" id="preset-container">
+                    <!-- JSで生成 -->
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>フィラーの言葉 (Text)</label>
+                <input type="text" id="filler-text" value="確認しています...">
+            </div>
+
+            <div class="control-group">
+                <label>開始タイミング (Delay) <span class="range-value" id="val-delay">0ms</span></label>
+                <input type="range" id="filler-delay" min="0" max="1000" step="50" value="0">
+                <small style="color:#666">0ms = 食い気味、500ms = 一呼吸置く</small>
+            </div>
+
+            <div class="control-group">
+                <label>再生速度 (Speed) <span class="range-value" id="val-speed">1.2</span></label>
+                <input type="range" id="filler-rate" min="0.8" max="2.0" step="0.1" value="1.2">
+                <small style="color:#666">現場ではキビキビした速度（1.2〜1.5倍）が好まれる傾向</small>
+            </div>
+        </div>
+
+        <button class="play-btn" onclick="runSimulation()">▶ テスト再生 (発話 → フィラー → 回答)</button>
+
+        <div class="log-area" id="log">設定を選んで「テスト再生」を押してください。</div>
+    </div>
+
+    <script>
+        // プリセット定義
+        const PRESETS = [
+            { name: "標準的 (丁寧)", text: "確認しています...", delay: 200, rate: 1.1 },
+            { name: "現場監督 (即答)", text: "了解。", delay: 0, rate: 1.3 },
+            { name: "相槌 (自然)", text: "はい、", delay: 100, rate: 1.2 },
+            { name: "検索風 (メカ)", text: "検索中...", delay: 0, rate: 1.0 },
+            { name: "人間味 (悩み)", text: "えーっと、", delay: 400, rate: 0.9 },
+            { name: "ヨシ！ (現場)", text: "ヨシ！確認します。", delay: 0, rate: 1.4 }
+        ];
+
+        // UI初期化
+        const presetContainer = document.getElementById('preset-container');
+        PRESETS.forEach(p => {
+            const chip = document.createElement('div');
+            chip.className = 'preset-chip';
+            chip.innerText = p.name;
+            chip.onclick = () => applyPreset(p, chip);
+            presetContainer.appendChild(chip);
+        });
+
+        // Event Listeners for Range Inputs
+        document.getElementById('filler-delay').oninput = (e) => document.getElementById('val-delay').innerText = e.target.value + 'ms';
+        document.getElementById('filler-rate').oninput = (e) => document.getElementById('val-speed').innerText = e.target.value;
+
+        function applyPreset(preset, element) {
+            document.getElementById('filler-text').value = preset.text;
+            document.getElementById('filler-delay').value = preset.delay;
+            document.getElementById('filler-rate').value = preset.rate;
+
+            // Update display
+            document.getElementById('val-delay').innerText = preset.delay + 'ms';
+            document.getElementById('val-speed').innerText = preset.rate;
+
+            // Highlight
+            document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+            element.classList.add('active');
+        }
+
+        function runSimulation() {
+            if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
+
+            const text = document.getElementById('filler-text').value;
+            const delay = parseInt(document.getElementById('filler-delay').value);
+            const rate = parseFloat(document.getElementById('filler-rate').value);
+            const logEl = document.getElementById('log');
+
+            logEl.innerText = "🗣️ あなた: 「作業内容は、溶接作業です」\n";
+            document.querySelector('.play-btn').disabled = true;
+
+            // 1. User Voice
+            speak("作業内容は、溶接作業です", 1.0, () => {
+                logEl.innerText += `⏱️ (Delay: ${delay}ms)...\n`;
+
+                // 2. Delay
+                setTimeout(() => {
+                    logEl.innerText += `🤖 Filler: 「${text}」 (Rate: ${rate})\n`;
+
+                    // 3. Filler Voice
+                    speak(text, rate, () => {
+                        logEl.innerText += "⏳ (AI思考中... 2秒)\n";
+
+                        // 4. Thinking Time
+                        setTimeout(() => {
+                            logEl.innerText += "🤖 Answer: 「火傷に注意してください。」\n";
+                            speak("火傷に注意してください。", 1.1, () => {
+                                logEl.innerText += "✅ 完了";
+                                document.querySelector('.play-btn').disabled = false;
+                            });
+                        }, 2000);
+                    });
+                }, delay);
+            });
+        }
+
+        function speak(text, rate, callback) {
+            const uttr = new SpeechSynthesisUtterance(text);
+            uttr.lang = "ja-JP";
+            uttr.rate = rate;
+            uttr.onend = callback;
+            window.speechSynthesis.speak(uttr);
+        }
+    </script>
+</body>
+
+</html>
