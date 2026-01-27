@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-01-27T14:46:59.616Z",
+  "environment": {
+    "node": "v22.17.1",
+    "platform": "win32",
+    "arch": "x64"
+  },
+  "dataset": {
+    "cases": 16,
+    "steps": 64,
+    "iterations": 800,
+    "totalConversations": 12800,
+    "categories": {
+      "short": 4,
+      "long": 4,
+      "ambiguous": 4,
+      "noisy": 4
+    },
+    "invalidJsonSteps": 2
+  },
+  "performance": {
+    "local": {
+      "totalMs": 14.204,
+      "avgMsPerConversation": 0.00111
+    },
+    "json": {
+      "totalMs": 44.511,
+      "avgMsPerConversation": 0.003477
+    }
+  },
+  "accuracy": {
+    "local": {
+      "fullMatchRate": 0,
+      "fullMatchRateCore": 0.313,
+      "fieldMatchRate": {
+        "workDescription": 0.75,
+        "hazardDescription": 0.75,
+        "whyDangerous": 0.313,
+        "countermeasures": 0.75,
+        "riskLevel": 0
+      }
+    },
+    "json": {
+      "fullMatchRate": 0.875,
+      "fullMatchRateCore": 0.875,
+      "fieldMatchRate": {
+        "workDescription": 1,
+        "hazardDescription": 0.938,
+        "whyDangerous": 0.938,
+        "countermeasures": 1,
+        "riskLevel": 1
+      },
+      "parseErrorRate": 0.031
+    }
+  },
+  "payload": {
+    "avgBeforeBytes": 44.1,
+    "avgAfterBytes": 119,
+    "avgDeltaBytes": 74.8
+  },
+  "assumptions": {
+    "apiCallsPerConversation": {
+      "before": 2,
+      "after": 1
+    },
+    "note": "ローカルCPU計測のみ。ネットワーク/LLMレイテンシ・コストは未測定。"
+  }
+}
