@@ -102,7 +102,6 @@ erDiagram
   * `cors`: クロスオリジンリソース共有設定。
 * **Routes**
   * `POST /api/chat`: チャット応答生成。
-  * `POST /api/chat/extract`: （未使用/予備）会話からの構造化データ抽出。
 
 ---
 

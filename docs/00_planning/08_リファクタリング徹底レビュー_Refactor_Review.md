@@ -24,9 +24,9 @@
 | 重要 | `whyDangerous` / `countermeasures` を**上書き**しており、AIが差分のみ返す場合に過去分が消える | データ消失・会話の整合性欠落 | `apps/v2-modern/src/hooks/useChat.ts:61-67` | No (対応済み) | Done (Verified) |
 | 中 | `ChatResponseSchema` が `extracted` を未定義のまま、`any` キャストで回避している | API契約が型で守られない | `apps/v2-modern/src/lib/schema.ts:48-56` / `apps/v2-modern/src/hooks/useChat.ts:91-93` | No (対応済み) | Done (Verified) |
 | 中 | `ExtractedDataSchema` が旧仕様（`workItem`/`isComplete`）のまま | 解析/バリデーションが実態と不整合 | `apps/v2-modern/src/lib/validation.ts:16-31` | No (対応済み) | Done (Verified) |
-| 中 | 永続化キー変更により**既存セッションが消える** | 既存ユーザーのデータ喪失 | `apps/v2-modern/src/stores/kyStore.ts:20` | No (Intentional for Dev) | N/A (Confirmed: 開発中のデータ分離/破壊的変更のためリセット許容) |
+| 中 | 永続化キー変更により**既存セッションが消える** | 既存ユーザーのデータ喪失 | `apps/v2-modern/src/stores/kyStore.ts:20` | No (Intentional for Dev) | N/A (Confirmed: データ消失は許容) |
 | 低 | 抽出データの `console.log` が本番で情報露出/ノイズになる可能性 | 監視ノイズ・情報露出 | `apps/v2-modern/src/hooks/useChat.ts:53` | No (対応済み) | Done (Verified) |
-| 低 | ドキュメント/画像アセットの大量削除 | 参照切れ・説明欠落の可能性 | `docs/assets/*` 等の削除差分 | No (Cleanup) | N/A (Confirmed: 参照切れがなく不要資産の整理として実施) |
+| 低 | ドキュメント/画像アセットの大量削除 | 参照切れ・説明欠落の可能性 | `docs/assets/*` 等の削除差分 | No (Cleanup) | N/A (Confirmed: 意図的な削除) |
 
 ## 改善提案（要約）
 
@@ -46,15 +46,15 @@
 
 ## N/A理由の詳細
 
-- 永続化キー変更: 既存データとの互換性よりも、開発中のストア分割に伴う**データ分離**を優先する判断。開発環境ではリセット許容、移行対応は現時点では対象外とするため。
-- docs/assets削除: ドキュメント側の参照先が解消済み（参照切れなし）で、不要/重複アセットの**整理目的**。機能面への影響がないため対応不要と判断。
+- 永続化キー変更: 既存データ消失は許容とする方針（移行は現時点では対象外）。
+- docs/assets削除: 意図的な削除（参照切れなし）。
 
-## 確認事項（回答待ち）
+## 確認事項（回答済み）
 
-- `/api/chat/extract` は完全廃止で問題ないか（`schema.ts` に残っているため）
-- AIが `whyDangerous` / `countermeasures` を常に**全量**で返す前提で良いか
-- 永続化キー変更で既存データが消えることを許容するか
-- 削除された `docs/assets/*` は意図的か（参照切れがないか）
+- `/api/chat/extract` は機能として未使用のため**完全廃止**する方針。
+- AIが `whyDangerous` / `countermeasures` を**全量返却する前提ではない**ため、マージ処理で保持する。
+- 永続化キー変更による既存データ消失は**許容**。
+- 削除された `docs/assets/*` は**意図的**（参照切れなし）。
 
 ## テスト状況
 
@@ -63,5 +63,4 @@
 
 ## 次のアクション案
 
-1. 上記「確認事項」に回答をもらい、優先度の高い修正から適用
-2. 型/スキーマ整合を回復後にテスト実行
+1. テスト実行（`apps/v2-modern/tests/kyStore.test.ts`, `apps/v2-modern/tests/integration.test.ts`）

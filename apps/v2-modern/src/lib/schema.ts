@@ -77,20 +77,5 @@ export const ChatResponseSchema = z.object({
     error: z.string(),
 }))
 
-/** データ抽出リクエストのスキーマ */
-export const ExtractionRequestSchema = z.object({
-    conversation: z.string().min(1),
-})
-
-/** データ抽出レスポンスのスキーマ */
-export const ExtractionResponseSchema = z.object({
-    extracted: z.record(z.string(), z.any()),
-    warning: z.string().optional(),
-}).or(z.object({
-    error: z.string(),
-}))
-
 export type ChatRequest = z.infer<typeof ChatRequestSchema>
 export type ChatResponse = z.infer<typeof ChatResponseSchema>
-export type ExtractionRequest = z.infer<typeof ExtractionRequestSchema>
-export type ExtractionResponse = z.infer<typeof ExtractionResponseSchema>
