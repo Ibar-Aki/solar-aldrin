@@ -18,15 +18,15 @@
 
 ## 指摘事項（優先度順）
 
-| 重要度 | 指摘 | 影響 | 対象 | 対応要否 (Action Required) |
-|---|---|---|---|---|
-| 重大 | `nextAction` が `confirm`/`completed` の場合に `commitWorkItem` が走らず、**最終作業が保存されない可能性** | 完了時のデータ欠損 | `apps/v2-modern/src/hooks/useChat.ts:70-73` | **Yes** (Check logic) |
-| 重要 | `whyDangerous` / `countermeasures` を**上書き**しており、AIが差分のみ返す場合に過去分が消える | データ消失・会話の整合性欠落 | `apps/v2-modern/src/hooks/useChat.ts:61-67` | **Yes** (Implement merge) |
-| 中 | `ChatResponseSchema` が `extracted` を未定義のまま、`any` キャストで回避している | API契約が型で守られない | `apps/v2-modern/src/lib/schema.ts:48-56` / `apps/v2-modern/src/hooks/useChat.ts:91-93` | **Yes** (Update Schema) |
-| 中 | `ExtractedDataSchema` が旧仕様（`workItem`/`isComplete`）のまま | 解析/バリデーションが実態と不整合 | `apps/v2-modern/src/lib/validation.ts:16-31` | **Yes** (Update Schema) |
-| 中 | 永続化キー変更により**既存セッションが消える** | 既存ユーザーのデータ喪失 | `apps/v2-modern/src/stores/kyStore.ts:20` | No (Intentional for Dev) |
-| 低 | 抽出データの `console.log` が本番で情報露出/ノイズになる可能性 | 監視ノイズ・情報露出 | `apps/v2-modern/src/hooks/useChat.ts:53` | **Yes** (Remove/Debug only) |
-| 低 | ドキュメント/画像アセットの大量削除 | 参照切れ・説明欠落の可能性 | `docs/assets/*` 等の削除差分 | No (Cleanup) |
+| 重要度 | 指摘 | 影響 | 対象 | 対応要否 (Action Required) | 対応状況 (Status) |
+|---|---|---|---|---|---|
+| 重大 | `nextAction` が `confirm`/`completed` の場合に `commitWorkItem` が走らず、**最終作業が保存されない可能性** | 完了時のデータ欠損 | `apps/v2-modern/src/hooks/useChat.ts:70-73` | No (対応済み) | Done (Verified) |
+| 重要 | `whyDangerous` / `countermeasures` を**上書き**しており、AIが差分のみ返す場合に過去分が消える | データ消失・会話の整合性欠落 | `apps/v2-modern/src/hooks/useChat.ts:61-67` | No (対応済み) | Done (Verified) |
+| 中 | `ChatResponseSchema` が `extracted` を未定義のまま、`any` キャストで回避している | API契約が型で守られない | `apps/v2-modern/src/lib/schema.ts:48-56` / `apps/v2-modern/src/hooks/useChat.ts:91-93` | No (対応済み) | Done (Verified) |
+| 中 | `ExtractedDataSchema` が旧仕様（`workItem`/`isComplete`）のまま | 解析/バリデーションが実態と不整合 | `apps/v2-modern/src/lib/validation.ts:16-31` | No (対応済み) | Done (Verified) |
+| 中 | 永続化キー変更により**既存セッションが消える** | 既存ユーザーのデータ喪失 | `apps/v2-modern/src/stores/kyStore.ts:20` | No (Intentional for Dev) | N/A (Confirmed: 開発中のデータ分離/破壊的変更のためリセット許容) |
+| 低 | 抽出データの `console.log` が本番で情報露出/ノイズになる可能性 | 監視ノイズ・情報露出 | `apps/v2-modern/src/hooks/useChat.ts:53` | No (対応済み) | Done (Verified) |
+| 低 | ドキュメント/画像アセットの大量削除 | 参照切れ・説明欠落の可能性 | `docs/assets/*` 等の削除差分 | No (Cleanup) | N/A (Confirmed: 参照切れがなく不要資産の整理として実施) |
 
 ## 改善提案（要約）
 
@@ -43,6 +43,11 @@
    - 変更が意図的か確認。意図的なら、移行/リセット手順の明記が必要。
 5. **ログ出力の制御**  
    - 本番ビルド時は無効化する、またはデバッグフラグで切り替える。
+
+## N/A理由の詳細
+
+- 永続化キー変更: 既存データとの互換性よりも、開発中のストア分割に伴う**データ分離**を優先する判断。開発環境ではリセット許容、移行対応は現時点では対象外とするため。
+- docs/assets削除: ドキュメント側の参照先が解消済み（参照切れなし）で、不要/重複アセットの**整理目的**。機能面への影響がないため対応不要と判断。
 
 ## 確認事項（回答待ち）
 
