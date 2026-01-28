@@ -263,7 +263,7 @@ export function KYSheetPDF({ session }: KYSheetPDFProps) {
 
                                 {/* なぜ危険か */}
                                 <View style={styles.subSection}>
-                                    <Text style={styles.subTitle}>【なぜ危険か】</Text>
+                                    <Text style={styles.subTitle}>【危険の要因】</Text>
                                     {item.whyDangerous.map((why, i) => (
                                         <View key={i} style={styles.listItem}>
                                             <Text style={styles.bullet}>•</Text>

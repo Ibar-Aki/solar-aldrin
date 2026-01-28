@@ -42,7 +42,7 @@ export function useChat() {
         // 初回AIメッセージ
         addMessage(
             'assistant',
-            `${session.userName}さん、今日も安全に作業しましょう！\n\n${session.siteName}での作業ですね。天候は${session.weather}です。\n\nまず、今日行う作業内容を教えてください。`
+            `${session.userName}さん、今日も安全に作業しましょう！\n${session.siteName}での作業ですね。天候は${session.weather}です。\n今日行う作業内容を教えてください。`
         )
     }, [session, addMessage, setEnvironmentRisk])
 

@@ -2,14 +2,27 @@ import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MicButton } from './MicButton'
+import { cn } from '@/lib/utils'
 
 interface ChatInputProps {
     onSend: (message: string) => void
     disabled?: boolean
     placeholder?: string
+    variant?: 'default' | 'bare'
+    containerClassName?: string
+    inputClassName?: string
+    buttonClassName?: string
 }
 
-export function ChatInput({ onSend, disabled = false, placeholder = 'メッセージを入力...' }: ChatInputProps) {
+export function ChatInput({
+    onSend,
+    disabled = false,
+    placeholder = 'メッセージを入力...',
+    variant = 'default',
+    containerClassName,
+    inputClassName,
+    buttonClassName,
+}: ChatInputProps) {
     const [value, setValue] = useState('')
     const inputRef = useRef<HTMLInputElement>(null)
 
@@ -39,7 +52,13 @@ export function ChatInput({ onSend, disabled = false, placeholder = 'メッセ�
     }
 
     return (
-        <div className="flex gap-2 p-4 border-t bg-white items-center">
+        <div
+            className={cn(
+                'flex gap-2 items-center',
+                variant === 'default' && 'p-4 border-t bg-white',
+                containerClassName
+            )}
+        >
             <MicButton onTranscript={handleTranscript} disabled={disabled} />
             <Input
                 ref={inputRef}
@@ -48,13 +67,13 @@ export function ChatInput({ onSend, disabled = false, placeholder = 'メッセ�
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 disabled={disabled}
-                className="flex-1"
+                className={cn('flex-1 h-11 rounded-full px-4 py-2', inputClassName)}
                 maxLength={2000}
             />
             <Button
                 onClick={handleSubmit}
                 disabled={disabled || !value.trim()}
-                className="px-6"
+                className={cn('px-6 h-11 rounded-full', buttonClassName)}
             >
                 送信
             </Button>

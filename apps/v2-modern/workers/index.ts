@@ -26,6 +26,27 @@ const DEFAULT_ALLOWED_ORIGINS = [
 function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string): boolean {
     if (!origin) return true
 
+    const isPrivateIpv4 = (hostname: string): boolean => {
+        const parts = hostname.split('.').map(part => Number(part))
+        if (parts.length !== 4 || parts.some(part => Number.isNaN(part))) return false
+        const [a, b] = parts
+        if (a === 10) return true
+        if (a === 192 && b === 168) return true
+        if (a === 172 && b >= 16 && b <= 31) return true
+        return false
+    }
+
+    const isLocalHost = (hostname: string): boolean =>
+        hostname === 'localhost' || hostname === '127.0.0.1'
+
+    const parsed = (() => {
+        try {
+            return new URL(origin)
+        } catch {
+            return null
+        }
+    })()
+
     const envList = envOrigins
         ? envOrigins.split(',').map(o => o.trim()).filter(Boolean)
         : []
@@ -35,6 +56,10 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string)
     if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
     if (origin.endsWith('.workers.dev')) return true
     if (origin.startsWith('http://localhost:')) return true
+    if (parsed) {
+        if (isLocalHost(parsed.hostname)) return true
+        if (isPrivateIpv4(parsed.hostname)) return true
+    }
     return false
 }
 
