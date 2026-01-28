@@ -75,14 +75,13 @@ export type SessionStatus =
 
 /** AI から抽出されるデータ */
 export interface ExtractedData {
-    /** 作業項目の部分データ */
-    workItem?: Partial<WorkItem>
-    /** 行動目標 */
-    actionGoal?: string
-    /** セッション完了フラグ */
-    isComplete?: boolean
-    /** 次のアクション指示 */
-    nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm'
+    workDescription?: string | null
+    hazardDescription?: string | null
+    riskLevel?: 1 | 2 | 3 | 4 | 5 | null
+    whyDangerous?: string[]
+    countermeasures?: string[]
+    actionGoal?: string | null
+    nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm' | 'completed'
 }
 
 /** チャットメッセージ */

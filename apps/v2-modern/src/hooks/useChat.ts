@@ -5,6 +5,8 @@
 import { useCallback } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 import { client } from '@/lib/api'
+import { isWorkItemComplete } from '@/lib/validation'
+import type { ExtractedData, WorkItem } from '@/types/ky'
 
 export function useChat() {
     const {
@@ -14,6 +16,7 @@ export function useChat() {
         addMessage,
         updateCurrentWorkItem,
         commitWorkItem,
+        updateActionGoal,
         setLoading,
         setError,
         setEnvironmentRisk,
@@ -44,58 +47,60 @@ export function useChat() {
     }, [session, addMessage, setEnvironmentRisk])
 
     /**
-     * 会話から情報を抽出してストアを更新
+     * サーバーから返却された抽出データを元にストアを更新
      */
-    const extractAndUpdateData = useCallback(async (userText: string, aiReply: string) => {
-        // 簡易的なキーワードベースの抽出
-        const lowerAi = aiReply.toLowerCase()
+    const handleExtractedData = useCallback((data: ExtractedData) => {
+        if (!data) return
 
-        // 作業内容の検出
-        if (!currentWorkItem.workDescription &&
-            (lowerAi.includes('作業') || lowerAi.includes('危険')) &&
-            !lowerAi.includes('行動目標')) {
-            // 作業内容が未設定、または「違う」「訂正」などの言葉が含まれる場合は更新
-            if (!currentWorkItem.workDescription ||
-                (userText.length > 5 && (userText.includes('作業') || userText.includes('変更')))) {
-                updateCurrentWorkItem({ workDescription: userText })
+        const workItemPatch: Partial<WorkItem> = {}
+
+        // 基本情報の更新
+        if (typeof data.workDescription === 'string' && data.workDescription.trim().length > 0) {
+            workItemPatch.workDescription = data.workDescription
+        }
+        if (typeof data.hazardDescription === 'string' && data.hazardDescription.trim().length > 0) {
+            workItemPatch.hazardDescription = data.hazardDescription
+        }
+        if (typeof data.riskLevel === 'number') {
+            workItemPatch.riskLevel = data.riskLevel
+        }
+        if (typeof data.actionGoal === 'string' && data.actionGoal.trim().length > 0) {
+            updateActionGoal(data.actionGoal)
+        }
+
+        // リスト項目の追加（重複排除）
+        if (data.whyDangerous && data.whyDangerous.length > 0) {
+            const merged = [
+                ...(currentWorkItem.whyDangerous ?? []),
+                ...data.whyDangerous,
+            ].filter((value, index, self) => self.indexOf(value) === index)
+            workItemPatch.whyDangerous = merged
+        }
+
+        if (data.countermeasures && data.countermeasures.length > 0) {
+            const merged = [
+                ...(currentWorkItem.countermeasures ?? []),
+                ...data.countermeasures,
+            ].filter((value, index, self) => self.indexOf(value) === index)
+            workItemPatch.countermeasures = merged
+        }
+
+        if (Object.keys(workItemPatch).length > 0) {
+            updateCurrentWorkItem(workItemPatch)
+        }
+
+        // 完了判定：次のアクションが「詳細確認完了(confirm)」や「次の作業へ(ask_more_work)」の場合
+        if (data.nextAction === 'ask_more_work' ||
+            data.nextAction === 'ask_goal' ||
+            data.nextAction === 'confirm' ||
+            data.nextAction === 'completed') {
+            const candidate = { ...currentWorkItem, ...workItemPatch }
+            if (isWorkItemComplete(candidate)) {
+                commitWorkItem()
             }
         }
 
-        // 危険内容の検出
-        if (currentWorkItem.workDescription && !currentWorkItem.hazardDescription) {
-            if (lowerAi.includes('なぜ') || lowerAi.includes('理由')) {
-                updateCurrentWorkItem({ hazardDescription: userText })
-            }
-        }
-
-        // なぜ危険かの追加
-        if (currentWorkItem.hazardDescription && !currentWorkItem.riskLevel) {
-            if (lowerAi.includes('対策') || lowerAi.includes('どうすれば')) {
-                const current = currentWorkItem.whyDangerous || []
-                updateCurrentWorkItem({ whyDangerous: [...current, userText] })
-            }
-        }
-
-        // 対策の追加
-        if (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) {
-            if (lowerAi.includes('危険度') || lowerAi.includes('他に')) {
-                const current = currentWorkItem.countermeasures || []
-                if (!current.includes(userText)) {
-                    updateCurrentWorkItem({ countermeasures: [...current, userText] })
-                }
-            }
-        }
-
-        // 危険度が設定されて作業が完成したらコミット
-        if (currentWorkItem.riskLevel &&
-            currentWorkItem.workDescription &&
-            currentWorkItem.hazardDescription &&
-            currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0 &&
-            currentWorkItem.countermeasures && currentWorkItem.countermeasures.length > 0) {
-            commitWorkItem()
-        }
-
-    }, [currentWorkItem, updateCurrentWorkItem, commitWorkItem])
+    }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, currentWorkItem])
 
     /**
      * メッセージを送信してAI応答を取得
@@ -110,7 +115,7 @@ export function useChat() {
         addMessage('user', text)
 
         try {
-            // Hono RPC呼び出し
+            // Hono RPC呼び出し (cast client to stringify types if there is mismatch)
             const res = await client.api.chat.$post({
                 json: {
                     messages: [
@@ -136,11 +141,11 @@ export function useChat() {
 
             const data = await res.json()
 
-            // AI応答を追加
-            addMessage('assistant', data.reply)
+            // AI応答を追加 (extractedDataも含めて保存)
+            addMessage('assistant', data.reply, data.extracted)
 
-            // 会話から情報を抽出（簡易版：ローカルで行う）
-            await extractAndUpdateData(text, data.reply)
+            // ストアの更新
+            handleExtractedData(data.extracted)
 
         } catch (e) {
             console.error('Chat error:', e)
@@ -150,7 +155,7 @@ export function useChat() {
         } finally {
             setLoading(false)
         }
-    }, [session, messages, addMessage, setLoading, setError, extractAndUpdateData])
+    }, [session, messages, addMessage, setLoading, setError, handleExtractedData])
 
     return {
         initializeChat,

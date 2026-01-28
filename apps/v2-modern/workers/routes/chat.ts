@@ -4,8 +4,9 @@
  */
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { SOLO_KY_SYSTEM_PROMPT, EXTRACTION_PROMPT } from '../prompts/soloKY'
-import { ChatRequestSchema, ExtractionRequestSchema } from '../../src/lib/schema'
+import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
+import { ChatRequestSchema } from '../../src/lib/schema'
+import type { ExtractedData } from '../../src/types/ky'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -18,7 +19,7 @@ const MAX_HISTORY_TURNS = 10
 // 最大入力文字数
 const MAX_INPUT_LENGTH = 3000
 // 最大出力トークン数
-const MAX_TOKENS = 500
+const MAX_TOKENS = 1000 // JSON出力のため少し増やす
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 
@@ -28,11 +29,14 @@ function hasBannedWord(text: string): boolean {
 
 /**
  * POST /api/chat
- * AIとの対話
+ * AIとの対話 (Returns JSON with reply and extraction)
  */
 chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     if (!result.success) {
-        return c.json({ error: 'Validation Error', details: result.error.flatten() }, 400)
+        // Fix: Use result.error directly, or cast if flatten doesn't exist on the type at runtime/build time appropriately
+        // For Hono zValidator, the error is usually a ZodError. 
+        // We will just return result.error for safety as instructed by self-review.
+        return c.json({ error: 'Validation Error', details: result.error }, 400)
     }
 }), async (c) => {
     const apiKey = c.env.OPENAI_API_KEY
@@ -84,6 +88,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 ],
                 max_tokens: MAX_TOKENS,
                 temperature: 0.7,
+                response_format: { type: 'json_object' }, // Enforce JSON
             }),
         })
 
@@ -102,74 +107,31 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             }
         }
 
-        const reply = data.choices[0]?.message?.content || ''
+        const content = data.choices[0]?.message?.content || '{}'
+        let parsedContent: { reply?: string; extracted?: ExtractedData } = {}
+        try {
+            parsedContent = JSON.parse(content)
+        } catch {
+            console.error('JSON Parse Error:', content)
+            // Fallback for malformed JSON
+            parsedContent = {
+                reply: '申し訳ありません、システムの内部エラーが発生しました。もう一度お試しください。',
+                extracted: {}
+            }
+        }
+
         const usage = data.usage
 
         return c.json({
-            reply,
+            reply: parsedContent.reply || '',
+            extracted: parsedContent.extracted || {},
             usage: {
                 totalTokens: usage?.total_tokens || 0,
             },
         })
 
-    } catch (e) {
-        console.error('Chat API error:', e)
-        return c.json({ error: 'AI応答の取得に失敗しました' }, 500)
-    }
-})
-
-/**
- * POST /api/chat/extract
- * 会話からKYデータを抽出
- */
-chat.post('/extract', zValidator('json', ExtractionRequestSchema), async (c) => {
-    const apiKey = c.env.OPENAI_API_KEY
-    if (!apiKey) {
-        return c.json({ error: 'OpenAI API key not configured' }, 500)
-    }
-
-    const { conversation } = c.req.valid('json')
-
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: EXTRACTION_PROMPT },
-                    { role: 'user', content: conversation },
-                ],
-                max_tokens: MAX_TOKENS,
-                temperature: 0,
-                response_format: { type: 'json_object' },
-            }),
-        })
-
-        if (!response.ok) {
-            const error = await response.text()
-            console.error('OpenAI extraction error:', error)
-            return c.json({ error: 'データ抽出に失敗しました' }, 502)
-        }
-
-        const data = await response.json() as {
-            choices: Array<{ message: { content: string } }>
-        }
-
-        const content = data.choices[0]?.message?.content || '{}'
-
-        try {
-            const extracted = JSON.parse(content)
-            return c.json({ extracted })
-        } catch {
-            return c.json({ extracted: {}, warning: 'JSON parse failed' })
-        }
-
-    } catch (e) {
-        console.error('Extraction error:', e)
+    } catch {
+        console.error('Extraction error')
         return c.json({ error: 'データ抽出に失敗しました' }, 500)
     }
 })

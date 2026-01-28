@@ -90,4 +90,11 @@ describe('kyStore', () => {
         expect(session?.actionGoal).toBe('Safety First')
         expect(session?.completedAt).not.toBeNull()
     })
+    it('updates action goal via updateActionGoal', () => {
+        const { startSession, updateActionGoal } = useKYStore.getState()
+        startSession('User', 'Site', 'Rain')
+
+        updateActionGoal('Zero Accidents')
+        expect(useKYStore.getState().session?.actionGoal).toBe('Zero Accidents')
+    })
 })

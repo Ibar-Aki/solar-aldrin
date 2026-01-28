@@ -4,20 +4,14 @@
  */
 import { z } from 'zod'
 
-/** 作業項目の部分スキーマ（AI抽出用） */
-export const PartialWorkItemSchema = z.object({
-    workDescription: z.string().optional(),
-    hazardDescription: z.string().optional(),
-    riskLevel: z.number().min(1).max(5).optional(),
-    whyDangerous: z.array(z.string()).optional(),
-    countermeasures: z.array(z.string()).optional(),
-})
-
 /** AI抽出データのスキーマ */
 export const ExtractedDataSchema = z.object({
-    workItem: PartialWorkItemSchema.optional(),
-    actionGoal: z.string().optional(),
-    isComplete: z.boolean().optional(),
+    workDescription: z.string().nullable().optional(),
+    hazardDescription: z.string().nullable().optional(),
+    riskLevel: z.number().min(1).max(5).nullable().optional(),
+    whyDangerous: z.array(z.string()).optional(),
+    countermeasures: z.array(z.string()).optional(),
+    actionGoal: z.string().nullable().optional(),
     nextAction: z.enum([
         'ask_work',
         'ask_hazard',
@@ -26,7 +20,8 @@ export const ExtractedDataSchema = z.object({
         'ask_risk_level',
         'ask_more_work',
         'ask_goal',
-        'confirm'
+        'confirm',
+        'completed',
     ]).optional(),
 }).optional()
 
