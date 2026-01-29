@@ -115,6 +115,10 @@ export function useChat() {
         addMessage('user', text)
 
         try {
+            if (!import.meta.env.VITE_API_TOKEN) {
+                throw new Error('APIトークンが設定されていません。環境変数VITE_API_TOKENを確認してください。')
+            }
+
             // Hono RPC呼び出し (cast client to stringify types if there is mismatch)
             const res = await client.api.chat.$post({
                 json: {
@@ -130,7 +134,7 @@ export function useChat() {
                     },
                 },
                 header: {
-                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN || ''}`,
+                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`,
                 }
             })
 
