@@ -7,7 +7,7 @@
 プロジェクトの全体像、ビジョン、要件については以下のドキュメントを参照してください。
 
 - **[Project Master Plan](./PROJECT_MASTER_PLAN.md)**: プロジェクト全体のビジョンと戦略
-- **[Global Requirements](./Global_REQUIREMENTS.md)**: フェーズ共通の機能・非機能要件
+- **[要件定義書 (Requirements)](./REQUIREMENTS_DEFINITION.md)**: 具体的な機能、業務フロー、UIイメージ
 
 ## 📂 Applications
 
@@ -28,4 +28,4 @@ GAS, Vanilla JS による初期プロトタイプです。
 ## 📚 Quick Links
 
 - [Phase 2 Setup Guide](./apps/v2-modern/docs/PHASE2_SETUP.md)
-- [Directory Structure Diagram](./project_structure.md)
+- [ディレクトリ構造 (Directory Structure)](./ARCHITECTURE_DESIGN.md#3-ディレクトリ構造-directory-structure)
