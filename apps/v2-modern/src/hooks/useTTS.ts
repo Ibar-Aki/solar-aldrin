@@ -53,7 +53,7 @@ export function useTTS({ messageId }: UseTTSOptions) {
         const utteranceId = ++utteranceIdRef.current
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = 'ja-JP'
-        utterance.rate = 1.0
+        utterance.rate = 1.2
         utterance.pitch = 1.0
         utterance.volume = 1.0
 

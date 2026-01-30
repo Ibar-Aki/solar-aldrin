@@ -93,9 +93,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         })
 
         if (!response.ok) {
-            const error = await response.text()
-            console.error('OpenAI API error:', error)
-            return c.json({ error: 'AI応答の取得に失敗しました' }, 502)
+            const errorText = await response.text()
+            console.error('OpenAI API Error Status:', response.status)
+            console.error('OpenAI API Error Body:', errorText)
+            return c.json({ error: `AI応答の取得に失敗しました: ${response.status} ${errorText}` }, 502)
         }
 
         const data = await response.json() as {
