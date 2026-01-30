@@ -18,8 +18,6 @@
 
 * **APIコスト**: OpenAI `gpt-4o-mini` 採用。1セッション(約3往復+要約)で 約2,000トークン と概算しても **約0.3円** 程度。
 * **インフラコスト**: Cloudflare Pages/Workers の無料枠(10万回/日)内であれば **0円**。枠を超えても従量課金は極めて安価。
-* **APIコスト**: OpenAI `gpt-4o-mini` 採用。1セッション(約3往復+要約)で 約2,000トークン と概算しても **約0.3円** 程度。
-* **インフラコスト**: Cloudflare Pages/Workers の無料枠(10万回/日)内であれば **0円**。枠を超えても従量課金は極めて安価。
 * **スケーラビリティ**: アクセス増によるサーバー増強コストがかからない（オートスケール）。
 
 ### 2. 生成AIの実装戦略 (Gen-AI Strategy)
@@ -79,6 +77,17 @@ AIを「魔法」としてではなく「信頼できるエンジン」として
 | **OpenAI GPT-4o mini** | コスト効率最強のモデル。現場KYに必要な言語能力（論理的整合性）と、大量リクエストに耐えうる安さが決め手。 |
 | **Web Speech API** | ブラウザ標準API。追加コストゼロで音声認識を実現し、アプリインストール不要で動作させるため。 |
 | **@react-pdf/renderer** | クライアントサイドPDF生成の標準ライブラリ。サーバー負荷をオフロードし、コスト削減に寄与。 |
+| **Dexie.js** | IndexedDBラッパー。履歴永続化・オフライン対応。Phase 2.3 で導入。 |
+| **Zod** | スキーマバリデーション。型安全なデータ検証とランタイムエラー防止。 |
+
+### 3.1 ユーティリティモジュール (Phase 2.3追加)
+
+| モジュール | 役割 |
+| :--- | :--- |
+| **db.ts** | IndexedDB操作（Dexie.js）。セッション保存/取得/削除。遅延初期化パターン採用。 |
+| **dateUtils.ts** | 日付フォーマット共通化（formatDate, formatDateLong, formatDateForFilename）。 |
+| **exportUtils.ts** | CSV/JSONエクスポート。BOM付きUTF-8でExcel対応。エラーハンドリング付き。 |
+| **validation.ts** | Zodスキーマ定義。ProcessPhaseSchema, HealthConditionSchema, SoloKYSessionSchema。 |
 
 ### 5. UX/UI 仕様 (Detailed UX Specs)
 

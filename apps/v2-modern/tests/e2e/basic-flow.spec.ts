@@ -35,13 +35,7 @@ test('Happy path: start session to PDF download', async ({ page }) => {
     await finishButton.click()
 
     await page.waitForURL('**/complete')
-    await page.getByPlaceholder('例：高所作業時は必ず二丁掛けを徹底する').fill('安全帯の二丁掛けを徹底する')
-    await page.getByLabel('指差し呼称を実施した').check()
-    await page.getByLabel('上記の対策をすべて実施する').check()
-
-    await page.getByRole('button', { name: 'KY活動を完了する' }).click()
-
-    const pdfButton = page.getByRole('button', { name: '📄 PDFをダウンロード' })
+    const pdfButton = page.getByRole('button', { name: 'PDF記録をダウンロード' })
     await expect(pdfButton).toBeVisible()
 
     expect(callCount).toBe(2)

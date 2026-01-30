@@ -1,26 +1,76 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useKYStore } from '@/stores/kyStore'
+import type { ProcessPhase, HealthCondition } from '@/types/ky'
+
+// 工程選択肢 (UX-11)
+const PROCESS_PHASES: ProcessPhase[] = [
+    'フリー',
+    '搬入・荷受け',
+    '基礎土台・建地準備',
+    '組み立て',
+    '付帯設備設置・仕上げ',
+    '引き渡し前確認',
+]
+
+// 体調選択肢 (UX-12)
+const HEALTH_CONDITIONS: { value: HealthCondition; label: string }[] = [
+    { value: 'bad', label: '悪い' },
+    { value: 'good', label: 'よい' },
+    { value: 'great', label: 'すごくよい' },
+]
+
+// Prefill型（HIS-03: 履歴からの引用）
+interface PrefillData {
+    siteName?: string
+    userName?: string
+    weather?: string
+    processPhase?: ProcessPhase
+    healthCondition?: HealthCondition
+}
 
 export function HomePage() {
     const navigate = useNavigate()
+    const location = useLocation()
     const { session, startSession, clearSession } = useKYStore()
 
-    const [userName, setUserName] = useState('')
-    const [siteName, setSiteName] = useState('')
-    const [weather, setWeather] = useState('晴れ')
+    // Prefill data from history (HIS-03)
+    const prefill = (location.state as { prefill?: PrefillData } | null)?.prefill
+
+    const [userName, setUserName] = useState(prefill?.userName ?? '')
+    const [siteName, setSiteName] = useState(prefill?.siteName ?? '')
+    const [weather, setWeather] = useState(prefill?.weather ?? '晴れ')
+    const [processPhase, setProcessPhase] = useState<ProcessPhase>(prefill?.processPhase ?? 'フリー')
+    const [healthCondition, setHealthCondition] = useState<HealthCondition>(prefill?.healthCondition ?? 'good')
     const [isStarting, setIsStarting] = useState(false)
+
+    // Clear location state after prefill applied (prevent re-prefill on refresh)
+    // P2: Router経由でstateをクリア（window.history.replaceStateはRouter履歴を壊す）
+    useEffect(() => {
+        if (prefill) {
+            navigate('.', { replace: true, state: null })
+        }
+    }, [prefill, navigate])
+
+    // 日付表示 (UX-10) - 絵文字なし
+    const today = new Date()
+    const formattedDate = today.toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+    })
 
     const handleStart = async () => {
         if (!userName.trim() || !siteName.trim()) return
 
         setIsStarting(true)
         try {
-            startSession(userName.trim(), siteName.trim(), weather)
+            startSession(userName.trim(), siteName.trim(), weather, processPhase, healthCondition)
             navigate('/session')
         } finally {
             setIsStarting(false)
@@ -43,11 +93,12 @@ export function HomePage() {
             <div className="min-h-screen bg-gray-50 p-4">
                 <div className="max-w-md mx-auto space-y-4 pt-8">
                     <Card>
-                        <CardHeader className="text-center">
+                        <CardHeader className="text-center py-3">
                             <CardTitle className="text-2xl font-bold text-blue-600">
                                 Voice KY Assistant
                             </CardTitle>
-                            <CardDescription>v2 - 一人KY活動</CardDescription>
+                            <CardDescription>一人KY活動ver</CardDescription>
+                            <CardDescription className="text-base font-medium">{formattedDate}</CardDescription>
                         </CardHeader>
                     </Card>
 
@@ -82,12 +133,15 @@ export function HomePage() {
             <div className="max-w-md mx-auto space-y-4 pt-8">
                 {/* ヘッダー */}
                 <Card>
-                    <CardHeader className="text-center">
+                    <CardHeader className="text-center py-3">
                         <CardTitle className="text-2xl font-bold text-blue-600">
                             Voice KY Assistant
                         </CardTitle>
                         <CardDescription>
-                            v2 - 一人KY活動
+                            一人KY活動ver
+                        </CardDescription>
+                        <CardDescription className="text-base font-medium">
+                            {formattedDate}
                         </CardDescription>
                     </CardHeader>
                 </Card>
@@ -130,8 +184,39 @@ export function HomePage() {
                                 <option value="強風">強風</option>
                             </select>
                         </div>
+                        {/* 工程選択 (UX-11) */}
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">今日の工程</label>
+                            <select
+                                value={processPhase}
+                                onChange={(e) => setProcessPhase(e.target.value as ProcessPhase)}
+                                className="mt-1 w-full border rounded-md p-2"
+                            >
+                                {PROCESS_PHASES.map((phase) => (
+                                    <option key={phase} value={phase}>{phase}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {/* 体調チェック (UX-12) */}
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">今日の体調</label>
+                            <div className="flex gap-2 mt-1">
+                                {HEALTH_CONDITIONS.map((cond) => (
+                                    <Button
+                                        key={cond.value}
+                                        variant={healthCondition === cond.value ? 'default' : 'outline'}
+                                        onClick={() => setHealthCondition(cond.value)}
+                                        className={`flex-1 ${healthCondition === cond.value ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                                        size="sm"
+                                        type="button"
+                                    >
+                                        {cond.label}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
                         <Button
-                            className="w-full h-12 text-lg"
+                            className="w-full h-12 text-lg bg-blue-600 hover:bg-blue-700"
                             onClick={handleStart}
                             disabled={isStarting || !userName.trim() || !siteName.trim()}
                         >
@@ -149,7 +234,17 @@ export function HomePage() {
                         </p>
                     </CardContent>
                 </Card>
+
+                {/* 履歴ボタン (HIS-02) */}
+                <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => navigate('/history')}
+                >
+                    📂 過去の記録を見る
+                </Button>
             </div>
         </div>
     )
 }
+

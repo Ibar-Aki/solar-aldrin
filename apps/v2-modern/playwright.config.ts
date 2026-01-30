@@ -1,5 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Ensure HOME is set for Playwright browser cache/user data on Windows.
+const resolvedHome =
+    process.env.HOME ??
+    process.env.USERPROFILE ??
+    (process.env.HOMEDRIVE && process.env.HOMEPATH
+        ? `${process.env.HOMEDRIVE}${process.env.HOMEPATH}`
+        : undefined);
+
+if (!process.env.HOME && resolvedHome) {
+    process.env.HOME = resolvedHome;
+}
+
 export default defineConfig({
     testDir: './tests',
     fullyParallel: true,

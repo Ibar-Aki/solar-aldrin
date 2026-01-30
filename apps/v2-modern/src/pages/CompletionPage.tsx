@@ -1,31 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle, CheckCircle2, Download, Home, Sparkles } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, Home } from 'lucide-react'
 import { useKYStore } from '@/stores/kyStore'
 import { usePDFGenerator } from '@/hooks/usePDFGenerator'
 import { FanfareManager, type FanfarePattern } from '@/components/fanfare/FanfareManager'
 
 export function CompletionPage() {
     const navigate = useNavigate()
-    const { session, status, clearSession } = useKYStore()
+    const { session, status, clearSession, saveSessionToDb } = useKYStore()
     const { generateAndDownload, isGenerating } = usePDFGenerator()
 
     // ファンファーレ状態管理
     const [fanfarePattern, setFanfarePattern] = useState<FanfarePattern>('none')
     const [isFanfareActive, setIsFanfareActive] = useState(false)
 
-    // セッション完了時にデフォルトで紙吹雪を出す（初回のみ）
+    // FIX-03: useRefで保存試行をガード（依存配列問題を回避）
+    const saveAttemptedRef = useRef(false)
+
+    // セッション完了時にスポットライトを自動再生 & DB保存
     useEffect(() => {
         if (session && status === 'completed') {
-            // 自動再生は一旦オフ（ユーザーが選んで再生するように変更）
-            // setFanfarePattern('confetti')
-            // setIsFanfareActive(true)
+            // 初回表示時にスポットライトを自動再生
+            setFanfarePattern('spotlight')
+            setIsFanfareActive(true)
+
+            // IndexedDBに保存（一度だけ）
+            if (saveAttemptedRef.current) return
+            saveAttemptedRef.current = true
+            void saveSessionToDb().then((success) => {
+                if (success && import.meta.env.DEV) console.log('Session saved to history')
+            })
         } else if (!session) {
             navigate('/')
         }
-    }, [session, status, navigate])
+    }, [session, status, navigate, saveSessionToDb])
 
     const handleDownload = async () => {
         if (!session) return
@@ -69,58 +79,25 @@ export function CompletionPage() {
                     </p>
                 </div>
 
-                {/* ファンファーレ試写室 (Pre-Phase 2.2 Feature) */}
-                <Card className="border-yellow-200 bg-yellow-50">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2 text-yellow-800">
-                            <Sparkles className="w-4 h-4" />
-                            完了の儀式（プレビュー）
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-xs text-yellow-700 mb-3">
-                            実装された5つのパターンを試めます。気に入ったものをタップしてください。
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
+                {/* 完了の儀式（簡易版） */}
+                <Card className="border-green-200 bg-green-50">
+                    <CardContent className="pt-4">
+                        <div className="flex gap-2">
                             <Button
-                                variant="outline"
+                                variant={fanfarePattern === 'spotlight' ? 'default' : 'outline'}
                                 size="sm"
-                                className="bg-white"
-                                onClick={() => playFanfare('confetti')}
-                            >
-                                🎉 紙吹雪
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-white"
-                                onClick={() => playFanfare('yoshi')}
-                            >
-                                👈 ヨシ！
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-white"
-                                onClick={() => playFanfare('sound')}
-                            >
-                                🔊 音声のみ
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-white"
-                                onClick={() => playFanfare('fireworks')}
-                            >
-                                🎆 花火
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-white col-span-2"
+                                className="flex-1"
                                 onClick={() => playFanfare('spotlight')}
                             >
                                 🔦 スポットライト
+                            </Button>
+                            <Button
+                                variant={fanfarePattern === 'yoshi' ? 'default' : 'outline'}
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => playFanfare('yoshi')}
+                            >
+                                👈 ヨシ！
                             </Button>
                         </div>
                     </CardContent>

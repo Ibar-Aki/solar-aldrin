@@ -13,6 +13,17 @@ import { test, expect } from '@playwright/test'
 
 test.describe('KYセッション基本フロー', () => {
     test.beforeEach(async ({ page }) => {
+        // APIをモックしてE2Eを安定化（実API依存を排除）
+        await page.route('**/api/chat', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    reply: '了解しました。続けて教えてください。',
+                    extracted: {},
+                }),
+            })
+        })
         // ホーム画面にアクセス
         await page.goto('http://localhost:5173/')
     })
@@ -75,7 +86,8 @@ test.describe('KYセッション基本フロー', () => {
         await page.getByPlaceholder('例：田中太郎').fill('山田')
         await page.getByPlaceholder('例：〇〇ビル改修工事').fill('倉庫新築現場')
         // 天候を「強風」に変更
-        await page.locator('select').selectOption('強風')
+        const weatherSelect = page.locator('label', { hasText: '天候' }).locator('..').locator('select')
+        await weatherSelect.selectOption('強風')
 
         await page.getByRole('button', { name: 'KY活動を開始' }).click()
         await expect(page).toHaveURL(/\/session/)

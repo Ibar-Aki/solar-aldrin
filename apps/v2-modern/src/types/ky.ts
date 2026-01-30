@@ -1,7 +1,16 @@
 /**
  * KY セッションの型定義
  * 一人KY活動用のデータ構造
+ * 
+ * REF-01: ProcessPhase, HealthCondition は validation.ts の Zod スキーマから推論
  */
+
+// Zodスキーマから推論された型をインポート
+import type { ProcessPhaseFromZod, HealthConditionFromZod } from '@/lib/validation'
+
+// 型エイリアスとしてエクスポート（単一真実源）
+export type ProcessPhase = ProcessPhaseFromZod
+export type HealthCondition = HealthConditionFromZod
 
 /** 作業単位（作業 + 危険 + なぜ + 対策 のセット） */
 export interface WorkItem {
@@ -18,18 +27,6 @@ export interface WorkItem {
     /** 対策（複数） */
     countermeasures: string[]
 }
-
-/** 作業工程の選択肢 (UX-11) */
-export type ProcessPhase =
-    | '搬入・荷受け'
-    | '基礎土台・建地準備'
-    | '組み立て'
-    | '付帯設備設置・仕上げ'
-    | '引き渡し前確認'
-    | 'フリー'
-
-/** 体調の選択肢 (UX-12) */
-export type HealthCondition = 'bad' | 'good' | 'great'
 
 /** 一人KYセッション */
 export interface SoloKYSession {

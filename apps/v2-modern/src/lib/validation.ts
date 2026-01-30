@@ -35,11 +35,29 @@ export const WorkItemSchema = z.object({
     countermeasures: z.array(z.string()).min(1),
 })
 
-/** ISO 8601 日付文字列のスキーマ */
+/** ISO 8601 日付文字列のスキーマ（ミリ秒対応） */
 export const ISO8601Schema = z.string().regex(
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2}|Z)$/,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?([+-]\d{2}:\d{2}|Z)$/,
     'ISO 8601形式である必要があります'
 )
+
+// FIX-06: 型定義とZodスキーマを一元化
+/** 作業工程スキーマ */
+export const ProcessPhaseSchema = z.enum([
+    '搬入・荷受け',
+    '基礎土台・建地準備',
+    '組み立て',
+    '付帯設備設置・仕上げ',
+    '引き渡し前確認',
+    'フリー',
+])
+/** 作業工程型（Zodから推論） */
+export type ProcessPhaseFromZod = z.infer<typeof ProcessPhaseSchema>
+
+/** 体調スキーマ */
+export const HealthConditionSchema = z.enum(['bad', 'good', 'great'])
+/** 体調型（Zodから推論） */
+export type HealthConditionFromZod = z.infer<typeof HealthConditionSchema>
 
 /** セッションスキーマ */
 export const SoloKYSessionSchema = z.object({

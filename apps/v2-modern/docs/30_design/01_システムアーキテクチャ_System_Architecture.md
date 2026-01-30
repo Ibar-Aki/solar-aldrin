@@ -1,7 +1,8 @@
-# システムアーキテクチャ設計書（Phase 2.1-2.5）
+# システムアーキテクチャ設計書（Phase 2.1-2.8）
 
-**対象**: Voice KY Assistant v2-modern（Phase 2.1-2.5）  
-**目的**: 全体構成・責務・データフロー・運用境界を明確化する
+**対象**: Voice KY Assistant v2-modern（Phase 2.1-2.8）  
+**目的**: 全体構成・責務・データフロー・運用境界を明確化する  
+**更新日**: 2026-01-31
 
 ---
 
@@ -10,7 +11,6 @@
 - `../00_planning/03_Phase2ロードマップ_Phase2_Roadmap.md`
 - `../00_planning/01_品質改善提案_Quality_Improvement.md`
 - `../ARCHITECTURE.md`（要約）
-- `../TECH_STACK.md`（要約）
 - `../00_planning/04_要件定義書_SRS.md`
 
 ---
@@ -29,20 +29,25 @@ graph TD
   Workers --> RAG[Context Store<br/>(Supabase/DB)]
   Workers --> Sentry[Sentry/Logs]
 
-  Browser --> Local[Local Store<br/>(IndexedDB)]
-  Browser --> PDF[Client PDF]
+  Browser --> IndexedDB[IndexedDB<br/>(Dexie.js)]
+  Browser --> PDF[Client PDF<br/>(@react-pdf/renderer)]
+  
+  IndexedDB --> Export[CSV/JSON<br/>エクスポート]
 ```
 
 ---
 
 ## 3. コンポーネント責務
 
-- **クライアントUI**: テキスト主導の入力UI、タグ選択、対話表示、PDF出力
-- **Workers API**: ルーティング、認証/Origin検証、レート制限、JSON検証・回復、SSE
-- **KV**: レート制限・天候キャッシュ・軽量メタデータ
-- **RAGストア**: 過去ヒヤリハット/昨日指摘の検索・取得
-- **外部API**: OpenAI推論、天候取得
-- **観測基盤**: Sentry/ログ/KPIの収集
+| コンポーネント | 責務 |
+| :--- | :--- |
+| **クライアントUI** | テキスト主導の入力UI、作業工程/体調選択、対話表示、PDF出力 |
+| **IndexedDB (Dexie.js)** | セッション永続化、履歴一覧/詳細、CSV/JSONエクスポート |
+| **Workers API** | ルーティング、認証/Origin検証、レート制限、JSON検証・回復、SSE |
+| **KV** | レート制限・天候キャッシュ・軽量メタデータ |
+| **RAGストア** | 過去ヒヤリハット/昨日指摘の検索・取得 |
+| **外部API** | OpenAI推論、天候取得 |
+| **観測基盤** | Sentry/ログ/KPIの収集 |
 
 ---
 
