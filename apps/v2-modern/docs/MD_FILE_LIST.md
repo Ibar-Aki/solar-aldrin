@@ -1,6 +1,6 @@
 # Markdownファイル一覧
 
-作成日: 2026-01-28
+作成日: 2026-01-30
 
 対象ルート: C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin
 除外: node_modules, .git, .wrangler, .agent, dist, build, playwright-report, test-results, .turbo, .vite, .next, .cache, coverage
@@ -57,3 +57,4 @@
 | 48 | PHASE2_SETUP.md | docs\PHASE2_SETUP.md | ドキュメント | Phase 2 (v2-modern) セットアップガイド — Voice KY Assistant v2 の開発環境セットアップとデプロイ手順です。 |
 | 49 | PRESENTATION.md | docs\PRESENTATION.md | ドキュメント | 技術構成プレゼンテーション — [TECH_STACK.md](./TECH_STACK.md) |
 | 50 | README.md | README.md | その他 | Voice KY Assistant (Monorepo) — - **[Legacy App (v1)](apps/v1-legacy/README.md)**: 現在稼働中のVanilla JS版アプリです。 |
+| 51 | 09_TTS読み上げ速度_詳細計画書.md | docs\\00_planning\\09_TTS読み上げ速度_詳細計画書.md | 計画 | 音声読み上げ速度 切替機能 詳細計画書（v2） — 4段階プリセットによる速度切替と永続化の実装方針。 |

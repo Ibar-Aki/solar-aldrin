@@ -19,6 +19,18 @@ export interface WorkItem {
     countermeasures: string[]
 }
 
+/** 作業工程の選択肢 (UX-11) */
+export type ProcessPhase =
+    | '搬入・荷受け'
+    | '基礎土台・建地準備'
+    | '組み立て'
+    | '付帯設備設置・仕上げ'
+    | '引き渡し前確認'
+    | 'フリー'
+
+/** 体調の選択肢 (UX-12) */
+export type HealthCondition = 'bad' | 'good' | 'great'
+
 /** 一人KYセッション */
 export interface SoloKYSession {
     /** セッションID (uuid) */
@@ -33,6 +45,10 @@ export interface SoloKYSession {
     weather: string
     /** 気温（℃） */
     temperature: number | null
+    /** 作業工程 (UX-11) */
+    processPhase: ProcessPhase | null
+    /** 体調チェック (UX-12) */
+    healthCondition: HealthCondition | null
     /** 作業開始時刻 (ISO 8601) */
     workStartTime: string
     /** 作業終了時刻 (ISO 8601) */

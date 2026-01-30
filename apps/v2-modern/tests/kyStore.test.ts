@@ -10,7 +10,7 @@ beforeEach(() => {
 describe('kyStore', () => {
     it('starts a new session correctly', () => {
         const { startSession } = useKYStore.getState()
-        startSession('Test User', 'Test Site', 'Sunny', 25)
+        startSession('Test User', 'Test Site', 'Sunny', 'フリー', 'good', 25)
 
         const { session, status } = useKYStore.getState()
         expect(session).not.toBeNull()
@@ -23,7 +23,7 @@ describe('kyStore', () => {
 
     it('adds messages correctly', () => {
         const { startSession, addMessage } = useKYStore.getState()
-        startSession('User', 'Site', 'Rain')
+        startSession('User', 'Site', 'Rain', 'フリー', 'good')
 
         addMessage('user', 'Hello AI')
         addMessage('assistant', 'Hello User')
@@ -48,7 +48,7 @@ describe('kyStore', () => {
 
     it('commits a valid work item', () => {
         const { startSession, updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
-        startSession('User', 'Site', 'Rain')
+        startSession('User', 'Site', 'Rain', 'フリー', 'good')
 
         // 不完全なアイテムはコミットできない
         commitWorkItem()
@@ -76,7 +76,7 @@ describe('kyStore', () => {
 
     it('completes the session', () => {
         const { startSession, completeSession } = useKYStore.getState()
-        startSession('User', 'Site', 'Rain')
+        startSession('User', 'Site', 'Rain', 'フリー', 'good')
 
         completeSession({
             actionGoal: 'Safety First',
@@ -92,7 +92,7 @@ describe('kyStore', () => {
     })
     it('updates action goal via updateActionGoal', () => {
         const { startSession, updateActionGoal } = useKYStore.getState()
-        startSession('User', 'Site', 'Rain')
+        startSession('User', 'Site', 'Rain', 'フリー', 'good')
 
         updateActionGoal('Zero Accidents')
         expect(useKYStore.getState().session?.actionGoal).toBe('Zero Accidents')
