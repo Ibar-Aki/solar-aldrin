@@ -10,7 +10,10 @@ const viewerStyle: CSSProperties = {
 
 type RenderStatus = 'idle' | 'loading' | 'ready' | 'error'
 
-let pdfjsReady: Promise<{ pdfjs: any; workerSrc: string }> | null = null
+type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf')
+type PdfJsWorkerModule = { default?: string } | string
+
+let pdfjsReady: Promise<{ pdfjs: PdfJsModule; workerSrc: string }> | null = null
 
 async function loadPdfJs() {
     if (!pdfjsReady) {
@@ -18,7 +21,8 @@ async function loadPdfJs() {
             import('pdfjs-dist/legacy/build/pdf'),
             import('pdfjs-dist/legacy/build/pdf.worker?url'),
         ]).then(([pdfjsLib, worker]) => {
-            const workerSrc = (worker as { default: string }).default || worker
+            const workerModule = worker as PdfJsWorkerModule
+            const workerSrc = typeof workerModule === 'string' ? workerModule : (workerModule.default ?? '')
             pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
             return { pdfjs: pdfjsLib, workerSrc }
         })

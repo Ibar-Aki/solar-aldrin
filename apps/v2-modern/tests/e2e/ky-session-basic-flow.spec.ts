@@ -9,7 +9,7 @@
  * 3. 各ステップでAIの応答を待機して確認
  */
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 test.describe('KYセッション基本フロー', () => {
     test.beforeEach(async ({ page }) => {
@@ -154,7 +154,7 @@ test.describe('KYセッション基本フロー', () => {
 /**
  * ユーザーメッセージを送信するヘルパー関数
  */
-async function sendUserMessage(page: any, message: string) {
+async function sendUserMessage(page: Page, message: string) {
     // 入力欄を探す（placeholder: メッセージを入力...）
     const input = page.getByPlaceholder('メッセージを入力...')
     await input.fill(message)
@@ -166,7 +166,7 @@ async function sendUserMessage(page: any, message: string) {
 /**
  * AIの応答を待機するヘルパー関数
  */
-async function waitForAIResponse(page: any) {
+async function waitForAIResponse(page: Page) {
     // ローディング表示（考え中...）が消えるまで待機
     await page.waitForSelector('text=考え中...', {
         state: 'hidden',

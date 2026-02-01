@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { ConfettiFanfare } from './ConfettiFanfare'
 import { YoshiStampFanfare } from './YoshiStampFanfare'
 import { SoundOnlyFanfare } from './SoundOnlyFanfare'
@@ -16,19 +16,19 @@ interface FanfareManagerProps {
 
 export function FanfareManager({ pattern, isActive, onComplete }: FanfareManagerProps) {
     const { speak } = useTTS({ messageId: 'fanfare-completion' })
-    const [hasSpoken, setHasSpoken] = useState(false)
+    const hasSpokenRef = useRef(false)
 
     // Reset spoken state when pattern or active state changes
     useEffect(() => {
         if (!isActive) {
-            setHasSpoken(false)
+            hasSpokenRef.current = false
         }
     }, [isActive])
 
     // Handle TTS based on pattern
     useEffect(() => {
-        if (isActive && !hasSpoken) {
-            setHasSpoken(true)
+        if (isActive && !hasSpokenRef.current) {
+            hasSpokenRef.current = true
 
             // パターンごとの音声振り分け
             switch (pattern) {
@@ -52,7 +52,7 @@ export function FanfareManager({ pattern, isActive, onComplete }: FanfareManager
                     break
             }
         }
-    }, [isActive, pattern, hasSpoken, speak])
+    }, [isActive, pattern, speak])
 
     if (!isActive || pattern === 'none') return null
 

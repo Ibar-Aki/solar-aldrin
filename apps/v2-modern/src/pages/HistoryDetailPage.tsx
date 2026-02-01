@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { SoloKYSession } from '@/types/ky'
 import { getSessionById, deleteSession } from '@/lib/db'
 import { formatDateLong } from '@/lib/dateUtils'
+import { HEALTH_CONDITION_LABELS } from '@/constants/ky'
 
 export function HistoryDetailPage() {
     const navigate = useNavigate()
@@ -150,9 +151,7 @@ export function HistoryDetailPage() {
                             <div className="flex justify-between">
                                 <span className="text-gray-500">体調</span>
                                 <span>
-                                    {session.healthCondition === 'bad' && '悪い'}
-                                    {session.healthCondition === 'good' && 'よい'}
-                                    {session.healthCondition === 'great' && 'すごくよい'}
+                                    {HEALTH_CONDITION_LABELS[session.healthCondition]}
                                 </span>
                             </div>
                         )}

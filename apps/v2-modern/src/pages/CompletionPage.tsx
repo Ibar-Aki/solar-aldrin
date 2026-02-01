@@ -12,29 +12,31 @@ export function CompletionPage() {
     const { session, status, clearSession, saveSessionToDb } = useKYStore()
     const { generateAndDownload, isGenerating } = usePDFGenerator()
 
+    const shouldAutoFanfare = !!session && status === 'completed'
+
     // ファンファーレ状態管理
-    const [fanfarePattern, setFanfarePattern] = useState<FanfarePattern>('none')
-    const [isFanfareActive, setIsFanfareActive] = useState(false)
+    const [fanfarePattern, setFanfarePattern] = useState<FanfarePattern>(() => (
+        shouldAutoFanfare ? 'spotlight' : 'none'
+    ))
+    const [isFanfareActive, setIsFanfareActive] = useState(() => shouldAutoFanfare)
 
     // FIX-03: useRefで保存試行をガード（依存配列問題を回避）
     const saveAttemptedRef = useRef(false)
 
     // セッション完了時にスポットライトを自動再生 & DB保存
     useEffect(() => {
-        if (session && status === 'completed') {
-            // 初回表示時にスポットライトを自動再生
-            setFanfarePattern('spotlight')
-            setIsFanfareActive(true)
-
-            // IndexedDBに保存（一度だけ）
-            if (saveAttemptedRef.current) return
-            saveAttemptedRef.current = true
-            void saveSessionToDb().then((success) => {
-                if (success && import.meta.env.DEV) console.log('Session saved to history')
-            })
-        } else if (!session) {
+        if (!session) {
             navigate('/')
+            return
         }
+        if (status !== 'completed') return
+
+        // IndexedDBに保存（一度だけ）
+        if (saveAttemptedRef.current) return
+        saveAttemptedRef.current = true
+        void saveSessionToDb().then((success) => {
+            if (success && import.meta.env.DEV) console.log('Session saved to history')
+        })
     }, [session, status, navigate, saveSessionToDb])
 
     const handleDownload = async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 interface YoshiStampFanfareProps {
     isActive: boolean
@@ -6,20 +6,15 @@ interface YoshiStampFanfareProps {
 }
 
 export function YoshiStampFanfare({ isActive, onComplete }: YoshiStampFanfareProps) {
-    const [show, setShow] = useState(false)
-
     useEffect(() => {
-        if (isActive) {
-            setShow(true)
-            const timer = setTimeout(() => {
-                setShow(false)
-                onComplete?.()
-            }, 3000)
-            return () => clearTimeout(timer)
-        }
+        if (!isActive) return
+        const timer = setTimeout(() => {
+            onComplete?.()
+        }, 3000)
+        return () => clearTimeout(timer)
     }, [isActive, onComplete])
 
-    if (!show) return null
+    if (!isActive) return null
 
     return (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">

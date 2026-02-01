@@ -5,8 +5,8 @@
 import { useCallback } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 import { client } from '@/lib/api'
-import { isWorkItemComplete } from '@/lib/validation'
-import type { ExtractedData, WorkItem } from '@/types/ky'
+import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
+import type { ExtractedData } from '@/types/ky'
 
 export function useChat() {
     const {
@@ -49,57 +49,20 @@ export function useChat() {
     /**
      * サーバーから返却された抽出データを元にストアを更新
      */
-    const handleExtractedData = useCallback((data: ExtractedData) => {
-        if (!data) return
+    const handleExtractedData = useCallback((data?: ExtractedData | null) => {
+        const { workItemPatch, actionGoal, shouldCommitWorkItem } = mergeExtractedData(currentWorkItem, data)
 
-        const workItemPatch: Partial<WorkItem> = {}
-
-        // 基本情報の更新
-        if (typeof data.workDescription === 'string' && data.workDescription.trim().length > 0) {
-            workItemPatch.workDescription = data.workDescription
-        }
-        if (typeof data.hazardDescription === 'string' && data.hazardDescription.trim().length > 0) {
-            workItemPatch.hazardDescription = data.hazardDescription
-        }
-        if (typeof data.riskLevel === 'number') {
-            workItemPatch.riskLevel = data.riskLevel
-        }
-        if (typeof data.actionGoal === 'string' && data.actionGoal.trim().length > 0) {
-            updateActionGoal(data.actionGoal)
-        }
-
-        // リスト項目の追加（重複排除）
-        if (data.whyDangerous && data.whyDangerous.length > 0) {
-            const merged = [
-                ...(currentWorkItem.whyDangerous ?? []),
-                ...data.whyDangerous,
-            ].filter((value, index, self) => self.indexOf(value) === index)
-            workItemPatch.whyDangerous = merged
-        }
-
-        if (data.countermeasures && data.countermeasures.length > 0) {
-            const merged = [
-                ...(currentWorkItem.countermeasures ?? []),
-                ...data.countermeasures,
-            ].filter((value, index, self) => self.indexOf(value) === index)
-            workItemPatch.countermeasures = merged
+        if (actionGoal) {
+            updateActionGoal(actionGoal)
         }
 
         if (Object.keys(workItemPatch).length > 0) {
             updateCurrentWorkItem(workItemPatch)
         }
 
-        // 完了判定：次のアクションが「詳細確認完了(confirm)」や「次の作業へ(ask_more_work)」の場合
-        if (data.nextAction === 'ask_more_work' ||
-            data.nextAction === 'ask_goal' ||
-            data.nextAction === 'confirm' ||
-            data.nextAction === 'completed') {
-            const candidate = { ...currentWorkItem, ...workItemPatch }
-            if (isWorkItemComplete(candidate)) {
-                commitWorkItem()
-            }
+        if (shouldCommitWorkItem) {
+            commitWorkItem()
         }
-
     }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, currentWorkItem])
 
     /**

@@ -6,23 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useKYStore } from '@/stores/kyStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
-
-// 工程選択肢 (UX-11)
-const PROCESS_PHASES: ProcessPhase[] = [
-    'フリー',
-    '搬入・荷受け',
-    '基礎土台・建地準備',
-    '組み立て',
-    '付帯設備設置・仕上げ',
-    '引き渡し前確認',
-]
-
-// 体調選択肢 (UX-12)
-const HEALTH_CONDITIONS: { value: HealthCondition; label: string }[] = [
-    { value: 'bad', label: '悪い' },
-    { value: 'good', label: 'よい' },
-    { value: 'great', label: 'すごくよい' },
-]
+import { PROCESS_PHASES, HEALTH_CONDITIONS } from '@/constants/ky'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {

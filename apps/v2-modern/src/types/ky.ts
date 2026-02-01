@@ -2,11 +2,11 @@
  * KY セッションの型定義
  * 一人KY活動用のデータ構造
  * 
- * REF-01: ProcessPhase, HealthCondition は validation.ts の Zod スキーマから推論
+ * REF-01: ProcessPhase, HealthCondition は kySchemas の Zod スキーマから推論
  */
 
 // Zodスキーマから推論された型をインポート
-import type { ProcessPhaseFromZod, HealthConditionFromZod } from '@/lib/validation'
+import type { ProcessPhaseFromZod, HealthConditionFromZod } from '@/lib/kySchemas'
 
 // 型エイリアスとしてエクスポート（単一真実源）
 export type ProcessPhase = ProcessPhaseFromZod

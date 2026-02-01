@@ -1,11 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { chat } from '../workers/routes/chat'
 
-// Mock environment
-const mockEnv = {
-    OPENAI_API_KEY: 'mock-key'
-}
-
 describe('Chat API Integration Flow', () => {
     beforeEach(() => {
         vi.resetAllMocks()
@@ -92,7 +87,10 @@ describe('Chat API Integration Flow', () => {
         const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
 
         expect(res.status).toBe(200)
-        const body = await res.json() as any
+        const body = await res.json() as {
+            reply: string
+            extracted: Record<string, unknown>
+        }
 
         // Should return fallback error message but successful 200 OK for the client
         expect(body.reply).toContain('申し訳ありません')

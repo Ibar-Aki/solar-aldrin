@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 interface SpotlightFanfareProps {
     isActive: boolean
@@ -6,20 +6,15 @@ interface SpotlightFanfareProps {
 }
 
 export function SpotlightFanfare({ isActive, onComplete }: SpotlightFanfareProps) {
-    const [show, setShow] = useState(false)
-
     useEffect(() => {
-        if (isActive) {
-            setShow(true)
-            const timer = setTimeout(() => {
-                setShow(false)
-                onComplete?.()
-            }, 4000)
-            return () => clearTimeout(timer)
-        }
+        if (!isActive) return
+        const timer = setTimeout(() => {
+            onComplete?.()
+        }, 4000)
+        return () => clearTimeout(timer)
     }, [isActive, onComplete])
 
-    if (!show) return null
+    if (!isActive) return null
 
     return (
         <div className="fixed inset-0 z-50 pointer-events-none overflow-hidden">

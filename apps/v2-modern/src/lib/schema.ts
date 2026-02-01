@@ -1,5 +1,6 @@
 
 import { z } from 'zod'
+import { ExtractedDataSchema } from '@/lib/kySchemas'
 
 function hasInvalidControlChars(value: string): boolean {
     for (let i = 0; i < value.length; i++) {
@@ -37,27 +38,6 @@ export const SessionContextSchema = z.object({
     siteName: z.string(),
     weather: z.string(),
     workItemCount: z.number(),
-})
-
-/** AI抽出データのスキーマ（APIレスポンス用） */
-export const ExtractedDataSchema = z.object({
-    workDescription: z.string().nullable().optional(),
-    hazardDescription: z.string().nullable().optional(),
-    riskLevel: z.number().min(1).max(5).nullable().optional(),
-    whyDangerous: z.array(z.string()).optional(),
-    countermeasures: z.array(z.string()).optional(),
-    actionGoal: z.string().nullable().optional(),
-    nextAction: z.enum([
-        'ask_work',
-        'ask_hazard',
-        'ask_why',
-        'ask_countermeasure',
-        'ask_risk_level',
-        'ask_more_work',
-        'ask_goal',
-        'confirm',
-        'completed',
-    ]).optional(),
 })
 
 /** チャットリクエストのスキーマ */
