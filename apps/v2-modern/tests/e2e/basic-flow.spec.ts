@@ -23,12 +23,16 @@ test('Happy path: start session to PDF download', async ({ page }) => {
     await page.waitForURL('**/session')
     await expect(page.getByRole('heading', { name: '一人KY活動' })).toBeVisible()
 
+    const firstResponse = page.waitForResponse('**/api/chat')
     await page.getByPlaceholder('メッセージを入力...').fill('高所作業を行います')
     await page.getByRole('button', { name: '送信' }).click()
+    await firstResponse
 
     const riskSelector = page.getByText('危険度を選択').locator('..')
     await expect(riskSelector).toBeVisible()
+    const secondResponse = page.waitForResponse('**/api/chat')
     await riskSelector.getByRole('button', { name: '3' }).click()
+    await secondResponse
 
     const finishButton = page.getByRole('button', { name: '行動目標を決めて終了する' })
     await expect(finishButton).toBeVisible()
