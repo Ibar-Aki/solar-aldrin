@@ -1,31 +1,46 @@
 # Solar Aldrin: Voice KY Assistant
 
-建設現場の危険予知（KY）活動をAIで変革するプロジェクト（コードネーム: Solar Aldrin）のMonorepoです。
+**「話すだけで、質の高い危険予知が完了する」**
+**「二度書きの無駄をなくし、現場の知恵をつなぐ」**
+
+建設現場の危険予知（KY）活動をAIで変革する「AIファシリ型KYシステム」のMonorepoです。
 
 ## 📍 Project Overview
 
-プロジェクトの全体像、ビジョン、要件については以下のドキュメントを参照してください。
+音声対話によってKY活動をファシリテートし、入力負荷の削減だけでなく「思考の深化」と「マンネリ化防止」を実現します。
 
-- **[Project Master Plan](./PROJECT_MASTER_PLAN.md)**: プロジェクト全体のビジョンと戦略
-- **[要件定義書 (Requirements)](./REQUIREMENTS_DEFINITION.md)**: 具体的な機能、業務フロー、UIイメージ
+詳細は以下のコア・ドキュメントを参照してください：
 
-## 📂 Applications
+- **[Project Master Plan](./PROJECT_MASTER_PLAN.md)**: プロジェクト全体のビジョン、ロードマップ、ROI定義
+- **[Requirements Definition](./REQUIREMENTS_DEFINITION.md)**: 機能要件、業務フロー、データ要件
+- **[Architecture Design](./ARCHITECTURE_DESIGN.md)**: 技術設計、システム構成
 
-### [v2-modern (Current)](./apps/v2-modern/)
+## 🗺️ Roadmap & App Status
 
-**Phase 2: Modern Application (Active Development)**
-React, Vite, Cloudflare Workers, OpenAI を用いた現行のモダンアプリケーションです。
+プロジェクトは4つのフェーズで構成されています。
 
-- **[Documentation](./apps/v2-modern/docs/)**: 要件定義、詳細設計、API仕様書など
+### Phase 1: PoC / Legacy (Archived)
 
-### [v1-legacy (Archived)](./apps/v1-legacy/)
+- **Status**: 凍結 (Archived)
+- **Target**: 実現可能性検証
+- **Code**: [`./apps/v1-legacy/`](./apps/v1-legacy/)
+- **Tech**: GAS, Vanilla JS
 
-**Phase 1: MVP Application (Maintenance Only)**
-GAS, Vanilla JS による初期プロトタイプです。
+### Phase 2: Modern App (Current Focus)
 
-- **[Documentation](./apps/v1-legacy/docs/)**: Phase 1 時代の企画書、設計書アーカイブ
+- **Status**: **開発中 (Active Development)**
+- **Target**: ソロKYの定着、安定稼働、PDF自動生成
+- **Code**: [`./apps/v2-modern/`](./apps/v2-modern/)
+- **Tech**: React, Vite, Cloudflare Workers, OpenAI, D1
+
+### Phase 3-4: Future Expansion
+
+- **Status**: 計画中 (Planned)
+- **Target**:
+  - **Phase 3**: 他社KY取り込み（OCR）、画像診断
+  - **Phase 4**: チームKY、組織分析ダッシュボード
 
 ## 📚 Quick Links
 
 - [Phase 2 Setup Guide](./apps/v2-modern/docs/PHASE2_SETUP.md)
-- [ディレクトリ構造 (Directory Structure)](./ARCHITECTURE_DESIGN.md#3-ディレクトリ構造-directory-structure)
+- [Development Diary (開発日誌)](file:///C:/Users/AKIHIRO/.gemini/Tips&開発記録/dev-diary/)
