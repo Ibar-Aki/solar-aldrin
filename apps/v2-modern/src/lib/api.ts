@@ -1,11 +1,45 @@
-import { hc } from 'hono/client'
-import type { AppType } from '../../workers/index'
+/**
+ * API クライアント
+ * OpenAI Chat API との通信
+ */
+import type { ExtractedData } from '@/types/ky'
 
-// Viteのプロキシ設定に合わせるため、ベースURLはルート('/')
-// Note: tsc -bのプロジェクト参照でworkersの型が正しく解決されない問題への対処
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const client = hc<AppType>('/', {
-    headers: {
-        'Content-Type': 'application/json',
+export interface ChatRequest {
+    messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
+    sessionContext: {
+        userName: string
+        siteName: string
+        weather: string
+        workItemCount: number
     }
-}) as ReturnType<typeof hc<AppType>>
+}
+
+export interface ChatResponse {
+    reply: string
+    extracted?: ExtractedData
+}
+
+const API_BASE = '/api'
+
+/**
+ * Chat API を呼び出す
+ */
+export async function postChat(request: ChatRequest): Promise<ChatResponse> {
+    const token = import.meta.env.VITE_API_TOKEN
+
+    const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(request),
+    })
+
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error((errorData as { error?: string }).error || 'AI応答の取得に失敗しました')
+    }
+
+    return res.json()
+}
