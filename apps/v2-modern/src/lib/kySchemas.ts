@@ -26,7 +26,7 @@ export type HealthConditionFromZod = z.infer<typeof HealthConditionSchema>
 export const ExtractedDataSchema = z.object({
     workDescription: z.string().nullable().optional(),
     hazardDescription: z.string().nullable().optional(),
-    riskLevel: z.number().min(1).max(5).nullable().optional(),
+    riskLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).nullable().optional(),
     whyDangerous: z.array(z.string()).optional(),
     countermeasures: z.array(z.string()).optional(),
     actionGoal: z.string().nullable().optional(),

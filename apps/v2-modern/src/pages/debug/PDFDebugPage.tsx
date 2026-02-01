@@ -10,7 +10,7 @@ const viewerStyle: CSSProperties = {
 
 type RenderStatus = 'idle' | 'loading' | 'ready' | 'error'
 
-type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf')
+type PdfJsModule = typeof import('pdfjs-dist')
 type PdfJsWorkerModule = { default?: string } | string
 
 let pdfjsReady: Promise<{ pdfjs: PdfJsModule; workerSrc: string }> | null = null
@@ -18,8 +18,8 @@ let pdfjsReady: Promise<{ pdfjs: PdfJsModule; workerSrc: string }> | null = null
 async function loadPdfJs() {
     if (!pdfjsReady) {
         pdfjsReady = Promise.all([
-            import('pdfjs-dist/legacy/build/pdf'),
-            import('pdfjs-dist/legacy/build/pdf.worker?url'),
+            import('pdfjs-dist'),
+            import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
         ]).then(([pdfjsLib, worker]) => {
             const workerModule = worker as PdfJsWorkerModule
             const workerSrc = typeof workerModule === 'string' ? workerModule : (workerModule.default ?? '')
@@ -52,7 +52,7 @@ async function renderPdfPages(container: HTMLDivElement, session: SoloKYSession)
         if (!context) {
             continue
         }
-        await page.render({ canvasContext: context, viewport }).promise
+        await page.render({ canvas, viewport }).promise
         container.appendChild(canvas)
     }
 }

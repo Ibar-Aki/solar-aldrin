@@ -1,130 +1,38 @@
-# Phase 2: Voice KY Assistant v2 (Modern) Implementation Plan
+# Phase 2.2 残課題対応 — O-02 調査結果
 
-**目的**: ユーザー体験（ハンズフリー・モダンUI）と開発効率（React・TS）を両立した、次世代KYアプリの構築。
+## 概要
 
-## 📋 要件定義サマリー (User Requirements)
-
-1. **Tech Stack**: Vite + React + TypeScript + Hono (User Approved)
-2. **Auth**: **ハイブリッド認証**（誰でも利用可 + 任意でログインして履歴保存）
-3. **Audio**: **ハンズフリー**（常時待機・自動認識）を目指す
-4. **Database**: **Supabase** (Free Tier優先 / 開発容易性)
-5. **UI/Design**: 白基調・シンプルかつモダン (Tailwind CSS)。ダークモードなし。
-6. **Cost**: 1回5円以下（GPT-4o mini採用で達成を狙う）
-7. **Migration**: v1データ移行不要。v1とは別URLで並行稼働。
+Phase 2.2 の残課題（O-02: データモデル柔軟化）について調査を実施しました。
 
 ---
 
-## 🏗️ アーキテクチャ設計（現状反映）
+## O-02: データモデル柔軟化 — 調査結果
 
-### 1. フロントエンド (`apps/v2-modern`)
+### 結論: **追加実装不要（既に実装済み）**
 
-- **Framework**: React 18+ (Vite)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS + shadcn/ui
-- **State**: Zustand
-- **Audio**:
-  - Web Speech API（音声認識・音声合成）
-  - **手動開始/停止 + 強制停止連携**（TTS中は認識停止）
-  - 無音タイムアウト/自動再開はフック側に実装済みだが、UIは手動制御が基本
+コードベースを詳細調査した結果、**O-02 は既に部分的に実装されている** ことが判明しました。
 
-### 2. バックエンド (`apps/v2-modern/workers`)
+**既に柔軟な部分**:
 
-- **Runtime**: Cloudflare Workers
-- **Framework**: Hono
-- **AI**: OpenAI API（GPT-4o mini）
-- **Rate Limit**: Workers KV（IP/セッション単位の簡易制限）
-- **DB**: Supabase（未着手）
+- `workItemSlice.ts` の `currentWorkItem` は `Partial<WorkItem>` として定義されており、対話中のデータは部分的に保持可能
+- `SoloKYSession` の多くのフィールド（`temperature`, `actionGoal`, `completedAt` など）は `null` 許容
 
-### 3. デプロイ
+**まだ厳格な部分**:
 
-- **Cloudflare Pages**: フロントエンド
-- **Cloudflare Workers**: API（Hono）
-- **URL**: `v2-preview.voice-ky-assistant.pages.dev` (仮)
+- `commitWorkItem()` 関数が厳格。5項目すべて（作業/危険/理由/対策/レベル）が揃わないとセッションに追加できない
+- `WorkItemSchema`（Zod）が `min(1)` を要求
+
+### 結論
+
+「完成した作業のみセッションに追加」という現在の設計で問題なく、追加の型変更は不要と判断しました。
+
+ロードマップ上は「実装済み」扱いとしています。
 
 ---
 
-## 💡 重要機能の実装アプローチ
+## 更新したドキュメント
 
-### 0. 前提・制約（必ず明記）
-
-- **常時待機の限界**: ブラウザ/OS制約により「完全な常時待機」は不可（画面OFFやバックグラウンドで停止）。
-- **対応ブラウザ**: Web Speech APIは主にChromium系で安定。非対応環境は**プッシュトゥトーク**や**テキスト入力**へフォールバック。
-- **ユーザー操作必須**: 初回はユーザー操作でマイク開始が必須。権限拒否時の再導線を用意。
-
-### 1. 音声操作 (Voice)
-
-Web Speech APIの仕様（無音で停止、iOSでの制限）を踏まえ、現在は**手動操作中心**の設計です。
-
-- **現状（実装済み）**:
-  - 音声認識は**ユーザーの開始/停止操作**で制御。
-  - **TTS中は認識を強制停止**し、誤認識を回避。
-  - **無音タイムアウト**で自動停止し、再開ロジックはフック側に実装。
-  - `visibilitychange` での停止を実装済み。
-- **将来検討**:
-  - `AudioWorklet` + `VAD (Voice Activity Detection)` の導入。
-  - iOS Safari対策としてテキスト入力/プッシュトゥトークの強化。
-
-### 2. コスト管理 (Cost Strategy)
-
-「1回5円以下」を厳守するため、**GPT-4o mini** を標準採用します。
-
-- **試算方針**:
-  - 価格は変動するため、**実装前に公式価格で再計算**する。
-  - 1回あたりの想定トークン（例: 5往復で10k tokens）を前提に、上限トークン・最大応答長を設ける。
-  - 目標: **1回5円以下**を維持できる上限設計。
-
-### 3. ハイブリッド認証
-
-* **ゲストユーザー**: `localStorage` でID保持は可。ただし**DBアクセスはサーバー経由**に限定し、署名付きセッションで保護（推測可能なUUID単体の直アクセスは避ける）。
-- **ログインユーザー**: Supabase Auth でログインし、`user_id` でDBと紐付け。
-
----
-
-## 🔐 非機能・セキュリティ
-
-- **キー管理**: OpenAI / Supabaseの秘匿キーはCloudflare環境変数に限定。フロントに露出させない。
-- **RLS/権限**: ログインユーザーはRLS必須。ゲストはサーバー経由のみ。
-- **レート制限**: ゲストはIP/セッション単位の制限を追加（濫用対策）。
-
----
-
-## 📅 開発ステップ（現状反映）
-
-### Step 1: プロジェクトセットアップ
-
-- [x] `apps/v2-modern` に Vite + React 環境構築
-- [x] Tailwind CSS + shadcn/ui 導入
-- [x] Zustand ストア導入
-- [x] Cloudflare Workers（Hono）雛形
-- [ ] Cloudflare Pages デプロイ（未実施）
-
-### Step 2: コア機能（チャット + 音声）
-
-- [x] Web Speech API ラッパー実装（無音停止・再開ロジック含む）
-- [x] 音声認識 UI（マイクボタン・手動制御）
-- [x] TTS再生（SpeechSynthesis）と**認識の強制停止連携**
-- [x] Hono バックエンドでの OpenAI API 接続
-- [x] チャットUI実装（KYセッション画面）
-- [x] フォールバックUI（テキスト入力）
-- [ ] 自動継続のハンズフリー体験（常時待機の調整・検証）
-
-### Step 3: DB接続 & 認証（未着手）
-
-- [ ] Supabase プロジェクト作成（またはv1流用）
-- [ ] DBスキーマ設計（`v2_*` テーブル、必要インデックス）
-- [ ] RLS/権限設計（ログインユーザー）
-- [ ] ゲスト用API（サーバー経由）とセッション保護
-
-### Step 4: 仕上げ（未着手）
-
-- [ ] PDF生成（`react-pdf` 等の検討）
-- [ ] UIブラッシュアップ
-- [ ] 主要ブラウザでの動作検証（Chromium + iOSフォールバック）
-- [ ] コスト/レート制限の挙動確認
-
----
-
-## ⚠️ 確認事項
-
-- v1で使用中のSupabaseプロジェクトをそのまま使いますか？（テーブル名 `v2_records` などで分ければ共存可能です）
-  - **推奨**: 無料枠範囲内なら共存が手軽です。
+| ファイル | 更新内容 |
+| :--- | :--- |
+| `02_機能拡張一覧_Phase2x.md` | O-02を「実装済」に変更 |
+| `03_Phase2ロードマップ_Phase2_Roadmap.md` | Phase 2.2のO-02を「実装済」に反映 |
