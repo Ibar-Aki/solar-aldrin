@@ -19,19 +19,21 @@
 
 プロジェクトは4つのフェーズで構成されています。
 
-### Phase 1: PoC / Legacy (Archived)
+### [Phase 1: v1-legacy](./apps/v1-legacy/)
 
 - **Status**: 凍結 (Archived)
 - **Target**: 実現可能性検証
 - **Code**: [`./apps/v1-legacy/`](./apps/v1-legacy/)
 - **Tech**: GAS, Vanilla JS
+- **[Documentation](./apps/v1-legacy/docs/)**: Phase 1 時代の企画書、設計書アーカイブ
 
-### Phase 2: Modern App (Current Focus)
+### [Phase 2: v2-modern (Current)](./apps/v2-modern/)
 
 - **Status**: **開発中 (Active Development)**
 - **Target**: ソロKYの定着、安定稼働、PDF自動生成
 - **Code**: [`./apps/v2-modern/`](./apps/v2-modern/)
 - **Tech**: React, Vite, Cloudflare Workers, OpenAI, D1
+- **[Documentation](./apps/v2-modern/docs/)**: 要件定義、詳細設計、API仕様書など
 
 ### Phase 3-4: Future Expansion
 
