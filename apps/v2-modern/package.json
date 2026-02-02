@@ -13,7 +13,11 @@
     "preview": "vite preview",
     "test:iphone": "npx playwright codegen --device='iPhone 13' http://localhost:5173",
     "test:e2e": "playwright test tests/e2e",
-    "dev:iphone": "npx concurrently \"npm run dev:host\" \"npm run dev:workers\""
+    "test:live": "playwright test tests/e2e/live-ai-chat.spec.ts",
+    "test:cost": "playwright test tests/e2e/real-cost-scenario.spec.ts",
+    "test": "vitest run",
+    "dev:iphone": "npx concurrently \"npm run dev:host\" \"npm run dev:workers\"",
+    "dev:all": "npx concurrently \"npm run dev\" \"npm run dev:workers\""
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",

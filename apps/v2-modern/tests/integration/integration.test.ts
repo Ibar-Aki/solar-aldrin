@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { chat } from '../workers/routes/chat'
+import { chat } from '../../workers/routes/chat'
 
 describe('Chat API Integration Flow', () => {
     beforeEach(() => {

@@ -4,7 +4,7 @@
  */
 import { useCallback } from 'react'
 import { useKYStore } from '@/stores/kyStore'
-import { client } from '@/lib/api'
+import { postChat } from '@/lib/api'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
 import type { ExtractedData } from '@/types/ky'
 
@@ -77,36 +77,37 @@ export function useChat() {
         // ユーザーメッセージを追加
         addMessage('user', text)
 
+        // 認証チェック (Hardening Phase C)
+        const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
+        const hasToken = Boolean(import.meta.env.VITE_API_TOKEN)
+
+        if (requireAuth && !hasToken) {
+            const errorMsg = 'APIトークンが設定されていません。環境変数 VITE_API_TOKEN を設定してください。'
+            setError(errorMsg)
+            addMessage('assistant', errorMsg)
+            setLoading(false)
+            return
+        }
+
         try {
-            if (!import.meta.env.VITE_API_TOKEN) {
-                throw new Error('APIトークンが設定されていません。環境変数VITE_API_TOKENを確認してください。')
-            }
+            // fetch ベースの API 呼び出し
+            // system ロールはサーバー側で追加されるため、クライアントからは除外
+            const chatMessages = messages
+                .filter(m => m.role !== 'system')
+                .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
-            // Hono RPC呼び出し (cast client to stringify types if there is mismatch)
-            const res = await client.api.chat.$post({
-                json: {
-                    messages: [
-                        ...messages.map(m => ({ role: m.role, content: m.content })),
-                        { role: 'user' as const, content: text },
-                    ],
-                    sessionContext: {
-                        userName: session.userName,
-                        siteName: session.siteName,
-                        weather: session.weather,
-                        workItemCount: session.workItems.length,
-                    },
+            const data = await postChat({
+                messages: [
+                    ...chatMessages,
+                    { role: 'user' as const, content: text },
+                ],
+                sessionContext: {
+                    userName: session.userName,
+                    siteName: session.siteName,
+                    weather: session.weather,
+                    workItemCount: session.workItems.length,
                 },
-                header: {
-                    'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`,
-                }
             })
-
-            if (!res.ok) {
-                const errorData = await res.json()
-                throw new Error((errorData as { error?: string }).error || 'AI応答の取得に失敗しました')
-            }
-
-            const data = await res.json()
 
             // AI応答を追加 (extractedDataも含めて保存)
             addMessage('assistant', data.reply, data.extracted)

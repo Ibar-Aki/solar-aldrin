@@ -14,7 +14,7 @@ function hasInvalidControlChars(value: string): boolean {
 }
 
 /** チャットメッセージのスキーマ */
-const USER_CONTENT_MAX_LENGTH = 1000
+export const USER_CONTENT_MAX_LENGTH = 1000
 const ASSISTANT_CONTENT_MAX_LENGTH = 3000
 const contentSchema = (max: number) => z.string().max(max)
     .refine(val => !hasInvalidControlChars(val), {
@@ -46,16 +46,25 @@ export const ChatRequestSchema = z.object({
     sessionContext: SessionContextSchema.optional(),
 })
 
-/** チャットレスポンスのスキーマ */
-export const ChatResponseSchema = z.object({
+/** チャット成功レスポンスのスキーマ */
+export const ChatSuccessResponseSchema = z.object({
     reply: z.string(),
-    extracted: ExtractedDataSchema,
+    extracted: ExtractedDataSchema.optional(),
     usage: z.object({
         totalTokens: z.number(),
-    }),
-}).or(z.object({
+    }).optional(),
+})
+
+/** チャットエラーレスポンスのスキーマ */
+export const ChatErrorResponseSchema = z.object({
     error: z.string(),
-}))
+})
+
+/** チャットレスポンスのスキーマ（成功 OR エラー） */
+export const ChatResponseSchema = ChatSuccessResponseSchema.or(ChatErrorResponseSchema)
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>
+export type ChatSuccessResponse = z.infer<typeof ChatSuccessResponseSchema>
+export type ChatErrorResponse = z.infer<typeof ChatErrorResponseSchema>
 export type ChatResponse = z.infer<typeof ChatResponseSchema>
+

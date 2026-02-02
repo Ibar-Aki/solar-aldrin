@@ -19,7 +19,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     }
 
     return (
-        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+        <div
+            className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}
+            data-testid="chat-bubble"
+            data-role={message.role}
+        >
             {/* AIメッセージの場合は左側にスピーカーアイコンを表示 */}
             {!isUser && isSupported && (
                 <button

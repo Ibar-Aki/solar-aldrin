@@ -143,6 +143,7 @@ export function HomePage() {
                                 onChange={(e) => setUserName(e.target.value)}
                                 placeholder="例：田中太郎"
                                 className="mt-1"
+                                data-testid="input-username"
                             />
                         </div>
                         <div>
@@ -152,6 +153,7 @@ export function HomePage() {
                                 onChange={(e) => setSiteName(e.target.value)}
                                 placeholder="例：〇〇ビル改修工事"
                                 className="mt-1"
+                                data-testid="input-sitename"
                             />
                         </div>
                         <div>
@@ -160,6 +162,7 @@ export function HomePage() {
                                 value={weather}
                                 onChange={(e) => setWeather(e.target.value)}
                                 className="mt-1 w-full border rounded-md p-2"
+                                data-testid="select-weather"
                             >
                                 <option value="晴れ">晴れ</option>
                                 <option value="曇り">曇り</option>
@@ -175,6 +178,7 @@ export function HomePage() {
                                 value={processPhase}
                                 onChange={(e) => setProcessPhase(e.target.value as ProcessPhase)}
                                 className="mt-1 w-full border rounded-md p-2"
+                                data-testid="select-phase"
                             >
                                 {PROCESS_PHASES.map((phase) => (
                                     <option key={phase} value={phase}>{phase}</option>
@@ -193,6 +197,7 @@ export function HomePage() {
                                         className={`flex-1 ${healthCondition === cond.value ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
                                         size="sm"
                                         type="button"
+                                        data-testid={`btn-health-${cond.value}`}
                                     >
                                         {cond.label}
                                     </Button>
@@ -203,6 +208,7 @@ export function HomePage() {
                             className="w-full h-12 text-lg bg-blue-600 hover:bg-blue-700"
                             onClick={handleStart}
                             disabled={isStarting || !userName.trim() || !siteName.trim()}
+                            data-testid="button-start-ky"
                         >
                             {isStarting ? '準備中...' : 'KY活動を開始'}
                         </Button>
@@ -228,7 +234,7 @@ export function HomePage() {
                     📂 過去の記録を見る
                 </Button>
             </div>
-        </div>
+        </div >
     )
 }
 

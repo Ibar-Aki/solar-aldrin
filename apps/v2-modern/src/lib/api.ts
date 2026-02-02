@@ -1,30 +1,18 @@
 /**
  * API クライアント
- * OpenAI Chat API との通信
+ * Chat API との通信を fetch ベースで実装
+ * 
+ * 型定義は lib/schema.ts の Zod スキーマから推論した型を使用
  */
-import type { ExtractedData } from '@/types/ky'
-
-export interface ChatRequest {
-    messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
-    sessionContext: {
-        userName: string
-        siteName: string
-        weather: string
-        workItemCount: number
-    }
-}
-
-export interface ChatResponse {
-    reply: string
-    extracted?: ExtractedData
-}
+import { ChatResponseSchema, type ChatRequest, type ChatSuccessResponse } from '@/lib/schema'
 
 const API_BASE = '/api'
 
 /**
  * Chat API を呼び出す
+ * エラーレスポンスの場合は例外をスロー
  */
-export async function postChat(request: ChatRequest): Promise<ChatResponse> {
+export async function postChat(request: ChatRequest): Promise<ChatSuccessResponse> {
     const token = import.meta.env.VITE_API_TOKEN
 
     const res = await fetch(`${API_BASE}/chat`, {
@@ -41,5 +29,24 @@ export async function postChat(request: ChatRequest): Promise<ChatResponse> {
         throw new Error((errorData as { error?: string }).error || 'AI応答の取得に失敗しました')
     }
 
-    return res.json()
+    const data = await res.json()
+
+    // レスポンスの型検証
+    const result = ChatResponseSchema.safeParse(data)
+    if (!result.success) {
+        console.error('Invalid API Response:', result.error)
+        throw new Error('サーバーからの応答が不正な形式です')
+    }
+
+    const parsed = result.data
+
+    // エラーレスポンスの場合は例外をスロー
+    if ('error' in parsed) {
+        throw new Error(parsed.error)
+    }
+
+    return parsed
 }
+
+// 型を再エクスポート（利便性のため）
+export type { ChatRequest, ChatSuccessResponse }

@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input'
 import { MicButton } from './MicButton'
 import { cn } from '@/lib/utils'
 
+import { USER_CONTENT_MAX_LENGTH } from '@/lib/schema'
+
 interface ChatInputProps {
     onSend: (message: string) => void
     disabled?: boolean
@@ -68,12 +70,14 @@ export function ChatInput({
                 placeholder={placeholder}
                 disabled={disabled}
                 className={cn('flex-1 h-11 rounded-full px-4 py-2', inputClassName)}
-                maxLength={2000}
+                maxLength={USER_CONTENT_MAX_LENGTH}
+                data-testid="input-chat-message"
             />
             <Button
                 onClick={handleSubmit}
                 disabled={disabled || !value.trim()}
                 className={cn('px-6 h-11 rounded-full', buttonClassName)}
+                data-testid="button-send-message"
             >
                 送信
             </Button>

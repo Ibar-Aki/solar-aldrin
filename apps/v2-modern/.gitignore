@@ -26,3 +26,12 @@ dist-ssr
 # Cloudflare Workers Secrets
 .dev.vars
 .wrangler
+
+# Playwright artifacts and local logs
+playwright-report/
+test-results/
+reports/
+server_log*.txt
+test_log*.txt
+test_result*.txt
+test_cost*.txt

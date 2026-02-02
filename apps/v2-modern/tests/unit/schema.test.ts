@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from 'vitest'
-import { ChatMessageSchema } from '../src/lib/schema'
+import { ChatMessageSchema } from '../../src/lib/schema'
 
 describe('ChatMessageSchema', () => {
     it('should accept valid messages', () => {

@@ -151,7 +151,7 @@ export function KYSessionPage() {
                 {workItemCount > 0 && status === 'work_items' && !hasCurrentWork && (
                     <div className="px-4 py-2 border-b">
                         <div className="max-w-2xl mx-auto">
-                            <Button onClick={handleComplete} className="w-full">
+                            <Button onClick={handleComplete} className="w-full" data-testid="button-complete-session">
                                 行動目標を決めて終了する
                             </Button>
                         </div>

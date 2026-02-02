@@ -42,17 +42,18 @@ async function renderPdfPages(container: HTMLDivElement, session: SoloKYSession)
         const page = await pdfDoc.getPage(pageNumber)
         const viewport = page.getViewport({ scale: 1.1 })
         const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')
+        if (!context) {
+            throw new Error('Canvas context could not be acquired')
+        }
+
         canvas.width = Math.ceil(viewport.width)
         canvas.height = Math.ceil(viewport.height)
         canvas.style.display = 'block'
         canvas.style.backgroundColor = '#ffffff'
         canvas.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)'
         canvas.style.marginBottom = '16px'
-        const context = canvas.getContext('2d')
-        if (!context) {
-            continue
-        }
-        await page.render({ canvas, viewport }).promise
+        await page.render({ canvasContext: context, viewport, canvas }).promise
         container.appendChild(canvas)
     }
 }

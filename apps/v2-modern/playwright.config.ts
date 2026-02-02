@@ -12,6 +12,8 @@ if (!process.env.HOME && resolvedHome) {
     process.env.HOME = resolvedHome;
 }
 
+const useWorkers = process.env.RUN_LIVE_TESTS === '1';
+
 export default defineConfig({
     testDir: './tests',
     fullyParallel: true,
@@ -40,7 +42,7 @@ export default defineConfig({
 
     /* Run your local dev server before starting the tests */
     webServer: {
-        command: 'npm run dev',
+        command: useWorkers ? 'npm run dev:all' : 'npm run dev',
         url: 'http://localhost:5173',
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
