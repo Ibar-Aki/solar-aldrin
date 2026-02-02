@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { WeatherSelector } from '@/components/WeatherSelector'
 import { useKYStore } from '@/stores/kyStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
-import { PROCESS_PHASES, HEALTH_CONDITIONS } from '@/constants/ky'
+import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -158,18 +159,11 @@ export function HomePage() {
                         </div>
                         <div>
                             <label className="text-sm font-medium text-gray-700">天候</label>
-                            <select
+                            <WeatherSelector
                                 value={weather}
-                                onChange={(e) => setWeather(e.target.value)}
-                                className="mt-1 w-full border rounded-md p-2"
-                                data-testid="select-weather"
-                            >
-                                <option value="晴れ">晴れ</option>
-                                <option value="曇り">曇り</option>
-                                <option value="雨">雨</option>
-                                <option value="雪">雪</option>
-                                <option value="強風">強風</option>
-                            </select>
+                                onChange={setWeather}
+                                options={WEATHER_OPTIONS}
+                            />
                         </div>
                         {/* 工程選択 (UX-11) */}
                         <div>

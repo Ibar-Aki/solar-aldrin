@@ -38,12 +38,15 @@ export const SessionContextSchema = z.object({
     siteName: z.string(),
     weather: z.string(),
     workItemCount: z.number(),
+    processPhase: z.string().optional(),
+    healthCondition: z.string().optional(),
 })
 
 /** チャットリクエストのスキーマ */
 export const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema).min(1),
     sessionContext: SessionContextSchema.optional(),
+    contextInjection: z.string().max(1200).optional(),
 })
 
 /** チャット成功レスポンスのスキーマ */
@@ -67,4 +70,60 @@ export type ChatRequest = z.infer<typeof ChatRequestSchema>
 export type ChatSuccessResponse = z.infer<typeof ChatSuccessResponseSchema>
 export type ChatErrorResponse = z.infer<typeof ChatErrorResponseSchema>
 export type ChatResponse = z.infer<typeof ChatResponseSchema>
+
+/** フィードバックAPIのリクエストスキーマ */
+export const FeedbackRequestSchema = z.object({
+    sessionId: z.string().min(8).max(128),
+    clientId: z.string().min(8).max(128),
+    context: z.object({
+        work: z.string().max(200).optional(),
+        location: z.string().max(200).optional(),
+        weather: z.string().max(100).optional(),
+        processPhase: z.string().max(80).optional(),
+        healthCondition: z.string().max(80).optional(),
+    }).optional(),
+    extracted: z.object({
+        risks: z.array(z.string().max(120)).max(20).optional(),
+        measures: z.array(z.string().max(120)).max(20).optional(),
+        actionGoal: z.string().max(120).optional(),
+    }).optional(),
+    chatDigest: z.string().max(1200).optional(),
+}).strict()
+
+/** フィードバックAPIの成功レスポンススキーマ */
+export const FeedbackResponseSchema = z.object({
+    praise: z.string().min(1).max(240),
+    tip: z.string().min(1).max(240),
+    supplements: z.array(z.object({
+        risk: z.string().min(1).max(120),
+        measure: z.string().min(1).max(120),
+    })).max(2),
+    polishedGoal: z.object({
+        original: z.string().min(1).max(120),
+        polished: z.string().min(1).max(120),
+    }).nullable(),
+    meta: z.object({
+        requestId: z.string().min(6).max(64).optional(),
+        cached: z.boolean().optional(),
+        validationFallback: z.boolean().optional(),
+    }).optional(),
+})
+
+/** フィードバックAPIのエラーレスポンススキーマ */
+export const FeedbackErrorResponseSchema = z.object({
+    error: z.object({
+        code: z.string(),
+        message: z.string(),
+        retriable: z.boolean().optional(),
+        requestId: z.string().optional(),
+    }),
+})
+
+/** フィードバックAPIのレスポンススキーマ（成功 OR エラー） */
+export const FeedbackApiResponseSchema = FeedbackResponseSchema.or(FeedbackErrorResponseSchema)
+
+export type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>
+export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>
+export type FeedbackErrorResponse = z.infer<typeof FeedbackErrorResponseSchema>
+export type FeedbackApiResponse = z.infer<typeof FeedbackApiResponseSchema>
 

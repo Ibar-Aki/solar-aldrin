@@ -28,8 +28,10 @@ OpenAI API をモックし、UIフローとロジックの正当性をコスト�
 
 | ファイル名 | テスト名 | 内容 | 評価項目 | 補足 |
 |---|---|---|---|---|
-| `tests/e2e/basic-flow.spec.ts` | Basic Flow (Happy Path) | 最も基本的な「入力開始→1ターン対話→完了→PDFダウンロード」のフローを確認します。 | ・各画面要素（ボタン、入力欄）が表示されるか<br>・API呼び出し回数が想定通りか<br>・PDFボタンが出現するか | 開発時のクイックチェック用です。 |
-| `tests/e2e/ky-session-basic-flow.spec.ts` | KY Session Scenarios | 複数のシナリオ（基本、高所作業、最短入力）を通じて、様々な入力パターンでの堅牢性を確認します。 | ・異なるシナリオ（足場、クレーン、短文）でエラー落ちしないか<br>・ローディング表示の挙動<br>・完了画面への正常遷移 | エッジケースやバリエーションの確認に使用します。 |
+| `tests/e2e/ky-session-e2e.spec.ts` | KY Session E2E (Consolidated) | **[統合版]** 標準フロー(PDF生成まで)、高所作業、最小入力シナリオを網羅するメインのE2Eテストです。 | ・正常系の全画面遷移<br>・エッジケースでの堅牢性<br>・モックを使用した安定動作 | `basic-flow.spec.ts` を統合し、カバレッジを向上させました。 |
+| `tests/unit/metrics.test.ts` | Unit (New) | **[Phase 2.5]** KPI計測ロジック（会話ターン数、ループ検知）をテストします。 | ・正しい計算ロジック<br>・異常値の検出 | 新規追加。 |
+| `tests/integration/feedback.test.ts` | Integration (New) | **[Phase 2.6]** フィードバック生成APIのモックテストです。 | ・200 OKレスポンス<br>・スキーマ準拠 | 新規追加。 |
+| `tests/unit/historyUtils.test.ts` | Unit (New) | **[Phase 2.7]** 履歴取得・フィルタリングロジックをテストします。 | ・類似性判定の正確さ<br>・データ上限（100件）の動作 | 新規追加。 |
 | `tests/e2e/pdf-visual.spec.ts` | PDF Visual Regression | PDFプレビュー画面 (`/debug/pdf`) のレンダリング結果をスクリーンショット比較します。 | ・PDFビューア (`@react-pdf/renderer`) が正しくキャンバスを描画しているか<br>・レイアウト崩れがないか | ビジュアルリグレッションテストです。 |
 | `tests/e2e/ios_compatibility.spec.ts` | iOS Compatibility | iOS (WebKit) 環境での簡易スモークテストです。 | ・タイトルが表示されるか<br>・クリティカルなJSエラーがないか | iPhone実機テスト前の最低限の確認用です。 |
 

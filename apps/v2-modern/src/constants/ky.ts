@@ -10,6 +10,17 @@ export const PROCESS_PHASES: ProcessPhase[] = [
     '引き渡し前確認',
 ]
 
+/** 天候選択肢 */
+export const WEATHER_OPTIONS = [
+    '晴れ',
+    '曇り',
+    '雨',
+    '雪',
+    '強風',
+    '猛暑',
+    '厳寒',
+] as const
+
 /** 体調ラベル */
 export const HEALTH_CONDITION_LABELS: Record<HealthCondition, string> = {
     bad: '悪い',

@@ -2,11 +2,13 @@
  * チャットフック
  * OpenAI APIとの通信を管理
  */
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 import { postChat } from '@/lib/api'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
 import type { ExtractedData } from '@/types/ky'
+import { sendTelemetry } from '@/lib/observability/telemetry'
+import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 
 export function useChat() {
     const {
@@ -22,6 +24,20 @@ export function useChat() {
         setEnvironmentRisk,
     } = useKYStore()
 
+    const contextRef = useRef<{ sessionId: string; injection: string | null } | null>(null)
+
+    const sessionId = session?.id
+
+    useEffect(() => {
+        if (!sessionId) {
+            contextRef.current = null
+            return
+        }
+        if (contextRef.current?.sessionId !== sessionId) {
+            contextRef.current = null
+        }
+    }, [sessionId])
+
     /**
      * 初期メッセージを送信
      */
@@ -29,14 +45,9 @@ export function useChat() {
         if (!session) return
 
         // 環境リスクの設定（天候ベース）
-        const weatherRisks: Record<string, string> = {
-            '雨': '雨天時は足場が滑りやすくなります。転倒・転落に注意してください。',
-            '雪': '積雪・凍結により足場が非常に滑りやすくなっています。慎重に作業してください。',
-            '強風': '強風時は高所作業に注意が必要です。資材の飛散にも気をつけてください。',
-        }
-
-        if (session.weather in weatherRisks) {
-            setEnvironmentRisk(weatherRisks[session.weather])
+        const weatherContext = getWeatherContext(session.weather)
+        if (weatherContext) {
+            setEnvironmentRisk(weatherContext.note)
         }
 
         // 初回AIメッセージ
@@ -76,6 +87,14 @@ export function useChat() {
 
         // ユーザーメッセージを追加
         addMessage('user', text)
+        void sendTelemetry({
+            event: 'input_length',
+            sessionId: session.id,
+            value: text.length,
+            data: {
+                source: 'chat',
+            },
+        })
 
         // 認証チェック (Hardening Phase C)
         const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
@@ -90,6 +109,29 @@ export function useChat() {
         }
 
         try {
+            const contextEnabled = import.meta.env.VITE_ENABLE_CONTEXT_INJECTION !== '0'
+            let contextInjection: string | undefined
+
+            if (contextEnabled) {
+                if (!contextRef.current || contextRef.current.sessionId !== session.id) {
+                    contextRef.current = { sessionId: session.id, injection: null }
+                }
+
+                if (contextRef.current.injection === null) {
+                    try {
+                        contextRef.current.injection = await buildContextInjection({
+                            session,
+                            userInput: text,
+                        })
+                    } catch (error) {
+                        console.warn('Context injection build failed:', error)
+                        contextRef.current.injection = null
+                    }
+                }
+
+                contextInjection = contextRef.current.injection ?? undefined
+            }
+
             // fetch ベースの API 呼び出し
             // system ロールはサーバー側で追加されるため、クライアントからは除外
             const chatMessages = messages
@@ -106,7 +148,10 @@ export function useChat() {
                     siteName: session.siteName,
                     weather: session.weather,
                     workItemCount: session.workItems.length,
+                    processPhase: session.processPhase ?? undefined,
+                    healthCondition: session.healthCondition ?? undefined,
                 },
+                contextInjection,
             })
 
             // AI応答を追加 (extractedDataも含めて保存)

@@ -3,7 +3,8 @@
  * @react-pdf/renderer を使用
  */
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
-import type { SoloKYSession } from '@/types/ky'
+import type { SoloKYSession, FeedbackSummary, SupplementItem } from '@/types/ky'
+import type { RecentRiskMatch } from '@/lib/historyUtils'
 
 // フォント登録（Noto Sans JP）
 // 注意: フォントファイルは public/fonts/ に配置する必要があります
@@ -142,6 +143,48 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1e3a8a',
     },
+    feedbackBox: {
+        backgroundColor: '#f8fafc',
+        padding: 10,
+        borderRadius: 4,
+        border: '1px solid #e5e7eb',
+    },
+    feedbackItem: {
+        marginBottom: 6,
+    },
+    feedbackLabel: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        color: '#2563eb',
+        marginBottom: 2,
+    },
+    supplementBox: {
+        border: '1px dashed #cbd5f5',
+        padding: 8,
+        borderRadius: 4,
+        marginBottom: 6,
+    },
+    supplementLabel: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        color: '#4338ca',
+        marginBottom: 2,
+    },
+    recentRiskItem: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+        marginBottom: 4,
+    },
+    recentRiskBadge: {
+        fontSize: 9,
+        color: '#b45309',
+    },
+    recentRiskDate: {
+        fontSize: 8,
+        color: '#6b7280',
+        marginTop: 2,
+    },
     confirmSection: {
         marginTop: 15,
         paddingTop: 10,
@@ -183,9 +226,13 @@ const getRiskStyle = (level: number) => {
 
 interface KYSheetPDFProps {
     session: SoloKYSession
+    feedback?: FeedbackSummary | null
+    supplements?: SupplementItem[]
+    actionGoalOverride?: string | null
+    recentRisks?: RecentRiskMatch[]
 }
 
-export function KYSheetPDF({ session }: KYSheetPDFProps) {
+export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride, recentRisks }: KYSheetPDFProps) {
     const formatDate = (isoString: string) => {
         return new Date(isoString).toLocaleString('ja-JP', {
             year: 'numeric',
@@ -195,6 +242,9 @@ export function KYSheetPDF({ session }: KYSheetPDFProps) {
             minute: '2-digit',
         })
     }
+    const formatDateShort = (isoString: string) => isoString.slice(0, 10)
+
+    const actionGoalText = actionGoalOverride ?? session.actionGoal
 
     return (
         <Document>
@@ -287,11 +337,61 @@ export function KYSheetPDF({ session }: KYSheetPDFProps) {
                     ))}
                 </View>
 
+                {/* 直近の繰り返し危険 */}
+                {recentRisks && recentRisks.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>直近の繰り返し危険</Text>
+                        {recentRisks.map((risk, index) => (
+                            <View key={`${risk.risk}-${index}`} style={styles.recentRiskItem}>
+                                <Text style={styles.recentRiskBadge}>⚠️</Text>
+                                <View>
+                                    <Text>{risk.risk}</Text>
+                                    <Text style={styles.recentRiskDate}>
+                                        前回: {formatDateShort(risk.date)}
+                                    </Text>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+
                 {/* 行動目標 */}
-                {session.actionGoal && (
+                {actionGoalText && (
                     <View style={styles.actionGoal}>
                         <Text style={styles.actionGoalLabel}>🎯 今日の行動目標</Text>
-                        <Text style={styles.actionGoalText}>「{session.actionGoal}」</Text>
+                        <Text style={styles.actionGoalText}>「{actionGoalText}」</Text>
+                    </View>
+                )}
+
+                {/* フィードバック */}
+                {feedback && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>フィードバック</Text>
+                        <View style={styles.feedbackBox}>
+                            <View style={styles.feedbackItem}>
+                                <Text style={styles.feedbackLabel}>👏 今日のよかったところ</Text>
+                                <Text>{feedback.praise}</Text>
+                            </View>
+                            <View style={styles.feedbackItem}>
+                                <Text style={styles.feedbackLabel}>💡 次回へのヒント</Text>
+                                <Text>{feedback.tip}</Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
+
+                {/* AI補足 */}
+                {supplements && supplements.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>AI補足</Text>
+                        {supplements.map((item, index) => (
+                            <View key={`${item.risk}-${index}`} style={styles.supplementBox}>
+                                <Text style={styles.supplementLabel}>リスク</Text>
+                                <Text>{item.risk}</Text>
+                                <Text style={[styles.supplementLabel, { marginTop: 4 }]}>対策</Text>
+                                <Text>{item.measure}</Text>
+                            </View>
+                        ))}
                     </View>
                 )}
 

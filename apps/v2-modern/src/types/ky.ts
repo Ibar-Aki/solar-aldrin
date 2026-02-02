@@ -97,6 +97,24 @@ export interface ExtractedData {
     nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm' | 'completed'
 }
 
+/** フィードバック要約 */
+export interface FeedbackSummary {
+    praise: string
+    tip: string
+}
+
+/** AI補足項目 */
+export interface SupplementItem {
+    risk: string
+    measure: string
+}
+
+/** 行動目標の添削提案 */
+export interface PolishedGoal {
+    original: string
+    polished: string
+}
+
 /** チャットメッセージ */
 export interface ChatMessage {
     id: string

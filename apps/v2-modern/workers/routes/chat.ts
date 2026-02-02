@@ -7,12 +7,19 @@ import { zValidator } from '@hono/zod-validator'
 import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH } from '../../src/lib/schema'
 import type { ExtractedData } from '../../src/types/ky'
+import { logError, logWarn } from '../observability/logger'
 
 type Bindings = {
     OPENAI_API_KEY: string
+    ENABLE_CONTEXT_INJECTION?: string
 }
 
-const chat = new Hono<{ Bindings: Bindings }>()
+const chat = new Hono<{
+    Bindings: Bindings
+    Variables: {
+        reqId: string
+    }
+}>()
 
 // 最大会話履歴数
 const MAX_HISTORY_TURNS = 10
@@ -44,7 +51,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         return c.json({ error: 'OpenAI API key not configured' }, 500)
     }
 
-    const { messages, sessionContext } = c.req.valid('json')
+    const { messages, sessionContext, contextInjection } = c.req.valid('json')
 
     // 入力検証（禁止語・文字数制限）
     let totalLength = 0
@@ -64,12 +71,23 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     // システムプロンプトの構築
     let systemPrompt = SOLO_KY_SYSTEM_PROMPT
+    const contextEnabled = c.env.ENABLE_CONTEXT_INJECTION !== '0'
+    if (contextEnabled && contextInjection) {
+        systemPrompt += `\n\n## 追加コンテキスト\n${contextInjection}`
+    }
+
     if (sessionContext) {
         systemPrompt += `\n\n## 現在のセッション情報
 - 作業者: ${sessionContext.userName}
 - 現場: ${sessionContext.siteName}
 - 天候: ${sessionContext.weather}
 - 登録済み作業数: ${sessionContext.workItemCount}件`
+        if (sessionContext.processPhase) {
+            systemPrompt += `\n- 工程: ${sessionContext.processPhase}`
+        }
+        if (sessionContext.healthCondition) {
+            systemPrompt += `\n- 体調: ${sessionContext.healthCondition}`
+        }
     }
 
     try {
@@ -94,8 +112,11 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         if (!response.ok) {
             const errorText = await response.text()
-            console.error('OpenAI API Error Status:', response.status)
-            console.error('OpenAI API Error Body:', errorText)
+            logError('openai_api_error', {
+                reqId: c.get('reqId'),
+                status: response.status,
+                body: errorText.slice(0, 500),
+            })
             return c.json({ error: `AI応答の取得に失敗しました: ${response.status} ${errorText}` }, 502)
         }
 
@@ -114,8 +135,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         try {
             // 1. まずそのままパースを試みる
             parsedContent = JSON.parse(content)
-        } catch (e) {
-            console.warn('Initial JSON Parse Failed. Attempting cleanup...', e)
+        } catch {
+            logWarn('json_parse_failed', {
+                reqId: c.get('reqId'),
+            })
 
             try {
                 // 2. Markdown記法 (```json ... ```) の削除
@@ -131,9 +154,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 } else {
                     throw new Error('No JSON object found')
                 }
-            } catch (retryError) {
-                console.error('JSON Parse Error:', content)
-                console.error('Retry Error:', retryError)
+            } catch {
+                logError('json_parse_retry_failed', {
+                    reqId: c.get('reqId'),
+                })
 
                 // Fallback for malformed JSON
                 parsedContent = {
@@ -148,7 +172,9 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(parsedContent)
 
         if (!validationResult.success) {
-            console.error('Response Schema Validation Error:', validationResult.error)
+            logError('response_schema_validation_error', {
+                reqId: c.get('reqId'),
+            })
             return c.json({
                 error: 'AIからの応答が不正な形式です。再試行してください。',
                 details: validationResult.error
@@ -167,7 +193,11 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         })
 
     } catch (error) {
-        console.error('Chat processing error:', error)
+        const message = error instanceof Error ? error.message : 'unknown_error'
+        logError('chat_processing_error', {
+            reqId: c.get('reqId'),
+            message,
+        })
         return c.json({ error: 'システムエラーが発生しました' }, 500)
     }
 })

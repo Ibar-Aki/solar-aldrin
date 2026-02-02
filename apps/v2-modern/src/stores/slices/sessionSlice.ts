@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import type { SoloKYSession, SessionStatus, ProcessPhase, HealthCondition } from '@/types/ky'
 import type { KYStore } from '../kyStore'
 import { saveSession } from '@/lib/db'
+import { sendTelemetry } from '@/lib/observability/telemetry'
+import { applyHistoryRetention } from '@/lib/historyUtils'
 
 export interface SessionSlice {
     session: SoloKYSession | null
@@ -32,6 +34,28 @@ export interface SessionSlice {
 }
 
 const now = () => new Date().toISOString()
+
+function countInputLength(session: SoloKYSession): number {
+    let total = 0
+    const add = (value?: string | null) => {
+        if (value) total += value.length
+    }
+
+    add(session.userName)
+    add(session.siteName)
+    add(session.weather)
+    add(session.actionGoal)
+    add(session.nearMissNote)
+
+    for (const item of session.workItems) {
+        add(item.workDescription)
+        add(item.hazardDescription)
+        for (const why of item.whyDangerous) add(why)
+        for (const measure of item.countermeasures) add(measure)
+    }
+
+    return total
+}
 
 export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (set, get) => ({
     session: null,
@@ -67,6 +91,24 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
                 whyDangerous: [],
                 countermeasures: [],
             },
+            feedback: null,
+            supplements: [],
+            polishedGoal: null,
+            polishedActionGoal: null,
+            feedbackLoading: false,
+            feedbackError: null,
+            feedbackSkipped: false,
+            feedbackSessionId: null,
+        })
+
+        void sendTelemetry({
+            event: 'session_start',
+            sessionId: session.id,
+            data: {
+                weather: session.weather,
+                processPhase: session.processPhase ?? 'unknown',
+                healthCondition: session.healthCondition ?? 'unknown',
+            },
         })
     },
 
@@ -88,6 +130,22 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
             session: completedSession,
             status: 'completed',
         })
+
+        const completedAt = completedSession.completedAt ?? now()
+        const durationMs = new Date(completedAt).getTime() - new Date(completedSession.workStartTime).getTime()
+        const inputLength = countInputLength(completedSession)
+
+        void sendTelemetry({
+            event: 'session_complete',
+            sessionId: completedSession.id,
+            value: durationMs,
+            data: {
+                durationMs,
+                inputLength,
+                workItemCount: completedSession.workItems.length,
+                hadNearMiss: completedSession.hadNearMiss ?? false,
+            },
+        })
     },
 
     /** IndexedDBに保存（put で冪等） */
@@ -100,6 +158,11 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
         }
         try {
             await saveSession(session)
+            try {
+                await applyHistoryRetention()
+            } catch (error) {
+                console.warn('History retention failed after save:', error)
+            }
             if (import.meta.env.DEV) console.log('Session saved to IndexedDB:', session.id)
             return true
         } catch (e) {
@@ -137,6 +200,14 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
                 countermeasures: [],
             },
             error: null,
+            feedback: null,
+            supplements: [],
+            polishedGoal: null,
+            polishedActionGoal: null,
+            feedbackLoading: false,
+            feedbackError: null,
+            feedbackSkipped: false,
+            feedbackSessionId: null,
         })
     },
 })

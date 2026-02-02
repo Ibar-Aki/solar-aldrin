@@ -1,10 +1,13 @@
 # Cloudflare Pages Configuration
 name = "voice-ky-v2"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_als"]
 pages_build_output_dir = "./dist"
 
 [vars]
 # 環境変数は wrangler secret で設定
+ENABLE_FEEDBACK = "1"
+ENABLE_CONTEXT_INJECTION = "1"
 
 # Workers (Backend) Configuration
 # Pages Functionsとして動作させるための設定は自動的に読み込まれるが、

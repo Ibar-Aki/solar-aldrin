@@ -5,9 +5,10 @@ import * as path from 'path'
 const RUN_LIVE = process.env.RUN_LIVE_TESTS === '1'
 const DRY_RUN = process.env.DRY_RUN === '1'
 const HAS_OPENAI_KEY = Boolean(process.env.OPENAI_API_KEY)
+const SHOULD_SKIP = (!RUN_LIVE && !DRY_RUN) || (RUN_LIVE && !DRY_RUN && !HAS_OPENAI_KEY)
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
-test.skip(!RUN_LIVE && !DRY_RUN, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
+test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) with OPENAI_API_KEY, or DRY_RUN=1 (mock) to run this test.')
 
 // Force single worker for stability
 test.describe.configure({ mode: 'serial' });
@@ -32,7 +33,7 @@ interface LogEntry {
     message: string
 }
 // Initialize the log array properly
-let conversationLog: LogEntry[] = []
+const conversationLog: LogEntry[] = []
 
 // Helper: ログ記録
 async function recordLog(speaker: string, message: string) {
@@ -276,9 +277,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
         generateReport('PASS')
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'FAIL'
         console.error('Test Failed:', error)
-        generateReport(error.message || 'FAIL')
+        generateReport(message)
         throw error
     }
 })
