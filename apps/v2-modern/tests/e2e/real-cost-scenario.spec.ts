@@ -24,7 +24,7 @@ const METRICS = {
 }
 
 // レポート保存先
-const REPORT_DIR = path.join(process.cwd(), 'reports')
+const REPORT_ROOT = path.join(process.cwd(), 'reports', 'real-cost')
 
 // 既存のログ配列
 interface LogEntry {
@@ -56,11 +56,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const duration = ((METRICS.endTime - METRICS.startTime) / 1000).toFixed(1)
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-    if (!fs.existsSync(REPORT_DIR)) {
-        fs.mkdirSync(REPORT_DIR, { recursive: true })
-    }
     const mode = DRY_RUN ? 'DRY-RUN' : 'LIVE'
-    const reportPath = path.join(REPORT_DIR, `real-cost-${mode}-${timestamp}.md`)
+    const reportDir = path.join(REPORT_ROOT, mode)
+    if (!fs.existsSync(reportDir)) {
+        fs.mkdirSync(reportDir, { recursive: true })
+    }
+    const reportPath = path.join(reportDir, `real-cost-${mode}-${timestamp}.md`)
 
     // メトリクス計算
     const avgResponseTime = METRICS.aiResponseTimes.length > 0

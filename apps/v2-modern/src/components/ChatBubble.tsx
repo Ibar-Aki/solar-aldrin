@@ -18,6 +18,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         }
     }
 
+    const timeLabel = new Date(message.timestamp).toLocaleTimeString('ja-JP', {
+        hour: 'numeric',
+        minute: '2-digit'
+    })
+
     return (
         <div
             className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}
@@ -35,19 +40,24 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                 </button>
             )}
 
-            <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2 ${isUser
-                    ? 'bg-blue-500 text-white rounded-br-md'
-                    : 'bg-gray-100 text-gray-800 rounded-bl-md'
-                    }`}
-            >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <p className={`text-xs mt-1 ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
-                    {new Date(message.timestamp).toLocaleTimeString('ja-JP', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    })}
-                </p>
+            <div className="flex items-end">
+                <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${isUser
+                        ? 'bg-blue-500 text-white rounded-br-md'
+                        : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                        }`}
+                >
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                </div>
+                {isUser ? (
+                    <span className="mr-2 text-xs text-gray-400 order-first" aria-label={`時刻 ${timeLabel}`}>
+                        {timeLabel}
+                    </span>
+                ) : (
+                    <span className="ml-2 text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
+                        {timeLabel}
+                    </span>
+                )}
             </div>
         </div>
     )

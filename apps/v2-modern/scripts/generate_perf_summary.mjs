@@ -64,6 +64,16 @@ function formatRate(count, total) {
     return `${rate.toFixed(1)}% (${count}/${total})`
 }
 
+function formatSecondsForBucket(value, total) {
+    if (!total) return 'N/A'
+    return formatSeconds(value)
+}
+
+function formatRateForBucket(count, total) {
+    if (!total) return 'N/A'
+    return formatRate(count, total)
+}
+
 function detectMode(filePath) {
     const upper = filePath.toUpperCase()
     if (upper.includes('DRY-RUN')) return 'DRY-RUN'
@@ -90,6 +100,7 @@ function parseReport(filePath) {
         metrics[row[1].trim()] = row[2].trim()
     }
 
+    const totalDuration = parseSeconds(metrics['Total Duration'])
     const avgResponse = parseSeconds(metrics['Avg AI Response'])
     const errors = parseInteger(metrics['Errors (AI/System)'])
     const navSuccess = (metrics['Nav Success'] || '').trim().toLowerCase()
@@ -101,6 +112,7 @@ function parseReport(filePath) {
         filePath,
         dayKey,
         result,
+        totalDuration,
         avgResponse,
         errors,
         navFailed,
@@ -125,6 +137,12 @@ function buildSummary(dayKey, stats, existingMeta) {
     const author = existingMeta?.author || 'Codex＋GPT-5'
     const p50 = percentile(stats.responses, 0.5)
     const p95 = percentile(stats.responses, 0.95)
+    const durationP50 = percentile(stats.durations, 0.5)
+    const durationP95 = percentile(stats.durations, 0.95)
+    const liveP50 = percentile(stats.live.responses, 0.5)
+    const liveP95 = percentile(stats.live.responses, 0.95)
+    const liveDurationP50 = percentile(stats.live.durations, 0.5)
+    const liveDurationP95 = percentile(stats.live.durations, 0.95)
 
     return `# 日次性能サマリ (${dayKey})
 
@@ -141,10 +159,24 @@ function buildSummary(dayKey, stats, existingMeta) {
 | 指標 | 値 | 備考 |
 |---|---|---|
 | レポート件数 | ${stats.total} |  |
+| 総所要時間 P50 | ${formatSeconds(durationP50)} | Total Duration を使用 |
+| 総所要時間 P95 | ${formatSeconds(durationP95)} | Total Duration を使用 |
 | 応答時間 P50 | ${formatSeconds(p50)} | Avg AI Response を使用 |
 | 応答時間 P95 | ${formatSeconds(p95)} | Avg AI Response を使用 |
 | エラー率 | ${formatRate(stats.errorCount, stats.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRate(stats.retryCount, stats.total)} | Result=FAIL または Nav Success=No または Errors>0 |
+
+## LIVEのみサマリ
+
+| 指標 | 値 | 備考 |
+|---|---|---|
+| レポート件数 | ${stats.live.total} |  |
+| 総所要時間 P50 | ${formatSecondsForBucket(liveDurationP50, stats.live.total)} | Total Duration を使用 |
+| 総所要時間 P95 | ${formatSecondsForBucket(liveDurationP95, stats.live.total)} | Total Duration を使用 |
+| 応答時間 P50 | ${formatSecondsForBucket(liveP50, stats.live.total)} | Avg AI Response を使用 |
+| 応答時間 P95 | ${formatSecondsForBucket(liveP95, stats.live.total)} | Avg AI Response を使用 |
+| エラー率 | ${formatRateForBucket(stats.live.errorCount, stats.live.total)} | Errors (AI/System) > 0 |
+| 再試行率 | ${formatRateForBucket(stats.live.retryCount, stats.live.total)} | Result=FAIL または Nav Success=No または Errors>0 |
 
 ## 内訳
 
@@ -171,16 +203,27 @@ function main() {
             grouped[report.dayKey] = {
                 total: 0,
                 responses: [],
+                durations: [],
                 errorCount: 0,
                 retryCount: 0,
                 modeCounts: {},
                 resultCounts: {},
                 files: [],
+                live: {
+                    total: 0,
+                    responses: [],
+                    durations: [],
+                    errorCount: 0,
+                    retryCount: 0,
+                },
             }
         }
 
         const bucket = grouped[report.dayKey]
         bucket.total += 1
+        if (typeof report.totalDuration === 'number') {
+            bucket.durations.push(report.totalDuration)
+        }
         if (typeof report.avgResponse === 'number') {
             bucket.responses.push(report.avgResponse)
         }
@@ -193,6 +236,22 @@ function main() {
         bucket.modeCounts[report.mode] = (bucket.modeCounts[report.mode] || 0) + 1
         bucket.resultCounts[report.result] = (bucket.resultCounts[report.result] || 0) + 1
         bucket.files.push(report.filePath)
+
+        if (report.mode === 'LIVE') {
+            bucket.live.total += 1
+            if (typeof report.totalDuration === 'number') {
+                bucket.live.durations.push(report.totalDuration)
+            }
+            if (typeof report.avgResponse === 'number') {
+                bucket.live.responses.push(report.avgResponse)
+            }
+            if (report.errors > 0) {
+                bucket.live.errorCount += 1
+            }
+            if (report.needsRetry) {
+                bucket.live.retryCount += 1
+            }
+        }
     }
 
     const dayKeys = Object.keys(grouped).sort()
@@ -226,6 +285,7 @@ function main() {
 
 ## 指標の定義
 
+- **総所要時間 P50/P95**: 各レポートの \`Total Duration\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **応答時間 P50/P95**: 各レポートの \`Avg AI Response\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **エラー率**: \`Errors (AI/System)\` が 1 以上のレポート比率
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
