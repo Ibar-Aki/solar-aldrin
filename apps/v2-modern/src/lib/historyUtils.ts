@@ -153,6 +153,10 @@ export async function applyHistoryRetention(): Promise<void> {
     }
 }
 
+export function resetRetentionState() {
+    retentionApplied = false
+}
+
 export async function getRecentSessions(days: number): Promise<SoloKYSession[]> {
     const sessions = await getAllSessionsSorted()
     return sessions.filter(session => withinDays(getSessionDate(session), days))

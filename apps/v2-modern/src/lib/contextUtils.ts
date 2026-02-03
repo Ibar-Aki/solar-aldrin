@@ -5,6 +5,7 @@ import {
     getHiyariHattoItems,
     getPastRisks,
     getRecentRisks,
+    type RiskEntry,
 } from '@/lib/historyUtils'
 
 export type DayContext = {
@@ -30,6 +31,24 @@ const WEATHER_CONTEXTS: Record<string, string> = {
     '強風': '飛散物と高所作業に注意してください',
     '猛暑': '熱中症と集中力低下に注意してください',
     '厳寒': '凍結と手元の感覚低下に注意してください',
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function normalizeRiskText(value: string): string {
+    return value.trim().toLowerCase()
+}
+
+function diffDaysFrom(baseDate: Date, dateIso: string): number {
+    const diffMs = baseDate.getTime() - new Date(dateIso).getTime()
+    return Math.max(0, Math.floor(diffMs / DAY_MS))
+}
+
+function formatRecentRiskItem(entry: RiskEntry, baseDate: Date): string {
+    const daysAgo = diffDaysFrom(baseDate, entry.date)
+    const label = daysAgo <= 0 ? '本日' : (daysAgo === 1 ? '昨日' : `${Math.min(daysAgo, 3)}日前`)
+    const summary = formatRiskSummary(entry, 44)
+    return `- ${label}: ${summary}`
 }
 
 export function getDayContext(date = new Date()): DayContext | null {
@@ -75,7 +94,6 @@ export async function buildContextInjection(options: ContextInjectionOptions): P
         }),
         getRecentRisks(3, {
             siteName: session.siteName,
-            workDescription: userInput,
             excludeSessionId: session.id,
         }),
         getHiyariHattoItems(maxHiyari, {
@@ -88,8 +106,15 @@ export async function buildContextInjection(options: ContextInjectionOptions): P
     const weatherContext = getWeatherContext(session.weather)
     const sections: string[] = []
 
+    let baseDate = new Date(session.workStartTime)
+    if (Number.isNaN(baseDate.getTime())) {
+        baseDate = new Date()
+    }
+
     if (recentRisks.length > 0) {
-        const items = recentRisks.slice(0, maxRecentRisks).map(entry => `- ${formatRiskSummary(entry)}`)
+        const items = recentRisks
+            .slice(0, maxRecentRisks)
+            .map(entry => formatRecentRiskItem(entry, baseDate))
         sections.push([
             '【直近3日以内に同様の危険】',
             items.join('\n'),
@@ -98,11 +123,15 @@ export async function buildContextInjection(options: ContextInjectionOptions): P
     }
 
     if (pastRisks.length > 0) {
-        const items = pastRisks.map(entry => `- ${formatRiskSummary(entry)}`)
-        sections.push([
-            '【過去のKYで挙げられた危険（参考）】',
-            items.join('\n'),
-        ].join('\n'))
+        const recentKeys = new Set(recentRisks.map(entry => normalizeRiskText(entry.risk)))
+        const filteredPast = pastRisks.filter(entry => !recentKeys.has(normalizeRiskText(entry.risk)))
+        if (filteredPast.length > 0) {
+            const items = filteredPast.map(entry => `- ${formatRiskSummary(entry)}`)
+            sections.push([
+                '【過去のKYで挙げられた危険（参考）】',
+                items.join('\n'),
+            ].join('\n'))
+        }
     }
 
     if (hiyariItems.length > 0) {
