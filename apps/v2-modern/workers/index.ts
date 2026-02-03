@@ -72,6 +72,7 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string)
     if (DEFAULT_ALLOWED_ORIGINS.includes(origin)) return true
     if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
     if (origin.endsWith('.workers.dev')) return true
+    if (origin.endsWith('.ngrok-free.dev')) return true
     if (origin.startsWith('http://localhost:')) return true
     if (parsed) {
         if (isLocalHost(parsed.hostname)) return true

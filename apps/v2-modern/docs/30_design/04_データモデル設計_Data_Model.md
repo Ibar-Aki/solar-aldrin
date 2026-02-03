@@ -1,146 +1,133 @@
-# データモデル設計（Phase 2.3 対応）
+# データモデル設計（v2-modern）
 
-**目的**: セッション/記録/作業項目の構造と整合性を定義する  
-**更新日**: 2026-01-31  
-**対応Phase**: 2.3 (履歴管理・データ永続化)
+**目的**: セッション/作業項目/抽出データの構造と整合性を定義する  
+**更新日**: 2026-02-03
 
 ---
 
 ## 1. 主要エンティティ
 
-- **SoloKYSession**: 一人KY活動のセッション（進行中/完了済み共通）
-- **WorkItem**: 作業単位（作業内容 + 危険 + 対策）
-- **ProcessPhase**: 作業工程の選択肢
-- **HealthCondition**: 体調チェックの選択肢
-- **ExtractedData**: AIから抽出されるデータ
-- **ChatMessage**: 対話メッセージ
+- **SoloKYSession**: 一人KY活動のセッション
+- **WorkItem**: 作業単位（作業 + 危険 + 要因 + 対策）
+- **ExtractedData**: AIから抽出される断片データ
+- **ChatMessage**: 対話ログ
+- **FeedbackSummary / SupplementItem / PolishedGoal**: 事後フィードバック
 
 ---
 
-## 2. SoloKYSession（一人KYセッション）
+## 2. SoloKYSession
 
 ```typescript
 interface SoloKYSession {
-    // 識別子
-    id: string              // UUID v4
+  id: string
 
-    // 基本情報
-    userName: string        // 作業者名
-    siteName: string        // 現場名
-    weather: string         // 天候
-    temperature: number | null  // 気温（℃）
-    processPhase: ProcessPhase | null  // 作業工程 (UX-11)
-    healthCondition: HealthCondition | null  // 体調 (UX-12)
-    
-    // 時刻情報
-    workStartTime: string   // 作業開始時刻 (ISO 8601)
-    workEndTime: string | null  // 作業終了時刻
-    createdAt: string       // セッション作成日時
-    completedAt: string | null  // 完了日時
+  userName: string
+  siteName: string
+  weather: string
+  temperature: number | null
+  processPhase: ProcessPhase | null
+  healthCondition: HealthCondition | null
 
-    // 環境リスク
-    environmentRisk: string | null  // AI自動生成
+  workStartTime: string
+  workEndTime: string | null
+  createdAt: string
+  completedAt: string | null
 
-    // 作業と危険
-    workItems: WorkItem[]   // 作業項目リスト
+  environmentRisk: string | null
 
-    // 行動目標と確認
-    actionGoal: string | null  // 今日の行動目標
-    pointingConfirmed: boolean | null  // 指差し確認実施
+  workItems: WorkItem[]
 
-    // 完了確認
-    allMeasuresImplemented: boolean | null  // 全対策実施
-    hadNearMiss: boolean | null  // ヒヤリハット発生
-    nearMissNote: string | null  // ヒヤリハット備考
+  actionGoal: string | null
+  pointingConfirmed: boolean | null
+
+  allMeasuresImplemented: boolean | null
+  hadNearMiss: boolean | null
+  nearMissNote: string | null
 }
 ```
 
 ---
 
-## 3. WorkItem（作業項目）
+## 3. WorkItem
 
 ```typescript
 interface WorkItem {
-    id: string              // UUID v4
-    workDescription: string // 作業内容の詳細
-    hazardDescription: string  // 危険内容
-    riskLevel: 1 | 2 | 3 | 4 | 5  // 危険度評価
-    whyDangerous: string[]  // なぜ危険か（複数の理由）
-    countermeasures: string[]  // 対策（複数）
+  id: string
+  workDescription: string
+  hazardDescription: string
+  riskLevel: 1 | 2 | 3 | 4 | 5
+  whyDangerous: string[]
+  countermeasures: string[]
 }
 ```
 
 ---
 
-## 4. 選択肢型
-
-### ProcessPhase（作業工程）
+## 4. ExtractedData（AI抽出）
 
 ```typescript
-type ProcessPhase =
-    | '搬入・荷受け'
-    | '基礎土台・建地準備'
-    | '組み立て'
-    | '付帯設備設置・仕上げ'
-    | '引き渡し前確認'
-    | 'フリー'
-```
-
-### HealthCondition（体調）
-
-```typescript
-type HealthCondition = 'bad' | 'good' | 'great'
-```
-
-### SessionStatus（セッション状態）
-
-```typescript
-type SessionStatus =
-    | 'basic_info'    // 基本情報入力中
-    | 'work_items'    // 作業・危険入力中
-    | 'action_goal'   // 行動目標設定中
-    | 'confirmation'  // 完了確認中
-    | 'completed'     // 完了
+interface ExtractedData {
+  workDescription?: string | null
+  hazardDescription?: string | null
+  riskLevel?: 1 | 2 | 3 | 4 | 5 | null
+  whyDangerous?: string[]
+  countermeasures?: string[]
+  actionGoal?: string | null
+  nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm' | 'completed'
+}
 ```
 
 ---
 
-## 5. 保存先と永続化
+## 5. 状態と一時データ
 
-| 保存先 | 用途 | 技術 |
+- **SessionStatus**
+`basic_info` / `work_items` / `action_goal` / `confirmation` / `completed`
+
+- **currentWorkItem**
+会話途中の作業は `Partial<WorkItem>` として保持される。
+
+---
+
+## 6. 永続化
+
+| 保存先 | 内容 | 技術 |
 | :--- | :--- | :--- |
-| **ローカル** | 履歴保存・オフライン対応 | IndexedDB (Dexie.js) |
-| **サーバー** | 組織共有・バックアップ（将来） | Supabase 等 |
+| localStorage | 進行中セッション、UI状態 | Zustand Persist |
+| IndexedDB | 完了セッション履歴 | Dexie |
 
-### IndexedDB スキーマ
-
+**IndexedDB スキーマ**
 ```typescript
-// db.ts
 class KYDatabase extends Dexie {
-    sessions!: Table<SoloKYSession, string>
-
-    constructor() {
-        super('VoiceKYDatabase')
-        this.version(1).stores({
-            sessions: 'id, createdAt, siteName, userName'
-        })
-    }
+  sessions!: Table<SoloKYSession, string>
+  constructor() {
+    super('VoiceKYDatabase')
+    this.version(1).stores({
+      sessions: 'id, createdAt, siteName, userName'
+    })
+  }
 }
 ```
 
 ---
 
-## 6. バリデーション
+## 7. 履歴の保持ポリシー
 
-- **Zod スキーマ**: `validation.ts` で定義
-- **ISO 8601**: 日時フィールドはミリ秒対応
-- **必須/任意**: processPhase, healthCondition は null 許容
-- **配列**: workItems, whyDangerous, countermeasures は空配列許容
+- **保持日数**: 90日
+- **最大件数**: 100件
+- **適用タイミング**: セッション保存後に自動適用
 
 ---
 
-## 7. 将来拡張
+## 8. バリデーション
 
-- ベクトル検索（RAGの精度向上）
-- 組織/現場ごとの権限分離
-- サーバー同期（オンライン時に自動バックアップ）
+- Zodスキーマは `src/lib/kySchemas.ts` と `src/lib/schema.ts` に定義
+- `messages` は `user` / `assistant` のみ許可
+- `contextInjection` は最大長制限あり
+
+---
+
+## 9. 将来拡張
+
+- ベクトル検索による類似危険の抽出
+- サーバー同期（組織内共有）
