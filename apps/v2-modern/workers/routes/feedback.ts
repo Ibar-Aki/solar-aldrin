@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { FeedbackRequestSchema, FeedbackResponseSchema, type FeedbackRequest, type FeedbackResponse } from '../../src/lib/schema'
 import { FEEDBACK_SYSTEM_PROMPT } from '../prompts/feedbackKY'
 import { logError, logWarn } from '../observability/logger'
+import { fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
 
 interface KVNamespace {
     get(key: string): Promise<string | null>
@@ -145,16 +146,7 @@ function buildFallbackResponse(requestId?: string) {
     }
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
-    try {
-        const response = await fetch(input, { ...init, signal: controller.signal })
-        return response
-    } finally {
-        clearTimeout(timeout)
-    }
-}
+
 
 feedback.post(
     '/',
@@ -240,66 +232,21 @@ feedback.post(
             response_format: { type: 'json_object' },
         }
 
-        const requestOpenAI = async () => {
-            return fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify(requestBody),
-            }, FEEDBACK_TIMEOUT_MS)
-        }
-
         try {
-            let response = await requestOpenAI()
-            if (!response.ok && (response.status >= 500 || response.status === 429)) {
-                logWarn('feedback_retry', { reqId, status: response.status })
-                response = await requestOpenAI()
-            }
+            const responseData = await fetchOpenAICompletion({
+                apiKey,
+                body: requestBody,
+                timeoutMs: FEEDBACK_TIMEOUT_MS,
+                reqId,
+            })
 
-            if (!response.ok) {
-                const errorText = await response.text()
-                logError('feedback_openai_error', {
-                    reqId,
-                    status: response.status,
-                    body: errorText.slice(0, 300),
-                })
-                return c.json({
-                    error: {
-                        code: 'UPSTREAM_ERROR',
-                        message: 'AI応答の取得に失敗しました',
-                        retriable: response.status === 429 || response.status >= 500,
-                        requestId: reqId,
-                    }
-                }, response.status === 429 ? 429 : 502)
-            }
-
-            const data = await response.json() as {
-                choices: Array<{ message: { content: string } }>
-            }
-
-            const content = data.choices[0]?.message?.content || '{}'
             let parsed: unknown
-
             try {
-                parsed = JSON.parse(content)
+                parsed = safeParseJSON(responseData.content)
             } catch {
-                try {
-                    let cleanContent = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
-                    const firstBrace = cleanContent.indexOf('{')
-                    const lastBrace = cleanContent.lastIndexOf('}')
-                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                        cleanContent = cleanContent.substring(firstBrace, lastBrace + 1)
-                        parsed = JSON.parse(cleanContent)
-                    } else {
-                        throw new Error('No JSON object found')
-                    }
-                } catch {
-                    logWarn('feedback_json_parse_failed', { reqId })
-                    const fallback = buildFallbackResponse(reqId)
-                    return c.json(fallback)
-                }
+                logWarn('feedback_json_parse_failed', { reqId })
+                const fallback = buildFallbackResponse(reqId)
+                return c.json(fallback)
             }
 
             const validation = FeedbackResponseSchema.safeParse(parsed)
@@ -370,7 +317,7 @@ feedback.post(
             return c.json(responseBody)
 
         } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
+            if (error instanceof Error && error.message === 'TIMEOUT') {
                 return c.json({
                     error: {
                         code: 'TIMEOUT',

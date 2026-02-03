@@ -94,6 +94,10 @@
 4. **Store への統合** (`useKYStore`) ✅
     - `feedback` (praise, tip) を状態管理。
 
+5. **バックエンド共通化 (Refactoring)** (`workers/lib/openai.ts`) ✅
+    - OpenAI API 呼び出しロジックを `fetchOpenAICompletion` に共通化。
+    - `chat.ts` と `feedback.ts` の重複コードを排除。
+
 ---
 
 ### 4.3 ADV-02: 危険・対策のAI自動補足 (実装済)

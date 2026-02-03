@@ -8,6 +8,7 @@ import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH } from '../../src/lib/schema'
 import type { ExtractedData } from '../../src/types/ky'
 import { logError, logWarn } from '../observability/logger'
+import { fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -91,14 +92,9 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     }
 
     try {
-        // OpenAI API呼び出し
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
+        const responseData = await fetchOpenAICompletion({
+            apiKey,
+            body: {
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: systemPrompt },
@@ -106,64 +102,21 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 ],
                 max_tokens: MAX_TOKENS,
                 temperature: 0.7,
-                response_format: { type: 'json_object' }, // Enforce JSON
-            }),
+                response_format: { type: 'json_object' },
+            },
+            reqId: c.get('reqId'),
         })
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            logError('openai_api_error', {
-                reqId: c.get('reqId'),
-                status: response.status,
-                body: errorText.slice(0, 500),
-            })
-            return c.json({ error: `AI応答の取得に失敗しました: ${response.status} ${errorText}` }, 502)
-        }
-
-        const data = await response.json() as {
-            choices: Array<{
-                message: { content: string }
-            }>
-            usage?: {
-                total_tokens: number
-            }
-        }
-
-        const content = data.choices[0]?.message?.content || '{}'
         let parsedContent: { reply?: string; extracted?: ExtractedData } = {}
 
         try {
-            // 1. まずそのままパースを試みる
-            parsedContent = JSON.parse(content)
+            parsedContent = safeParseJSON(responseData.content)
         } catch {
-            logWarn('json_parse_failed', {
-                reqId: c.get('reqId'),
-            })
-
-            try {
-                // 2. Markdown記法 (```json ... ```) の削除
-                let cleanContent = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
-
-                // 3. 最初に見つかった { から 最後の } までを抽出
-                const firstBrace = cleanContent.indexOf('{')
-                const lastBrace = cleanContent.lastIndexOf('}')
-
-                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                    cleanContent = cleanContent.substring(firstBrace, lastBrace + 1)
-                    parsedContent = JSON.parse(cleanContent)
-                } else {
-                    throw new Error('No JSON object found')
-                }
-            } catch {
-                logError('json_parse_retry_failed', {
-                    reqId: c.get('reqId'),
-                })
-
-                // Fallback for malformed JSON
-                parsedContent = {
-                    reply: '申し訳ありません、システムの内部エラーが発生しました。もう一度お試しください。',
-                    extracted: {}
-                }
+            logError('json_parse_retry_failed', { reqId: c.get('reqId') })
+            // Fallback for malformed JSON
+            parsedContent = {
+                reply: '申し訳ありません、システムの内部エラーが発生しました。もう一度お試しください。',
+                extracted: {}
             }
         }
 
@@ -172,9 +125,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(parsedContent)
 
         if (!validationResult.success) {
-            logError('response_schema_validation_error', {
-                reqId: c.get('reqId'),
-            })
+            logError('response_schema_validation_error', { reqId: c.get('reqId') })
             return c.json({
                 error: 'AIからの応答が不正な形式です。再試行してください。',
                 details: validationResult.error
@@ -182,17 +133,26 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         }
 
         const validContent = validationResult.data
-        const usage = data.usage
 
         return c.json({
             reply: validContent.reply,
             extracted: validContent.extracted || {},
             usage: {
-                totalTokens: usage?.total_tokens || 0,
+                totalTokens: responseData.usage?.total_tokens || 0,
             },
         })
 
     } catch (error) {
+        if (error instanceof Error && error.message === 'TIMEOUT') {
+            return c.json({ error: 'AI応答がタイムアウトしました', retriable: true }, 504)
+        }
+
+        // @ts-ignore
+        if (error.status === 429 || error.status >= 500) {
+            // @ts-ignore
+            return c.json({ error: 'AIサービスが混雑しています', retriable: true }, error.status)
+        }
+
         const message = error instanceof Error ? error.message : 'unknown_error'
         logError('chat_processing_error', {
             reqId: c.get('reqId'),

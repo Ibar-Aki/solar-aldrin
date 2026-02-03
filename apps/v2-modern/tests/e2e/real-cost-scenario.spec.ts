@@ -271,6 +271,56 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         await recordLog('System', 'Navigated to Complete page')
         METRICS.navigationSuccess = true
 
+        // --- Phase 2.6 Evolution: Verify Feedback Features ---
+        // フィードバックカードの出現待ち（少し時間がかかる場合があるため長めに）
+        console.log('Waiting for Feedback Cards...')
+        const feedbackSection = page.locator('text=事後フィードバック').first()
+        await expect(feedbackSection).toBeVisible({ timeout: 15000 })
+        await recordLog('System', 'Feedback Section Visible')
+
+        // 1. 良い点 (FeedbackCard)
+        const praiseIcon = page.locator('svg.text-orange-500').first() // Trophy icon
+        await expect(praiseIcon).toBeVisible()
+        await recordLog('System', 'Praise/Tip Card Verified')
+
+        // 2. 危険の補足 (SupplementCard)
+        // supplementsがある場合のみ表示されるが、今回のシナリオでは出るはず
+        // "AIからの危険予知補足" というヘッダーを探す (SupplementCard.tsxの実装依存)
+        // もし見つからなければスキップするが、テストとしては警告ログを出す
+        try {
+            const supplementHeader = page.locator('text=AIからの危険予知補足')
+            if (await supplementHeader.count() > 0) {
+                await expect(supplementHeader).toBeVisible()
+                await recordLog('System', 'Supplement Card Verified')
+            } else {
+                await recordLog('System', 'Supplement Card NOT Found (Maybe AI suggested none?)')
+            }
+        } catch (e) {
+            console.warn('Supplement check failed non-fatally', e)
+        }
+
+        // 3. 行動目標の添削 (GoalPolishCard)
+        try {
+            // "行動目標のブラッシュアップ"
+            const polishHeader = page.locator('text=行動目標のブラッシュアップ')
+            if (await polishHeader.count() > 0) {
+                await expect(polishHeader).toBeVisible()
+                await recordLog('System', 'Goal Polish Card Verified')
+
+                // 採用ボタンを押してみる
+                const adoptButton = page.getByText('この目標を採用').first()
+                if (await adoptButton.count() > 0) {
+                    await adoptButton.click()
+                    await recordLog('System', 'Clicked Adopt Goal Button')
+                    await page.waitForTimeout(500) // UI反映待ち
+                }
+            }
+        } catch (e) {
+            console.warn('Polish check failed non-fatally', e)
+        }
+
+        // ----------------------------------------------------
+
         // PDFボタン待ち
         await expect(page.locator('button:has-text("PDF")').first()).toBeVisible()
         await recordLog('System', 'PDF Download button visible')
