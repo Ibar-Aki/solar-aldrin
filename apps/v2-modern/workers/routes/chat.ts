@@ -140,6 +140,119 @@ function normalizeStringList(values: string[] | undefined): string[] | undefined
     return [...new Set(compacted)]
 }
 
+function coerceStringArray(value: unknown): string[] | undefined {
+    if (Array.isArray(value)) {
+        const normalized = value
+            .filter((item): item is string => typeof item === 'string')
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+        return normalized.length > 0 ? normalized : undefined
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim()
+        return trimmed ? [trimmed] : undefined
+    }
+
+    return undefined
+}
+
+function coerceRiskLevel(value: unknown): 1 | 2 | 3 | 4 | 5 | undefined {
+    const num = (() => {
+        if (typeof value === 'number') return value
+        if (typeof value === 'string') {
+            const parsed = Number.parseInt(value.trim(), 10)
+            return Number.isFinite(parsed) ? parsed : NaN
+        }
+        return NaN
+    })()
+
+    if (num === 1 || num === 2 || num === 3 || num === 4 || num === 5) {
+        return num
+    }
+    return undefined
+}
+
+function coerceNextAction(value: unknown): ExtractedData['nextAction'] | undefined {
+    if (typeof value !== 'string') return undefined
+    const normalized = value.trim()
+    const allowed: Array<NonNullable<ExtractedData['nextAction']>> = [
+        'ask_work',
+        'ask_hazard',
+        'ask_why',
+        'ask_countermeasure',
+        'ask_risk_level',
+        'ask_more_work',
+        'ask_goal',
+        'confirm',
+        'completed',
+    ]
+    return allowed.includes(normalized as NonNullable<ExtractedData['nextAction']>)
+        ? (normalized as NonNullable<ExtractedData['nextAction']>)
+        : undefined
+}
+
+function normalizeExtractedData(value: unknown): ExtractedData | undefined {
+    if (!value || typeof value !== 'object') return undefined
+    const raw = value as Record<string, unknown>
+
+    const extracted: ExtractedData = {}
+
+    if (typeof raw.workDescription === 'string') {
+        const normalized = raw.workDescription.trim()
+        if (normalized) extracted.workDescription = normalized
+    }
+    if (typeof raw.hazardDescription === 'string') {
+        const normalized = raw.hazardDescription.trim()
+        if (normalized) extracted.hazardDescription = normalized
+    }
+
+    const riskLevel = coerceRiskLevel(raw.riskLevel)
+    if (riskLevel) extracted.riskLevel = riskLevel
+
+    const whyDangerous = coerceStringArray(raw.whyDangerous)
+    if (whyDangerous) extracted.whyDangerous = whyDangerous
+
+    const countermeasures = coerceStringArray(raw.countermeasures)
+    if (countermeasures) extracted.countermeasures = countermeasures
+
+    if (typeof raw.actionGoal === 'string') {
+        const normalized = raw.actionGoal.trim()
+        if (normalized) extracted.actionGoal = normalized
+    }
+
+    const nextAction = coerceNextAction(raw.nextAction)
+    if (nextAction) extracted.nextAction = nextAction
+
+    return Object.keys(extracted).length > 0 ? extracted : undefined
+}
+
+function normalizeModelResponse(rawParsed: unknown): { reply: string; extracted?: ExtractedData } {
+    const obj = (rawParsed && typeof rawParsed === 'object')
+        ? (rawParsed as Record<string, unknown>)
+        : {}
+
+    const reply = typeof obj.reply === 'string'
+        ? obj.reply
+        : typeof obj.message === 'string'
+            ? obj.message
+            : obj.reply != null
+                ? String(obj.reply)
+                : ''
+
+    // Some model outputs may accidentally place extracted fields at top-level.
+    const extractedCandidate = (obj.extracted && typeof obj.extracted === 'object')
+        ? obj.extracted
+        : obj
+
+    const extracted = normalizeExtractedData(extractedCandidate)
+
+    return {
+        reply: reply || '承知しました。続けてください。',
+        ...(extracted ? { extracted } : {}),
+    }
+}
+
 /**
  * 3.8: LLMが返した抽出JSONのうち、未確定の空値(null/空文字/空配列)を削除する。
  */
@@ -183,12 +296,12 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         // Fix: Use result.error directly, or cast if flatten doesn't exist on the type at runtime/build time appropriately
         // For Hono zValidator, the error is usually a ZodError. 
         // We will just return result.error for safety as instructed by self-review.
-        return c.json({ error: 'Validation Error', details: result.error }, 400)
+        return c.json({ error: 'Validation Error', code: 'VALIDATION_ERROR', details: result.error }, 400)
     }
 }), async (c) => {
     const apiKey = c.env.OPENAI_API_KEY
     if (!apiKey) {
-        return c.json({ error: 'OpenAI API key not configured' }, 500)
+        return c.json({ error: 'OpenAI API key not configured', code: 'OPENAI_KEY_MISSING', requestId: c.get('reqId') }, 500)
     }
 
     const { messages, sessionContext, contextInjection } = c.req.valid('json')
@@ -198,12 +311,12 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     for (const msg of messages) {
         totalLength += msg.content.length
         if (msg.role === 'user' && hasBannedWord(msg.content)) {
-            return c.json({ error: '禁止語が含まれています' }, 400)
+            return c.json({ error: '禁止語が含まれています', code: 'BANNED_WORD', requestId: c.get('reqId') }, 400)
         }
     }
 
     if (totalLength > MAX_TOTAL_INPUT_LENGTH) {
-        return c.json({ error: `メッセージ全体の合計が${MAX_TOTAL_INPUT_LENGTH}文字を超えています（現在: ${totalLength}文字）` }, 400)
+        return c.json({ error: `メッセージ全体の合計が${MAX_TOTAL_INPUT_LENGTH}文字を超えています（現在: ${totalLength}文字）`, code: 'INPUT_TOO_LARGE', requestId: c.get('reqId') }, 400)
     }
 
     // 会話履歴を制限
@@ -247,12 +360,16 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         // --- Zodによる構造検証 ---
         // usageは後で付与するため除外して検証
-        const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(parsedContent)
+        const normalized = normalizeModelResponse(parsedContent)
+        const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(normalized)
 
         if (!validationResult.success) {
             logError('response_schema_validation_error', { reqId: c.get('reqId') })
             return c.json({
                 error: 'AIからの応答が不正な形式です。再試行してください。',
+                code: 'AI_RESPONSE_INVALID_SCHEMA',
+                requestId: c.get('reqId'),
+                retriable: true,
                 details: validationResult.error
             }, 502)
         }
@@ -270,7 +387,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     } catch (error) {
         if (error instanceof Error && error.message === 'TIMEOUT') {
-            return c.json({ error: 'AI応答がタイムアウトしました', retriable: true }, 504)
+            return c.json({ error: 'AI応答がタイムアウトしました', code: 'AI_TIMEOUT', requestId: c.get('reqId'), retriable: true }, 504)
         }
 
         const status = getErrorStatus(error)
@@ -280,7 +397,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     status === 500 ? 500 :
                         status === 502 ? 502 :
                             status === 504 ? 504 : 503
-            return c.json({ error: 'AIサービスが混雑しています', retriable: true }, retriableStatus)
+            return c.json({ error: 'AIサービスが混雑しています', code: 'AI_UPSTREAM_ERROR', requestId: c.get('reqId'), retriable: true }, retriableStatus)
         }
 
         const message = error instanceof Error ? error.message : 'unknown_error'
@@ -288,7 +405,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             reqId: c.get('reqId'),
             message,
         })
-        return c.json({ error: 'システムエラーが発生しました' }, 500)
+        return c.json({ error: 'システムエラーが発生しました', code: 'CHAT_PROCESSING_ERROR', requestId: c.get('reqId') }, 500)
     }
 })
 

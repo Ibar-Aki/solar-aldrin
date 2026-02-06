@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:host": "vite --host",
-    "dev:workers": "wrangler dev workers/index.ts",
+    "dev:workers": "wrangler dev workers/index.ts -c wrangler.worker.toml",
     "build": "tsc -b && vite build",
-    "deploy:workers": "wrangler deploy workers/index.ts",
+    "deploy:workers": "wrangler deploy workers/index.ts -c wrangler.worker.toml",
     "deploy:pages": "wrangler pages deploy dist --project-name voice-ky-v2 --commit-dirty=true",
     "security:local": "npm run lint && npm run test && npm run build && npm audit --omit=dev",
     "security:ops": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/security/automate-security-ops.ps1",

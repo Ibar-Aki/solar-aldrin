@@ -1,4 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Ensure HOME is set for Playwright browser cache/user data on Windows.
 const resolvedHome =
@@ -13,10 +15,24 @@ if (!process.env.HOME && resolvedHome) {
 }
 
 const isLiveRun = process.env.RUN_LIVE_TESTS === '1';
-const liveBaseUrl = process.env.LIVE_BASE_URL?.trim();
 
+function inferPagesUrl(): string | undefined {
+    try {
+        const tomlPath = path.join(process.cwd(), 'wrangler.toml');
+        if (!fs.existsSync(tomlPath)) return undefined;
+        const toml = fs.readFileSync(tomlPath, 'utf8');
+        const match = toml.match(/^\s*name\s*=\s*"([^"]+)"\s*$/m);
+        const name = match?.[1]?.trim();
+        if (!name) return undefined;
+        return `https://${name}.pages.dev`;
+    } catch {
+        return undefined;
+    }
+}
+
+const liveBaseUrl = process.env.LIVE_BASE_URL?.trim() || inferPagesUrl();
 if (isLiveRun && !liveBaseUrl) {
-    throw new Error('RUN_LIVE_TESTS=1 の場合は LIVE_BASE_URL を設定してください。');
+    throw new Error('RUN_LIVE_TESTS=1 の場合は LIVE_BASE_URL を設定するか、wrangler.toml に name を設定してください。');
 }
 
 export default defineConfig({

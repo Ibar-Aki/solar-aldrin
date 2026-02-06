@@ -43,8 +43,12 @@ const DEV_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:3000',
     'https://v2.voice-ky-assistant.pages.dev',
+    'https://voice-ky-v2.pages.dev',
 ]
-const PRODUCTION_ALLOWED_ORIGINS = ['https://v2.voice-ky-assistant.pages.dev']
+const PRODUCTION_ALLOWED_ORIGINS = [
+    'https://v2.voice-ky-assistant.pages.dev',
+    'https://voice-ky-v2.pages.dev',
+]
 
 function parseBearerToken(authHeader: string | null | undefined): string | null {
     if (!authHeader?.startsWith('Bearer ')) return null

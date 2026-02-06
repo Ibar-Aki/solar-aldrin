@@ -1,6 +1,6 @@
 # Voice KY Assistant v2
 
-更新日: 2026-02-06（実費テスト運用を追記）
+更新日: 2026-02-07（実費テスト運用を追記）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -70,7 +70,7 @@ npm run deploy:pages
 
 ```bash
 npx wrangler login
-npm run security:ops -- -AllowedOrigins "https://v2.voice-ky-assistant.pages.dev,https://<your-domain>" -BaseUrl "https://<your-worker-or-pages-domain>"
+npm run security:ops -- -AllowedOrigins "https://voice-ky-v2.pages.dev,https://your-domain.example" -BaseUrl "https://voice-ky-v2.solar-aldrin-ky.workers.dev"
 ```
 
 - `security:ops` は本番向けのセキュリティ設定反映、ローカル検証、デプロイ、スモークテストを順番に実行します。
@@ -78,10 +78,16 @@ npm run security:ops -- -AllowedOrigins "https://v2.voice-ky-assistant.pages.dev
 
 ### 実費テスト（本番直結）
 
-環境変数を設定して、事前疎通チェック付きで実行します。
+基本は `npm run test:cost:ops` だけで実行できます（`wrangler.toml` の `name` から Pages URL を推測します）。
 
 ```bash
-set LIVE_BASE_URL=https://v2.voice-ky-assistant.pages.dev
+npm run test:cost:ops
+```
+
+- 明示的に指定したい場合:
+
+```bash
+set LIVE_BASE_URL=https://voice-ky-v2.pages.dev
 set VITE_API_TOKEN=<your_api_token>
 npm run test:cost:ops
 ```

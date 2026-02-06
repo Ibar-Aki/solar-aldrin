@@ -27,7 +27,8 @@ const METRICS = {
     aiResponseTimes: [] as number[],
     errors: 0,
     turns: 0,
-    navigationSuccess: false
+    navigationSuccess: false,
+    baseUrl: '',
 }
 
 // レポート保存先
@@ -50,6 +51,7 @@ interface ApiTraceEntry {
     requestId?: string
     retriable?: boolean
     error?: string
+    details?: string
 }
 
 // Initialize the log array properly
@@ -74,6 +76,7 @@ function resetRunState() {
     METRICS.errors = 0
     METRICS.turns = 0
     METRICS.navigationSuccess = false
+    METRICS.baseUrl = ''
     conversationLog.length = 0
     apiTrace.length = 0
     failureDiagnostics.length = 0
@@ -116,20 +119,28 @@ async function recordApiTrace(response: Response) {
     }
 
     try {
-        const payload = await response.json() as { code?: string; requestId?: string; retriable?: boolean; error?: string }
+        const payload = await response.json() as { code?: string; requestId?: string; retriable?: boolean; error?: string; details?: unknown }
         entry.code = payload.code
-        entry.requestId = payload.requestId
+        entry.requestId = payload.requestId || response.headers()['x-request-id']
         entry.retriable = payload.retriable
         entry.error = payload.error
+        if (payload.details) {
+            try {
+                entry.details = JSON.stringify(payload.details).slice(0, 500)
+            } catch {
+                entry.details = String(payload.details).slice(0, 500)
+            }
+        }
     } catch {
         // noop: JSONレスポンスでないケースは本文解析しない
+        entry.requestId = response.headers()['x-request-id']
     }
 
     apiTrace.push(entry)
 
     if (entry.status >= 400) {
         METRICS.errors++
-        addFailureDiagnostic(`API failure status=${entry.status} code=${entry.code ?? '-'} requestId=${entry.requestId ?? '-'} error=${entry.error ?? '-'}`)
+        addFailureDiagnostic(`API failure status=${entry.status} code=${entry.code ?? '-'} requestId=${entry.requestId ?? '-'} error=${entry.error ?? '-'} details=${entry.details ? shortText(entry.details, 160) : '-'}`)
     }
 }
 
@@ -158,7 +169,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     if (status !== 'PASS') score = 'D'
 
     const apiTraceRows = apiTrace.length > 0
-        ? apiTrace.map(entry => `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${escapeTableText(shortText(entry.error ?? entry.url, 140))} |`).join('\n')
+        ? apiTrace.map(entry => {
+            const note = entry.error
+                ? `${entry.error}${entry.details ? ` details=${entry.details}` : ''}`
+                : entry.url
+            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${escapeTableText(shortText(note, 140))} |`
+        }).join('\n')
         : '| - | - | - | - | - | - | - |'
 
     const failureRows = failureDiagnostics.length > 0
@@ -171,7 +187,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 - **Date**: ${new Date().toISOString()}
 - **Result**: ${status === 'PASS' ? '✅ PASS' : '❌ FAIL'}
 - **Score**: ${score}
-- **Base URL**: ${process.env.LIVE_BASE_URL || 'http://localhost:5173'}
+- **Base URL**: ${METRICS.baseUrl || process.env.LIVE_BASE_URL || 'http://localhost:5173'}
 - **Failure Summary**: ${escapeTableText(shortText(status === 'PASS' ? 'none' : String(status), 200))}
 
 ## Metrics Dashboard
@@ -279,11 +295,20 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         // 1. 基本情報入力 (Loginではなく、KY開始画面)
         await page.goto('/', { waitUntil: 'networkidle' })
         console.log('Page loaded. URL:', page.url())
+        try {
+            METRICS.baseUrl = new URL(page.url()).origin
+        } catch {
+            // ignore
+        }
 
         console.log('Filling Basic Info...')
         // data-testid を使用した堅牢なセレクタ
-        await page.getByTestId('input-username').fill('RealTest User')
-        await page.getByTestId('input-sitename').fill('RealTest Site')
+        const userNameInput = page.getByTestId('input-username')
+        const siteNameInput = page.getByTestId('input-sitename')
+        await expect(userNameInput).toBeVisible({ timeout: 15000 })
+        await expect(siteNameInput).toBeVisible({ timeout: 15000 })
+        await userNameInput.fill('RealTest User')
+        await siteNameInput.fill('RealTest Site')
 
         // 状態更新待ち: 明示的なWaitForTimeoutは削除し、ボタンの状態をアサートする
         const startButton = page.getByTestId('button-start-ky')
@@ -370,22 +395,77 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         } else {
             await sendUserMessage('配管の溶接作業を行います')
             await sendUserMessage('火花が飛散して周囲の可燃物に引火する危険があります')
-            await sendUserMessage('周囲に養生が不十分なためです。危険度は一番高い5です')
-            await sendUserMessage('消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します')
-            await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。')
+            await sendUserMessage('周囲の養生が不十分で、火花が可燃物に届くためです')
+
+            // 危険度選択UIが出る場合はそれを使い、出ない場合はテキストで送る
+            let selectedRisk = false
+            try {
+                await expect(page.locator('text=危険度を選択').first()).toBeVisible({ timeout: 45000 })
+                const risk5Button = page.locator('button').filter({ hasText: '重大' }).first()
+                await expect(risk5Button).toBeEnabled()
+
+                const countBefore = await assistantBubbles.count()
+                const startWait = Date.now()
+                await risk5Button.click()
+                await recordLog('User', '(Selected Risk Level: 5)')
+
+                await expect(async () => {
+                    const countAfter = await assistantBubbles.count()
+                    expect(countAfter).toBeGreaterThan(countBefore)
+                }).toPass({ timeout: 30000 })
+
+                const endWait = Date.now()
+                METRICS.aiResponseTimes.push(endWait - startWait)
+                const riskReply = await assistantBubbles.last().textContent() || ''
+                await recordLog('AI', riskReply)
+                selectedRisk = true
+            } catch {
+                selectedRisk = false
+            }
+
+            if (!selectedRisk) {
+                await sendUserMessage('危険度は5です')
+            }
+
+            await sendUserMessage('対策は、消火器を作業地点から2m以内の通路側に設置し、スパッタシートで周囲の可燃物を隙間なく覆って養生します。火花の飛散範囲を確認します。')
+
+            // 追加深掘りが来た場合の1回だけ補足
+            const afterMeasures = await assistantBubbles.last().textContent().catch(() => '') || ''
+            if (afterMeasures.includes('どのよう') || afterMeasures.includes('どこ') || afterMeasures.includes('具体的')) {
+                await sendUserMessage('消火器はすぐ手が届く位置に置き、スパッタシートは火花が飛ぶ範囲を床と周囲の可燃物に固定して隙間が出ないようにします。')
+            }
+
+            await sendUserMessage('他にありません。')
         }
 
         // 4. 完了画面への遷移待ち
         const finishButton = page.getByTestId('button-complete-session')
 
-        // AIがボタンを出すまで少し待つ
-        try {
-            await finishButton.waitFor({ state: 'visible', timeout: 20000 })
-        } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error)
-            addFailureDiagnostic(`button-complete-session did not appear in time. ${shortText(message, 180)}`)
-            throw error
+        // ボタンが出ない場合は、行動目標/確定の追加メッセージで1〜2回だけ押し上げる
+        const waitForFinishButton = async (timeoutMs: number): Promise<boolean> => {
+            try {
+                await finishButton.waitFor({ state: 'visible', timeout: timeoutMs })
+                return true
+            } catch {
+                return false
+            }
         }
+
+        let finishVisible = await waitForFinishButton(30000)
+        if (!finishVisible && !DRY_RUN) {
+            await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
+            finishVisible = await waitForFinishButton(30000)
+        }
+        if (!finishVisible && !DRY_RUN) {
+            await sendUserMessage('はい、これで確定して終了してください。')
+            finishVisible = await waitForFinishButton(30000)
+        }
+        if (!finishVisible) {
+            const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
+            addFailureDiagnostic(`button-complete-session did not appear. progress=${progressText ?? 'unknown'}`)
+            throw new Error('button-complete-session did not appear')
+        }
+
         await finishButton.click()
         await recordLog('User', '(Clicked Finish Button)')
 

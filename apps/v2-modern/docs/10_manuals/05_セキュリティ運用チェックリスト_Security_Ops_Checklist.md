@@ -2,7 +2,7 @@
 
 - 作成日時: 2026-02-06 21:54:36 +09:00
 - 作成者: Codex＋GPT-5
-- 更新日: 2026-02-06（実費テスト preflight/運用コマンドを追記）
+- 更新日: 2026-02-07（実費テスト preflight/運用コマンドを追記）
 - 対象: `apps/v2-modern`
 
 ## 0. 最初にあなたがやること（本日中）
@@ -22,7 +22,7 @@ npx wrangler login
 ```
 2. 一括運用コマンドを実行する。
 ```bash
-npm run security:ops -- -AllowedOrigins "https://v2.voice-ky-assistant.pages.dev,https://<your-domain>" -BaseUrl "https://<your-worker-or-pages-domain>"
+npm run security:ops -- -AllowedOrigins "https://voice-ky-v2.pages.dev,https://your-domain.example" -BaseUrl "https://voice-ky-v2.solar-aldrin-ky.workers.dev"
 ```
 - 実行内容:
 - `API_TOKEN` 生成と設定
@@ -85,7 +85,7 @@ npx wrangler secret put API_TOKEN
 
 1. 本番に `STRICT_CORS=1` を設定する。
 2. 本番に `ALLOWED_ORIGINS` をカンマ区切りで設定する。
-- 例: `https://v2.voice-ky-assistant.pages.dev,https://your-domain.example`
+- 例: `https://voice-ky-v2.pages.dev,https://your-domain.example`
 3. 不要な開発用ドメイン許可を本番に残さない。
 
 ## 4. デプロイ
@@ -155,28 +155,33 @@ curl.exe -i "https://<your-worker-or-pages-domain>/api/metrics" ^
 
 ## 9. 実費テスト運用（本番直結）
 
-1. 実費テスト前に環境変数を設定する。
-```bash
-set LIVE_BASE_URL=https://v2.voice-ky-assistant.pages.dev
-set VITE_API_TOKEN=<API_TOKEN>
-```
-2. 事前疎通チェックを実行する。
-```bash
-npm run test:cost:preflight
-```
-3. 本番直結の Mobile Safari 実費E2E を実行する。
-```bash
-npm run test:cost:live
-```
-4. 上記を一括で行う場合は次を実行する。
+1. （推奨）そのまま一括実行する（`wrangler.toml` の `name` から Pages URL を推測します）。
 ```bash
 npm run test:cost:ops
 ```
-5. 履歴整理が必要な場合、日付ごと最新1件のみ残して圧縮する。
+
+2. 明示的に設定する場合は環境変数を設定する。
+```bash
+set LIVE_BASE_URL=https://voice-ky-v2.pages.dev
+set VITE_API_TOKEN=<API_TOKEN>
+```
+3. 事前疎通チェックを実行する。
+```bash
+npm run test:cost:preflight
+```
+4. 本番直結の Mobile Safari 実費E2E を実行する。
+```bash
+npm run test:cost:live
+```
+5. 上記を一括で行う場合は次を実行する。
+```bash
+npm run test:cost:ops
+```
+6. 履歴整理が必要な場合、日付ごと最新1件のみ残して圧縮する。
 ```bash
 npm run reports:prune
 ```
-6. 性能推移を再集計する。
+7. 性能推移を再集計する。
 ```bash
 npm run reports:perf
 ```
