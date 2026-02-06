@@ -19,11 +19,11 @@ export interface SessionSlice {
         temperature?: number
     ) => void
     completeSession: (data: {
-        actionGoal: string
-        pointingConfirmed: boolean
-        allMeasuresImplemented: boolean
-        hadNearMiss: boolean
-        nearMissNote?: string
+        actionGoal: string | null
+        pointingConfirmed: boolean | null
+        allMeasuresImplemented: boolean | null
+        hadNearMiss: boolean | null
+        nearMissNote?: string | null
     }) => void
     /** セッションをIndexedDBに保存（非同期） */
     saveSessionToDb: () => Promise<boolean>

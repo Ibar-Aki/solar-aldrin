@@ -13,6 +13,14 @@ test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) with OPENAI_API_KEY, or DRY_
 // Force single worker for stability
 test.describe.configure({ mode: 'serial' });
 
+// Visual mode configuration
+// If running in headed mode (test:visual), slow down operations for visibility
+test.use({
+    launchOptions: {
+        slowMo: process.env.VISUAL_MODE ? 1000 : 0
+    }
+});
+
 // --- Metrics Configuration ---
 const METRICS = {
     startTime: 0,
@@ -298,13 +306,15 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     praiseVisible = false
                 }
                 if (praiseVisible) {
-                    await recordLog('System', 'Praise/Tip Card Verified')
+                    const praiseText = await page.locator('div.bg-green-50 > p.text-sm').textContent() || 'N/A'
+                    await recordLog('System', `[Feedback: Good Point] ${praiseText}`)
                 }
 
                 // 2. 危険の補足 (SupplementCard)
                 const supplementHeader = page.locator('text=AIからの危険予知補足')
                 if (await supplementHeader.count() > 0) {
-                    await recordLog('System', 'Supplement Card Verified')
+                    const supplementText = await page.locator('div.bg-orange-50 > p.text-sm').textContent() || 'N/A'
+                    await recordLog('System', `[Feedback: Supplement] ${supplementText}`)
                 } else {
                     await recordLog('System', 'Supplement Card NOT Found (Maybe AI suggested none?)')
                 }
@@ -313,7 +323,8 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 const polishHeader = page.locator('text=行動目標のブラッシュアップ')
                 if (await polishHeader.count() > 0) {
                     await expect(polishHeader).toBeVisible()
-                    await recordLog('System', 'Goal Polish Card Verified')
+                    const polishText = await page.locator('div.bg-blue-50 > p.font-bold').textContent() || 'N/A'
+                    await recordLog('System', `[Feedback: Polish] ${polishText}`)
 
                     // 採用ボタンを押してみる
                     const adoptButton = page.getByText('この目標を採用').first()
@@ -336,6 +347,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         // PDFボタン待ち
         await expect(page.locator('button:has-text("PDF")').first()).toBeVisible()
         await recordLog('System', 'PDF Download button visible')
+
+        // Screenshot Capture
+        const resultScreenshotPath = path.join(REPORT_ROOT, DRY_RUN ? 'DRY-RUN' : 'LIVE', `final-result-${Date.now()}.png`)
+        await page.screenshot({ path: resultScreenshotPath, fullPage: true })
+        await recordLog('System', `Saved screenshot to: ${resultScreenshotPath}`)
 
         generateReport('PASS')
 

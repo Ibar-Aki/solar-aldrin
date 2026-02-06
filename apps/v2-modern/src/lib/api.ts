@@ -33,7 +33,13 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
 
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
-        throw new Error((errorData as { error?: string }).error || 'AI応答の取得に失敗しました')
+        const errorMessage = (errorData as { error?: string }).error || 'AI応答の取得に失敗しました'
+        const err = new Error(errorMessage)
+        ;(err as { status?: number }).status = res.status
+        ;(err as { retriable?: boolean }).retriable = Boolean(
+            (errorData as { retriable?: boolean }).retriable
+        )
+        throw err
     }
 
     const data = await res.json()

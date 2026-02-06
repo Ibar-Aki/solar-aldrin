@@ -53,6 +53,13 @@ export async function getAllSessions(): Promise<SoloKYSession[]> {
 }
 
 /**
+ * 最新のセッションを取得
+ */
+export async function getLatestSession(): Promise<SoloKYSession | undefined> {
+    return getDb().sessions.orderBy('createdAt').reverse().first()
+}
+
+/**
  * IDでセッションを取得
  */
 export async function getSessionById(id: string): Promise<SoloKYSession | undefined> {

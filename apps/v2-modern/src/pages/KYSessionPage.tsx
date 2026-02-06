@@ -20,10 +20,10 @@ export function KYSessionPage() {
         isLoading,
         error,
         updateCurrentWorkItem,
-        setStatus,
+        completeSession,
     } = useKYStore()
 
-    const { sendMessage, initializeChat } = useChat()
+    const { sendMessage, initializeChat, retryLastMessage, canRetry } = useChat()
 
     // セッションがない場合はホームに戻る
     useEffect(() => {
@@ -61,7 +61,13 @@ export function KYSessionPage() {
     }
 
     const handleComplete = () => {
-        setStatus('confirmation')
+        completeSession({
+            actionGoal: session.actionGoal ?? null,
+            pointingConfirmed: session.pointingConfirmed ?? null,
+            allMeasuresImplemented: session.allMeasuresImplemented ?? null,
+            hadNearMiss: session.hadNearMiss ?? null,
+            nearMissNote: session.nearMissNote ?? null,
+        })
         navigate('/complete')
     }
 
@@ -161,14 +167,26 @@ export function KYSessionPage() {
                 {/* エラー表示 */}
                 {error && (
                     <div className="px-4 py-2 border-b border-red-100 bg-red-50">
-                        <div className="max-w-2xl mx-auto text-red-600 text-sm">
-                            {error}
+                        <div className="max-w-2xl mx-auto text-red-600 text-sm flex items-center justify-between gap-2">
+                            <span>{error}</span>
+                            {canRetry && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={retryLastMessage}
+                                    disabled={isLoading}
+                                    className="shrink-0 border-red-200 text-red-700 hover:bg-red-100"
+                                >
+                                    リトライ
+                                </Button>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* 入力エリア */}
-                <div className="px-4 py-3">
+                <div className="px-4 py-2">
                     <div className="max-w-2xl mx-auto w-full">
                         <ChatInput
                             onSend={handleSend}

@@ -8,6 +8,8 @@ import { WeatherSelector } from '@/components/WeatherSelector'
 import { useKYStore } from '@/stores/kyStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
 import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
+import { getLatestSession } from '@/lib/db'
+import { History } from 'lucide-react'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -32,6 +34,7 @@ export function HomePage() {
     const [processPhase, setProcessPhase] = useState<ProcessPhase>(prefill?.processPhase ?? 'フリー')
     const [healthCondition, setHealthCondition] = useState<HealthCondition>(prefill?.healthCondition ?? 'good')
     const [isStarting, setIsStarting] = useState(false)
+    const [latestAvailable, setLatestAvailable] = useState(false)
 
     // Clear location state after prefill applied (prevent re-prefill on refresh)
     // P2: Router経由でstateをクリア（window.history.replaceStateはRouter履歴を壊す）
@@ -40,6 +43,27 @@ export function HomePage() {
             navigate('.', { replace: true, state: null })
         }
     }, [prefill, navigate])
+
+    useEffect(() => {
+        let cancelled = false
+        const loadLatest = async () => {
+            try {
+                const latest = await getLatestSession()
+                if (!cancelled) {
+                    setLatestAvailable(!!latest)
+                }
+            } catch (error) {
+                console.error('Failed to load latest session:', error)
+                if (!cancelled) {
+                    setLatestAvailable(false)
+                }
+            }
+        }
+        void loadLatest()
+        return () => {
+            cancelled = true
+        }
+    }, [])
 
     // 日付表示 (UX-10) - 絵文字なし
     const today = new Date()
@@ -72,13 +96,25 @@ export function HomePage() {
         }
     }
 
+    const handleUseLatest = async () => {
+        try {
+            const latest = await getLatestSession()
+            if (!latest) return
+            setUserName(latest.userName ?? '')
+            setSiteName(latest.siteName ?? '')
+            setProcessPhase((latest.processPhase ?? 'フリー') as ProcessPhase)
+        } catch (error) {
+            console.error('Failed to apply latest session:', error)
+        }
+    }
+
     // 進行中のセッションがある場合
     if (session && session.completedAt === null) {
         return (
             <div className="min-h-screen bg-gray-50 p-4">
                 <div className="max-w-md mx-auto space-y-4 pt-8">
-                    <Card>
-                        <CardHeader className="text-center py-3">
+                    <Card className="py-3">
+                        <CardHeader className="text-center py-2">
                             <CardTitle className="text-2xl font-bold text-blue-600">
                                 Voice KY Assistant
                             </CardTitle>
@@ -117,8 +153,8 @@ export function HomePage() {
         <div className="min-h-screen bg-gray-50 p-4">
             <div className="max-w-md mx-auto space-y-4 pt-8">
                 {/* ヘッダー */}
-                <Card>
-                    <CardHeader className="text-center py-3">
+                <Card className="py-3">
+                    <CardHeader className="text-center py-2">
                         <CardTitle className="text-2xl font-bold text-blue-600">
                             Voice KY Assistant
                         </CardTitle>
@@ -133,8 +169,18 @@ export function HomePage() {
 
                 {/* 入力フォーム */}
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="flex items-center justify-between gap-2">
                         <CardTitle className="text-lg">基本情報を入力</CardTitle>
+                        {latestAvailable && (
+                            <Button
+                                type="button"
+                                onClick={handleUseLatest}
+                                className="h-9 rounded-full border border-blue-200 bg-blue-50 px-4 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                            >
+                                <History className="mr-2 h-4 w-4" />
+                                前回と同じ
+                            </Button>
+                        )}
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div>
@@ -143,7 +189,7 @@ export function HomePage() {
                                 value={userName}
                                 onChange={(e) => setUserName(e.target.value)}
                                 placeholder="例：田中太郎"
-                                className="mt-1"
+                                className="mt-1 placeholder:text-muted-foreground/70"
                                 data-testid="input-username"
                             />
                         </div>
@@ -153,7 +199,7 @@ export function HomePage() {
                                 value={siteName}
                                 onChange={(e) => setSiteName(e.target.value)}
                                 placeholder="例：〇〇ビル改修工事"
-                                className="mt-1"
+                                className="mt-1 placeholder:text-muted-foreground/70"
                                 data-testid="input-sitename"
                             />
                         </div>
@@ -209,24 +255,24 @@ export function HomePage() {
                     </CardContent>
                 </Card>
 
+                {/* 履歴ボタン (HIS-02) */}
+                <Button
+                    variant="outline"
+                    className="w-full h-12 border-blue-200 text-blue-700 font-semibold shadow-sm hover:bg-blue-50 hover:border-blue-300"
+                    onClick={() => navigate('/history')}
+                >
+                    📂 過去の記録を見る
+                </Button>
+
                 {/* 説明 */}
-                <Card>
-                    <CardContent className="pt-6">
+                <Card className="py-3">
+                    <CardContent className="py-3">
                         <p className="text-sm text-gray-600">
                             AIアシスタントが対話形式でKY活動をサポートします。
                             作業内容、危険、対策を順番に入力していきます。
                         </p>
                     </CardContent>
                 </Card>
-
-                {/* 履歴ボタン (HIS-02) */}
-                <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate('/history')}
-                >
-                    📂 過去の記録を見る
-                </Button>
             </div>
         </div >
     )

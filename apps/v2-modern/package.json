@@ -17,7 +17,9 @@
     "test:cost": "playwright test tests/e2e/real-cost-scenario.spec.ts",
     "test": "vitest run",
     "dev:iphone": "npx concurrently \"npm run dev:host\" \"npm run dev:workers\"",
-    "dev:all": "npx concurrently \"npm run dev\" \"npm run dev:workers\""
+    "dev:all": "npx concurrently \"npm run dev\" \"npm run dev:workers\"",
+    "test:visual": "cross-env VISUAL_MODE=1 playwright test tests/e2e/real-cost-scenario.spec.ts --headed --project=chromium",
+    "test:visual:mock": "cross-env VISUAL_MODE=1 DRY_RUN=1 playwright test tests/e2e/real-cost-scenario.spec.ts --headed --project=chromium"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
@@ -52,6 +54,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^5.1.1",
+    "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

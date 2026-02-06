@@ -70,35 +70,31 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
     }
 
     return (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-1">
             <button
                 type="button"
                 onClick={handleClick}
                 disabled={shouldForcePause}
                 className={`
-          w-16 h-16 rounded-full flex items-center justify-center
+          w-10 h-10 rounded-full flex items-center justify-center
           transition-all duration-200
           ${isListening
                         ? 'bg-red-500 text-white animate-pulse'
-                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                        : 'bg-cyan-500 text-white hover:bg-cyan-600'
                     }
-          ${shouldForcePause ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${shouldForcePause ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
         `}
                 aria-label={isListening ? '音声認識を停止' : '音声認識を開始'}
             >
                 {isListening ? (
-                    <Square className="w-8 h-8" />
+                    <Square className="w-5 h-5" />
                 ) : (
-                    <Mic className="w-8 h-8" />
+                    <Mic className="w-5 h-5" />
                 )}
             </button>
 
-            <span className="text-xs text-gray-500">
-                {shouldForcePause ? '一時停止中...' : isListening ? '聞いています...' : 'タップして話す'}
-            </span>
-
             {error && (
-                <span className="text-xs text-red-500">{error}</span>
+                <span className="text-[10px] leading-none text-red-500">{error}</span>
             )}
         </div>
     )

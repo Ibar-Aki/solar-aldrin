@@ -28,15 +28,11 @@ export function CompletionPage() {
         polishedGoal,
         polishedActionGoal,
         feedbackLoading,
-        feedbackSkipped,
         feedbackSessionId,
         setFeedbackResult,
-        clearFeedbackContent,
         setPolishedActionGoal,
         setFeedbackLoading,
         setFeedbackError,
-        setFeedbackSkipped,
-        setFeedbackSessionId,
     } = useKYStore()
     const { generateAndDownload, isGenerating } = usePDFGenerator()
 
@@ -53,14 +49,29 @@ export function CompletionPage() {
 
     // FIX-03: useRefで保存試行をガード（依存配列問題を回避）
     const saveAttemptedRef = useRef(false)
+    const completeAttemptedRef = useRef(false)
     const feedbackAttemptedRef = useRef<string | null>(null)
     const feedbackAbortRef = useRef<AbortController | null>(null)
+    const fallbackFeedback = {
+        praise: '今日のKYは要点が押さえられていて良い取り組みです。',
+        tip: '次回は作業順序の確認を一言添えるとさらに良くなります。今の視点は十分に良いです。',
+    }
 
     // セッション完了時にスポットライトを自動再生 & DB保存
     useEffect(() => {
         if (!session) {
             navigate('/')
             return
+        }
+        if (status !== 'completed' && !completeAttemptedRef.current) {
+            completeAttemptedRef.current = true
+            useKYStore.getState().completeSession({
+                actionGoal: session.actionGoal ?? '',
+                pointingConfirmed: false,
+                allMeasuresImplemented: false,
+                hadNearMiss: false,
+                nearMissNote: undefined,
+            })
         }
         if (status !== 'completed') return
 
@@ -83,18 +94,32 @@ export function CompletionPage() {
 
     useEffect(() => {
         if (!session || status !== 'completed') return
-        if (feedbackSkipped) return
         if (feedbackSessionId === session.id) return
         if (feedbackAttemptedRef.current === session.id) return
+        const applyFallback = () => {
+            setFeedbackResult({
+                feedback: fallbackFeedback,
+                supplements: [],
+                polishedGoal: null,
+                sessionId: session.id,
+            })
+        }
 
         const feedbackEnabled = import.meta.env.VITE_ENABLE_FEEDBACK !== '0'
-        if (!feedbackEnabled) return
+        if (!feedbackEnabled) {
+            feedbackAttemptedRef.current = session.id
+            setFeedbackLoading(false)
+            applyFallback()
+            return
+        }
 
         const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
         const hasToken = Boolean(import.meta.env.VITE_API_TOKEN)
         if (requireAuth && !hasToken) {
             setFeedbackError('APIトークンが設定されていません')
             feedbackAttemptedRef.current = session.id
+            setFeedbackLoading(false)
+            applyFallback()
             return
         }
 
@@ -165,9 +190,7 @@ export function CompletionPage() {
             try {
                 const result = await postFeedback(request, { signal: controller.signal })
                 if (!result) {
-                    setFeedbackSessionId(session.id)
-                    setFeedbackSkipped(true)
-                    clearFeedbackContent()
+                    applyFallback()
                     return
                 }
                 setFeedbackResult({
@@ -179,6 +202,7 @@ export function CompletionPage() {
             } catch (e) {
                 console.error('Feedback error:', e)
                 setFeedbackError(e instanceof Error ? e.message : 'フィードバック取得に失敗しました')
+                applyFallback()
             } finally {
                 setFeedbackLoading(false)
             }
@@ -192,22 +216,12 @@ export function CompletionPage() {
     }, [
         session,
         status,
-        feedbackSkipped,
         feedbackSessionId,
         setFeedbackResult,
         setFeedbackLoading,
         setFeedbackError,
-        setFeedbackSkipped,
-        setFeedbackSessionId,
-        clearFeedbackContent,
         messages,
     ])
-
-    useEffect(() => {
-        if (feedbackSkipped) {
-            feedbackAbortRef.current?.abort()
-        }
-    }, [feedbackSkipped])
 
     useEffect(() => {
         if (!session || status !== 'completed') return
@@ -245,9 +259,9 @@ export function CompletionPage() {
 
     const handleDownload = async () => {
         if (!session) return
-        const pdfFeedback = feedbackSkipped ? null : (feedback ?? null)
-        const pdfSupplements = feedbackSkipped ? [] : supplements
-        const actionGoalOverride = feedbackSkipped ? null : (polishedActionGoal ?? null)
+        const pdfFeedback = feedback ?? null
+        const pdfSupplements = supplements
+        const actionGoalOverride = polishedActionGoal ?? null
         await generateAndDownload(session, {
             feedback: pdfFeedback,
             supplements: pdfSupplements,
@@ -259,12 +273,6 @@ export function CompletionPage() {
     const handleHome = () => {
         clearSession()
         navigate('/')
-    }
-
-    const handleSkipFeedback = () => {
-        setFeedbackSkipped(true)
-        setFeedbackLoading(false)
-        clearFeedbackContent()
     }
 
     const handleAdoptPolish = () => {
@@ -287,14 +295,12 @@ export function CompletionPage() {
 
     if (!session) return null
 
-    const displayActionGoal = (!feedbackSkipped && polishedActionGoal)
-        ? polishedActionGoal
-        : session.actionGoal
+    const displayActionGoal = polishedActionGoal ?? session.actionGoal
 
     const hasFeedback = Boolean(feedback && feedback.praise && feedback.tip)
     const hasSupplements = supplements.length > 0
     const hasPolish = Boolean(polishedGoal && polishedGoal.polished)
-    const showFeedbackSection = !feedbackSkipped && (feedbackLoading || hasFeedback || hasSupplements || hasPolish)
+    const showFeedbackSection = feedbackLoading || hasFeedback || hasSupplements || hasPolish
 
     const getRecentRiskLabel = (daysAgo: number) => {
         if (daysAgo <= 0) return '本日も指摘されました'
@@ -387,13 +393,6 @@ export function CompletionPage() {
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <p className="text-sm text-gray-500">事後フィードバック</p>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleSkipFeedback}
-                            >
-                                今回はスキップ
-                            </Button>
                         </div>
 
                         {feedbackLoading && showSkeleton && (
