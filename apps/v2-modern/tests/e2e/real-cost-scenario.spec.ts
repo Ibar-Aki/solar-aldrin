@@ -1,14 +1,13 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Request as PWRequest, type Response } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
 
 const RUN_LIVE = process.env.RUN_LIVE_TESTS === '1'
 const DRY_RUN = process.env.DRY_RUN === '1'
-const HAS_OPENAI_KEY = Boolean(process.env.OPENAI_API_KEY)
-const SHOULD_SKIP = (!RUN_LIVE && !DRY_RUN) || (RUN_LIVE && !DRY_RUN && !HAS_OPENAI_KEY)
+const SHOULD_SKIP = !RUN_LIVE && !DRY_RUN
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
-test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) with OPENAI_API_KEY, or DRY_RUN=1 (mock) to run this test.')
+test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
 
 // Force single worker for stability
 test.describe.configure({ mode: 'serial' });
@@ -40,8 +39,51 @@ interface LogEntry {
     speaker: string
     message: string
 }
+
+interface ApiTraceEntry {
+    time: string
+    method: string
+    status: number
+    url: string
+    latencyMs?: number
+    code?: string
+    requestId?: string
+    retriable?: boolean
+    error?: string
+}
+
 // Initialize the log array properly
 const conversationLog: LogEntry[] = []
+const apiTrace: ApiTraceEntry[] = []
+const failureDiagnostics: string[] = []
+const requestStartTimes = new Map<PWRequest, number>()
+
+function shortText(value: string, limit = 160): string {
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized
+}
+
+function escapeTableText(value: string): string {
+    return value.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
+}
+
+function resetRunState() {
+    METRICS.startTime = 0
+    METRICS.endTime = 0
+    METRICS.aiResponseTimes = []
+    METRICS.errors = 0
+    METRICS.turns = 0
+    METRICS.navigationSuccess = false
+    conversationLog.length = 0
+    apiTrace.length = 0
+    failureDiagnostics.length = 0
+    requestStartTimes.clear()
+}
+
+function addFailureDiagnostic(message: string) {
+    failureDiagnostics.push(message)
+    console.error(`[FailureDiagnostic] ${message}`)
+}
 
 // Helper: ログ記録
 async function recordLog(speaker: string, message: string) {
@@ -55,6 +97,39 @@ async function recordLog(speaker: string, message: string) {
     // ターン数カウント (AIの発言を1ターンとする)
     if (speaker === 'AI') {
         METRICS.turns++
+    }
+}
+
+async function recordApiTrace(response: Response) {
+    const request = response.request()
+    if (!request.url().includes('/api/chat')) return
+
+    const startedAt = requestStartTimes.get(request)
+    requestStartTimes.delete(request)
+
+    const entry: ApiTraceEntry = {
+        time: new Date().toISOString().split('T')[1].slice(0, 8),
+        method: request.method(),
+        status: response.status(),
+        url: request.url(),
+        latencyMs: startedAt ? Date.now() - startedAt : undefined,
+    }
+
+    try {
+        const payload = await response.json() as { code?: string; requestId?: string; retriable?: boolean; error?: string }
+        entry.code = payload.code
+        entry.requestId = payload.requestId
+        entry.retriable = payload.retriable
+        entry.error = payload.error
+    } catch {
+        // noop: JSONレスポンスでないケースは本文解析しない
+    }
+
+    apiTrace.push(entry)
+
+    if (entry.status >= 400) {
+        METRICS.errors++
+        addFailureDiagnostic(`API failure status=${entry.status} code=${entry.code ?? '-'} requestId=${entry.requestId ?? '-'} error=${entry.error ?? '-'}`)
     }
 }
 
@@ -82,12 +157,22 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     else if (METRICS.turns > 8 || Number(duration) > 180) score = 'B'
     if (status !== 'PASS') score = 'D'
 
+    const apiTraceRows = apiTrace.length > 0
+        ? apiTrace.map(entry => `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${escapeTableText(shortText(entry.error ?? entry.url, 140))} |`).join('\n')
+        : '| - | - | - | - | - | - | - |'
+
+    const failureRows = failureDiagnostics.length > 0
+        ? failureDiagnostics.map(item => `- ${item}`).join('\n')
+        : '- なし'
+
     const markdown = `
 # Real-Cost KY Test Report (${mode})
 
 - **Date**: ${new Date().toISOString()}
 - **Result**: ${status === 'PASS' ? '✅ PASS' : '❌ FAIL'}
 - **Score**: ${score}
+- **Base URL**: ${process.env.LIVE_BASE_URL || 'http://localhost:5173'}
+- **Failure Summary**: ${escapeTableText(shortText(status === 'PASS' ? 'none' : String(status), 200))}
 
 ## Metrics Dashboard
 | Metric | Value | Target | Status |
@@ -103,6 +188,14 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 |---|---|---|
 ${conversationLog.map(log => `| ${log.time} | **${log.speaker}** | ${log.message.replace(/\n/g, '<br>').slice(0, 100)}${log.message.length > 100 ? '...' : ''} |`).join('\n')}
 
+## API Trace (/api/chat)
+| Time | Method | Status | Code | Request ID | Latency ms | Note |
+|---|---|---|---|---|---|---|
+${apiTraceRows}
+
+## Failure Diagnostics
+${failureRows}
+
 ## Analysis
 - **Flow Completeness**: ${METRICS.navigationSuccess ? 'Full flow completed' : 'Stopped mid-flow'}
 - **AI Responsiveness**: Verified via ChatBubble detection.
@@ -116,7 +209,18 @@ test.use({ viewport: { width: 1280, height: 720 } })
 test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     // タイムアウトを少し長めに設定 (5分)
     test.setTimeout(300 * 1000)
+    resetRunState()
     METRICS.startTime = Date.now()
+
+    page.on('request', (request: PWRequest) => {
+        if (request.url().includes('/api/chat')) {
+            requestStartTimes.set(request, Date.now())
+        }
+    })
+
+    page.on('response', async (response: Response) => {
+        await recordApiTrace(response)
+    })
 
     console.log(`--- STARTING TEST (Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'}) ---`)
     await recordLog('System', `Test Started: 溶接作業シナリオ (Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'})`)
@@ -214,36 +318,44 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         await recordLog('AI', initialText)
 
         const sendButton = page.getByTestId('button-send-message')
+        let userTurn = 0
 
         // Helper: ユーザー入力とAI応答待ち
         async function sendUserMessage(text: string, expectedResponsePart?: string) {
-            await chatInput.fill(text)
-            await expect(sendButton).toBeEnabled() // 送信ボタンが有効になるのを待つ
-            await sendButton.click()
-            await recordLog('User', text)
+            userTurn++
+            try {
+                await chatInput.fill(text)
+                await expect(sendButton).toBeEnabled() // 送信ボタンが有効になるのを待つ
+                await sendButton.click()
+                await recordLog('User', text)
 
-            // AI応答待ち
-            if (expectedResponsePart) {
-                // 特定のテキストが画面に出るのを待つ (より確実)
-                await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: 30000 })
-                await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
-            } else {
-                // 汎用Wait (吹き出しが増えるのを待つ)
-                const startWait = Date.now()
-                const countBefore = await assistantBubbles.count()
-                await expect(async () => {
-                    const countAfter = await assistantBubbles.count()
-                    expect(countAfter).toBeGreaterThan(countBefore)
-                }).toPass({ timeout: 30000 })
-                const endWait = Date.now()
-                METRICS.aiResponseTimes.push(endWait - startWait)
-            }
+                // AI応答待ち
+                if (expectedResponsePart) {
+                    // 特定のテキストが画面に出るのを待つ (より確実)
+                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: 30000 })
+                    await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
+                } else {
+                    // 汎用Wait (吹き出しが増えるのを待つ)
+                    const startWait = Date.now()
+                    const countBefore = await assistantBubbles.count()
+                    await expect(async () => {
+                        const countAfter = await assistantBubbles.count()
+                        expect(countAfter).toBeGreaterThan(countBefore)
+                    }).toPass({ timeout: 30000 })
+                    const endWait = Date.now()
+                    METRICS.aiResponseTimes.push(endWait - startWait)
+                }
 
-            // 最新のAI応答を取得
-            const latestBubble = assistantBubbles.last()
-            const textContent = await latestBubble.textContent() || ''
-            if (!expectedResponsePart) {
-                await recordLog('AI', textContent)
+                // 最新のAI応答を取得
+                const latestBubble = assistantBubbles.last()
+                const textContent = await latestBubble.textContent() || ''
+                if (!expectedResponsePart) {
+                    await recordLog('AI', textContent)
+                }
+            } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error)
+                addFailureDiagnostic(`Turn ${userTurn} failed. User="${shortText(text, 40)}" reason="${shortText(message, 180)}"`)
+                throw error
             }
         }
 
@@ -267,15 +379,27 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         const finishButton = page.getByTestId('button-complete-session')
 
         // AIがボタンを出すまで少し待つ
-        await finishButton.waitFor({ state: 'visible', timeout: 20000 })
+        try {
+            await finishButton.waitFor({ state: 'visible', timeout: 20000 })
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error)
+            addFailureDiagnostic(`button-complete-session did not appear in time. ${shortText(message, 180)}`)
+            throw error
+        }
         await finishButton.click()
         await recordLog('User', '(Clicked Finish Button)')
 
         // 遷移待ち (URL or Element)
-        await Promise.race([
-            page.waitForURL('**/complete', { timeout: 30000 }),
-            page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
-        ])
+        try {
+            await Promise.race([
+                page.waitForURL('**/complete', { timeout: 30000 }),
+                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
+            ])
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error)
+            addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
+            throw error
+        }
 
         await recordLog('System', 'Navigated to Complete page')
         METRICS.navigationSuccess = true
@@ -297,23 +421,17 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await recordLog('System', 'Feedback Section Visible')
 
                 // 1. 良い点 (FeedbackCard)
-                const praiseIcon = page.locator('svg.text-orange-500').first() // Trophy icon
-                let praiseVisible = false
-                try {
-                    await praiseIcon.waitFor({ state: 'visible', timeout: 5000 })
-                    praiseVisible = true
-                } catch {
-                    praiseVisible = false
-                }
+                const praiseTitle = page.locator('text=今日のフィードバック').first()
+                const praiseVisible = await praiseTitle.isVisible().catch(() => false)
                 if (praiseVisible) {
-                    const praiseText = await page.locator('div.bg-green-50 > p.text-sm').textContent() || 'N/A'
+                    const praiseText = await page.locator('div.bg-emerald-50 p.text-sm').nth(1).textContent() || 'N/A'
                     await recordLog('System', `[Feedback: Good Point] ${praiseText}`)
                 }
 
                 // 2. 危険の補足 (SupplementCard)
-                const supplementHeader = page.locator('text=AIからの危険予知補足')
+                const supplementHeader = page.locator('text=AI補足').first()
                 if (await supplementHeader.count() > 0) {
-                    const supplementText = await page.locator('div.bg-orange-50 > p.text-sm').textContent() || 'N/A'
+                    const supplementText = await page.locator('div.border-indigo-200 p.text-sm').first().textContent() || 'N/A'
                     await recordLog('System', `[Feedback: Supplement] ${supplementText}`)
                 } else {
                     await recordLog('System', 'Supplement Card NOT Found (Maybe AI suggested none?)')
@@ -323,11 +441,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 const polishHeader = page.locator('text=行動目標のブラッシュアップ')
                 if (await polishHeader.count() > 0) {
                     await expect(polishHeader).toBeVisible()
-                    const polishText = await page.locator('div.bg-blue-50 > p.font-bold').textContent() || 'N/A'
+                    const polishText = await page.locator('div.bg-blue-50 p.font-semibold').first().textContent() || 'N/A'
                     await recordLog('System', `[Feedback: Polish] ${polishText}`)
 
                     // 採用ボタンを押してみる
-                    const adoptButton = page.getByText('この目標を採用').first()
+                    const adoptButton = page.getByText('採用する').first()
                     if (await adoptButton.count() > 0) {
                         await adoptButton.click()
                         await recordLog('System', 'Clicked Adopt Goal Button')
@@ -357,8 +475,9 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'FAIL'
+        addFailureDiagnostic(`Unhandled test error: ${shortText(message, 200)}`)
         console.error('Test Failed:', error)
-        generateReport(message)
+        generateReport('FAIL')
         throw error
     }
 })

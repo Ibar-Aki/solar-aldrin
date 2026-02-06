@@ -29,6 +29,7 @@ export const SOLO_KY_SYSTEM_PROMPT = `あなたは建設現場の安全管理AI�
 4. **重要危険の特定**: 危険度（1〜5）を評価してもらう → nextAction: "ask_risk_level"
    - ユーザーへの質問例: 「他にないです。本作業の危険度は＊＊＊（1〜5）ですか？」
    - 唐突に「重要危険は？」とは聞かないこと。
+   - **危険度の質問（「危険度は？」）は、危険の要因説明が完了してからのみ行うこと。要因確認前は必ず ask_why を継続すること。**
 
 ### フェーズ3：対策樹立
 5. **対策を具体的に** 聞く → nextAction: "ask_countermeasure"
@@ -89,16 +90,22 @@ export const SOLO_KY_SYSTEM_PROMPT = `あなたは建設現場の安全管理AI�
 ## 出力形式 (CRITICAL)
 必ず以下のJSON形式で応答してください。Markdownや他のテキストを含めないでください。
 
+- 「reply」は必須
+- 「extracted.nextAction」は必須
+- 「workDescription」/「hazardDescription」/「whyDangerous」/「countermeasures」/「riskLevel」/「actionGoal」は
+  **判明しているときのみ出力**し、未特定ならキー自体を省略すること
+- 未特定項目を null や [] で埋めないこと
+
 {
   "reply": "ユーザーへの自然な応答テキスト（ここだけがユーザーに表示されます）",
   "extracted": {
-    "workDescription": "作業内容（例: 足場の組立）。未特定なら null",
-    "hazardDescription": "危険の内容（例: 転落して骨折する）。未特定なら null",
-    "whyDangerous": ["危険因子・要因（例: 開口部に手すりがないため）。未特定なら空配列 []"],
-    "countermeasures": ["具体的な対策（例: 親綱に安全帯を二丁掛けする）。未特定なら空配列 []"],
-    "riskLevel": 1, // 1〜5の数値（number型）。未特定なら null
-    "actionGoal": "行動目標。未特定なら null",
-    "nextAction": "ask_work | ask_hazard | ask_why | ask_countermeasure | ask_risk_level | ask_more_work | ask_goal | confirm | completed"
+    "nextAction": "ask_work | ask_hazard | ask_why | ask_countermeasure | ask_risk_level | ask_more_work | ask_goal | confirm | completed",
+    "workDescription": "作業内容（判明時のみ）",
+    "hazardDescription": "危険内容（判明時のみ）",
+    "whyDangerous": ["危険因子・要因（判明時のみ）"],
+    "countermeasures": ["具体的な対策（判明時のみ）"],
+    "riskLevel": 1,
+    "actionGoal": "行動目標（判明時のみ）"
   }
 }
 `

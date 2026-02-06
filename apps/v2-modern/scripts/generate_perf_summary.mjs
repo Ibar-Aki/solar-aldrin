@@ -192,7 +192,9 @@ function buildSummary(dayKey, stats, existingMeta) {
 function main() {
     ensureDir(outputDir)
 
-    const files = listMarkdownFiles(sourceDir)
+    const files = listMarkdownFiles(sourceDir).filter(filePath =>
+        path.basename(filePath).toLowerCase().startsWith('real-cost-')
+    )
     const grouped = {}
 
     for (const filePath of files) {

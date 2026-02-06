@@ -15,6 +15,11 @@ import { getClientId } from '@/lib/clientId'
 import { RecentRiskBadge } from '@/components/RecentRiskBadge'
 import { getRecentRiskMatches, type RecentRiskMatch } from '@/lib/historyUtils'
 
+const FALLBACK_FEEDBACK = {
+    praise: '今日のKYは要点が押さえられていて良い取り組みです。',
+    tip: '次回は作業順序の確認を一言添えるとさらに良くなります。今の視点は十分に良いです。',
+}
+
 export function CompletionPage() {
     const navigate = useNavigate()
     const {
@@ -49,13 +54,8 @@ export function CompletionPage() {
 
     // FIX-03: useRefで保存試行をガード（依存配列問題を回避）
     const saveAttemptedRef = useRef(false)
-    const completeAttemptedRef = useRef(false)
     const feedbackAttemptedRef = useRef<string | null>(null)
     const feedbackAbortRef = useRef<AbortController | null>(null)
-    const fallbackFeedback = {
-        praise: '今日のKYは要点が押さえられていて良い取り組みです。',
-        tip: '次回は作業順序の確認を一言添えるとさらに良くなります。今の視点は十分に良いです。',
-    }
 
     // セッション完了時にスポットライトを自動再生 & DB保存
     useEffect(() => {
@@ -63,17 +63,10 @@ export function CompletionPage() {
             navigate('/')
             return
         }
-        if (status !== 'completed' && !completeAttemptedRef.current) {
-            completeAttemptedRef.current = true
-            useKYStore.getState().completeSession({
-                actionGoal: session.actionGoal ?? '',
-                pointingConfirmed: false,
-                allMeasuresImplemented: false,
-                hadNearMiss: false,
-                nearMissNote: undefined,
-            })
+        if (status !== 'completed') {
+            navigate('/session')
+            return
         }
-        if (status !== 'completed') return
 
         // IndexedDBに保存（一度だけ）
         if (saveAttemptedRef.current) return
@@ -98,7 +91,7 @@ export function CompletionPage() {
         if (feedbackAttemptedRef.current === session.id) return
         const applyFallback = () => {
             setFeedbackResult({
-                feedback: fallbackFeedback,
+                feedback: FALLBACK_FEEDBACK,
                 supplements: [],
                 polishedGoal: null,
                 sessionId: session.id,
@@ -293,7 +286,7 @@ export function CompletionPage() {
         }, 50)
     }
 
-    if (!session) return null
+    if (!session || status !== 'completed') return null
 
     const displayActionGoal = polishedActionGoal ?? session.actionGoal
 

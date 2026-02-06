@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildContextInjection } from '@/lib/contextUtils'
 import { SoloKYSession } from '@/types/ky'
 import * as historyUtils from '@/lib/historyUtils'
+import type { HiyariHattoEntry, RiskEntry } from '@/lib/historyUtils'
+
+type RiskSummaryArg = Pick<RiskEntry, 'risk' | 'date'>
+type HiyariSummaryArg = Pick<HiyariHattoEntry, 'note' | 'date'>
 
 // Mock historyUtils
 vi.mock('@/lib/historyUtils', () => ({
     getPastRisks: vi.fn(),
     getRecentRisks: vi.fn(),
     getHiyariHattoItems: vi.fn(),
-    formatRiskSummary: (entry: any) => `${entry.risk} (${entry.date.slice(0, 10)})`,
-    formatHiyariSummary: (entry: any) => `${entry.note} (${entry.date.slice(0, 10)})`
+    formatRiskSummary: (entry: RiskSummaryArg) => `${entry.risk} (${entry.date.slice(0, 10)})`,
+    formatHiyariSummary: (entry: HiyariSummaryArg) => `${entry.note} (${entry.date.slice(0, 10)})`
 }))
 
 describe('Context Injection', () => {

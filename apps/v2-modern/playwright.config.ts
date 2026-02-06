@@ -12,7 +12,12 @@ if (!process.env.HOME && resolvedHome) {
     process.env.HOME = resolvedHome;
 }
 
-const useWorkers = process.env.RUN_LIVE_TESTS === '1';
+const isLiveRun = process.env.RUN_LIVE_TESTS === '1';
+const liveBaseUrl = process.env.LIVE_BASE_URL?.trim();
+
+if (isLiveRun && !liveBaseUrl) {
+    throw new Error('RUN_LIVE_TESTS=1 の場合は LIVE_BASE_URL を設定してください。');
+}
 
 export default defineConfig({
     testDir: './tests',
@@ -22,7 +27,7 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: 'html',
     use: {
-        baseURL: 'http://localhost:5173',
+        baseURL: isLiveRun ? liveBaseUrl : 'http://localhost:5173',
         trace: 'on-first-retry',
     },
 
@@ -45,14 +50,16 @@ export default defineConfig({
     ],
 
     /* Run your local dev server before starting the tests */
-    webServer: {
-        command: useWorkers ? 'npm run dev:all' : 'npm run dev',
-        url: 'http://localhost:5173',
-        reuseExistingServer: !process.env.CI,
-        timeout: 120 * 1000,
-        env: {
-            ...process.env,
-            VITE_API_TOKEN: process.env.VITE_API_TOKEN || 'test-token',
+    webServer: isLiveRun
+        ? undefined
+        : {
+            command: 'npm run dev',
+            url: 'http://localhost:5173',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120 * 1000,
+            env: {
+                ...process.env,
+                ...(process.env.VITE_API_TOKEN ? { VITE_API_TOKEN: process.env.VITE_API_TOKEN } : {}),
+            },
         },
-    },
 });

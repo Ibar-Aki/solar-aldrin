@@ -1,5 +1,7 @@
 # Voice KY Assistant v2
 
+更新日: 2026-02-06（実費テスト運用を追記）
+
 Phase 2の音声KYアシスタントアプリ。
 
 ## 技術スタック
@@ -34,11 +36,15 @@ npm run dev:workers
 #### Workers環境変数
 
 - 必須: `OPENAI_API_KEY`
-- 任意: `API_TOKEN`（API認証を有効にする場合）
+- 本番必須: `API_TOKEN`（`REQUIRE_API_TOKEN=1` または `SENTRY_ENV/ENVIRONMENT=production` の場合）
+- 任意: `REQUIRE_API_TOKEN`（`1` で常時必須化、`0` で常時任意）
+- 任意: `STRICT_CORS`（`1` で厳格CORS、`0` で開発許可を有効）
+- 任意: `REQUIRE_RATE_LIMIT_KV`（`1` で `RATE_LIMIT_KV` 未設定時にフェイルクローズ）
 - 予約済み（現状未使用）: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `WEATHER_API_BASE_URL`
 
 #### フロントエンド環境変数
 
+- 任意: `VITE_API_BASE_URL`（例: `https://voice-ky-v2.solar-aldrin-ky.workers.dev/api`）
 - 任意: `VITE_API_TOKEN`（Workers側で `API_TOKEN` を設定した場合）
 
 ### ビルド
@@ -52,6 +58,45 @@ npm run build
 ```bash
 npm run deploy:workers
 ```
+
+### デプロイ（Pages）
+
+```bash
+npm run build
+npm run deploy:pages
+```
+
+### セキュリティ運用の一括実行
+
+```bash
+npx wrangler login
+npm run security:ops -- -AllowedOrigins "https://v2.voice-ky-assistant.pages.dev,https://<your-domain>" -BaseUrl "https://<your-worker-or-pages-domain>"
+```
+
+- `security:ops` は本番向けのセキュリティ設定反映、ローカル検証、デプロイ、スモークテストを順番に実行します。
+- 事前に `RATE_LIMIT_KV` バインディングが本番環境に設定されていることを確認してください。
+
+### 実費テスト（本番直結）
+
+環境変数を設定して、事前疎通チェック付きで実行します。
+
+```bash
+set LIVE_BASE_URL=https://v2.voice-ky-assistant.pages.dev
+set VITE_API_TOKEN=<your_api_token>
+npm run test:cost:ops
+```
+
+- `test:cost:ops` は `preflight` -> `Mobile Safari 実費E2E` -> `性能サマリ再生成` を連続実行します。
+- `RUN_LIVE_TESTS=1` は `test:cost:live` 内で自動設定されます。
+
+#### レポート整理（履歴圧縮）
+
+```bash
+npm run reports:prune
+```
+
+- `reports/real-cost` 配下を `mode(LIVE/DRY-RUN/test) + 日付` ごとに最新1件だけ残します。
+- 実行ログは `reports/real-cost/prune-log-YYYY-MM-DD.md` に保存されます。
 
 ## ディレクトリ構造
 

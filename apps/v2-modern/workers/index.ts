@@ -7,6 +7,7 @@ import { metrics, type AnalyticsEngineDataset } from './routes/metrics'
 import { feedback } from './routes/feedback'
 import { logError, logInfo } from './observability/logger'
 import { captureException } from './observability/sentry'
+import { shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } from './lib/securityMode'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -23,6 +24,10 @@ type Bindings = {
     SENTRY_RELEASE?: string
     ANALYTICS_DATASET?: AnalyticsEngineDataset
     ENABLE_FEEDBACK?: string
+    ENVIRONMENT?: string
+    REQUIRE_API_TOKEN?: string
+    REQUIRE_RATE_LIMIT_KV?: string
+    STRICT_CORS?: string
 }
 
 const app = new Hono<{
@@ -30,17 +35,33 @@ const app = new Hono<{
     Variables: {
         reqId: string
         startTime: number
+        tokenFingerprint?: string
     }
 }>()
 
-// デフォルトの許可オリジン
-const DEFAULT_ALLOWED_ORIGINS = [
+const DEV_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:3000',
     'https://v2.voice-ky-assistant.pages.dev',
 ]
+const PRODUCTION_ALLOWED_ORIGINS = ['https://v2.voice-ky-assistant.pages.dev']
 
-function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string): boolean {
+function parseBearerToken(authHeader: string | null | undefined): string | null {
+    if (!authHeader?.startsWith('Bearer ')) return null
+    return authHeader.substring(7).trim() || null
+}
+
+function fingerprintToken(token: string): string {
+    // 非可逆で短い識別子のみを記録し、原文トークンはログに残さない。
+    let hash = 2166136261
+    for (let i = 0; i < token.length; i++) {
+        hash ^= token.charCodeAt(i)
+        hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+    }
+    return `tk_${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function isAllowedOrigin(origin: string | null | undefined, envOrigins: string | undefined, strictMode: boolean): boolean {
     if (!origin) return true
 
     const isPrivateIpv4 = (hostname: string): boolean => {
@@ -69,7 +90,12 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string)
         : []
 
     if (envList.includes(origin)) return true
-    if (DEFAULT_ALLOWED_ORIGINS.includes(origin)) return true
+
+    if (strictMode) {
+        return PRODUCTION_ALLOWED_ORIGINS.includes(origin)
+    }
+
+    if (DEV_ALLOWED_ORIGINS.includes(origin)) return true
     if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
     if (origin.endsWith('.workers.dev')) return true
     if (origin.endsWith('.ngrok-free.dev')) return true
@@ -85,9 +111,16 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins?: string)
 app.use('*', async (c, next) => {
     const reqId = c.req.header('x-request-id') ?? crypto.randomUUID()
     const startTime = Date.now()
+    const tokenFingerprint = (() => {
+        const token = parseBearerToken(c.req.header('Authorization'))
+        return token ? fingerprintToken(token) : undefined
+    })()
 
     c.set('reqId', reqId)
     c.set('startTime', startTime)
+    if (tokenFingerprint) {
+        c.set('tokenFingerprint', tokenFingerprint)
+    }
     c.header('x-request-id', reqId)
 
     try {
@@ -100,6 +133,7 @@ app.use('*', async (c, next) => {
             path: c.req.path,
             status: c.res?.status ?? 0,
             latencyMs,
+            tokenFingerprint: c.get('tokenFingerprint'),
         })
     }
 })
@@ -107,8 +141,9 @@ app.use('*', async (c, next) => {
 // Origin拒否（即時403）
 app.use('*', async (c, next) => {
     const origin = c.req.header('Origin')
-    if (!isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS)) {
-        return c.json({ error: 'Forbidden origin' }, 403)
+    const strictCors = shouldUseStrictCors(c.env)
+    if (!isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors)) {
+        return c.json({ error: 'Forbidden origin', requestId: c.get('reqId') }, 403)
     }
     return next()
 })
@@ -126,9 +161,10 @@ app.onError((err, c) => {
 
 // CORS設定
 app.use('*', async (c, next) => {
+    const strictCors = shouldUseStrictCors(c.env)
     const corsMiddleware = cors({
         origin: (origin) => {
-            if (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS)) {
+            if (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors)) {
                 return origin ?? ''
             }
             return ''
@@ -146,18 +182,33 @@ app.use('/api/*', rateLimit({ maxRequests: 30, windowMs: 60000 }))
 // API認証ミドルウェア
 app.use('/api/*', async (c, next) => {
     // ヘルスチェックは除外
-    if (c.req.path === '/api/health' || c.req.path === '/api/metrics') {
+    if (c.req.path === '/api/health') {
         return next()
     }
 
     const authHeader = c.req.header('Authorization')
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null
+    const token = parseBearerToken(authHeader)
+    const validToken = c.env.API_TOKEN?.trim()
+    const requireApiToken = shouldRequireApiToken(c.env)
 
-    // 環境変数に設定された正規のトークン（未設定ならチェックしない＝開発中など）
-    const validToken = c.env.API_TOKEN
+    if (requireApiToken && !validToken) {
+        logError('auth_config_missing', { reqId: c.get('reqId') })
+        return c.json({
+            error: 'Server authentication misconfigured',
+            code: 'AUTH_CONFIG_MISSING',
+            requestId: c.get('reqId'),
+        }, 503)
+    }
 
-    if (validToken && token !== validToken) {
-        return c.json({ error: 'Unauthorized' }, 401)
+    if (!token) {
+        if (validToken || requireApiToken) {
+            return c.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED', requestId: c.get('reqId') }, 401)
+        }
+        return next()
+    }
+
+    if (!validToken || token !== validToken) {
+        return c.json({ error: 'Unauthorized', code: 'AUTH_INVALID', requestId: c.get('reqId') }, 401)
     }
 
     await next()
@@ -165,6 +216,19 @@ app.use('/api/*', async (c, next) => {
 
 // ヘルスチェック
 app.get('/api/health', (c) => {
+    const issues: string[] = []
+
+    if (shouldRequireApiToken(c.env) && !c.env.API_TOKEN?.trim()) {
+        issues.push('API_TOKEN_REQUIRED')
+    }
+    if (shouldRequireRateLimitKV(c.env) && !c.env.RATE_LIMIT_KV) {
+        issues.push('RATE_LIMIT_KV_REQUIRED')
+    }
+
+    if (issues.length > 0) {
+        return c.json({ status: 'degraded', version: 'v2', issues }, 503)
+    }
+
     return c.json({ status: 'ok', version: 'v2' })
 })
 
@@ -173,6 +237,7 @@ app.route('/api/chat', chat)
 app.route('/api/metrics', metrics)
 app.route('/api/feedback', feedback)
 const appWithRoutes = app
+export { appWithRoutes }
 
 // クライアント側で使う型定義をエクスポート
 export type AppType = typeof appWithRoutes

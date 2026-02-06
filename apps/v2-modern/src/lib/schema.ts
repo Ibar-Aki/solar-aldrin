@@ -16,6 +16,7 @@ function hasInvalidControlChars(value: string): boolean {
 /** チャットメッセージのスキーマ */
 export const USER_CONTENT_MAX_LENGTH = 1000
 const ASSISTANT_CONTENT_MAX_LENGTH = 3000
+const CONTEXT_FIELD_MAX_LENGTH = 120
 const contentSchema = (max: number) => z.string().max(max)
     .refine(val => !hasInvalidControlChars(val), {
         message: "制御文字が含まれています"
@@ -34,19 +35,19 @@ export const ChatMessageSchema = z.discriminatedUnion('role', [
 
 /** セッションコンテキストのスキーマ */
 export const SessionContextSchema = z.object({
-    userName: z.string(),
-    siteName: z.string(),
-    weather: z.string(),
-    workItemCount: z.number(),
-    processPhase: z.string().optional(),
-    healthCondition: z.string().optional(),
+    userName: contentSchema(80),
+    siteName: contentSchema(CONTEXT_FIELD_MAX_LENGTH),
+    weather: contentSchema(60),
+    workItemCount: z.number().int().min(0).max(1000),
+    processPhase: contentSchema(80).optional(),
+    healthCondition: contentSchema(80).optional(),
 })
 
 /** チャットリクエストのスキーマ */
 export const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema).min(1),
     sessionContext: SessionContextSchema.optional(),
-    contextInjection: z.string().max(1200).optional(),
+    contextInjection: contentSchema(1200).optional(),
 })
 
 /** チャット成功レスポンスのスキーマ */

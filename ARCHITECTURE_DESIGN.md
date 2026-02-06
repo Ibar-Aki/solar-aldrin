@@ -21,9 +21,13 @@ graph TD
     
     subgraph "Backend Services"
         CF -->|AI Request| OpenAI[OpenAI API<br>(GPT-4o-mini)]
-        CF -->|Auth/Data| D1[(Cloudflare D1<br>SQLite)]
-        CF -->|Image/Log| R2[(Cloudflare R2<br>Object Storage)]
     end
+    
+    subgraph "Client Storage"
+        IDB[(IndexedDB/Dexie.js<br>ローカル保存)]
+    end
+    
+    React --> IDB
 
     User --- React
     React -->|API Call| CF
@@ -45,9 +49,10 @@ graph TD
 ### Backend (Logic & Data)
 
 * **Runtime**: Cloudflare Workers (Edge Serverless)
-* **Language**: TypeScript (Hono framework recommended)
-* **Database**: Cloudflare D1 (Serverless SQLite) - KY記録の保存
-* **Storage**: Cloudflare R2 - 画像データ等の保存
+* **Language**: TypeScript (Hono framework)
+* **Database**: IndexedDB (Dexie.js) - クライアント側のKY記録保存（実装済み）
+* **Database (将来)**: Cloudflare D1 - サーバー側保存（Phase 3以降で導入予定）
+* **Storage (将来)**: Cloudflare R2 - 画像データ等の保存（Phase 3以降で導入予定）
 
 ### AI Core
 

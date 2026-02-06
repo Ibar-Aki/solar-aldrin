@@ -3,6 +3,7 @@
  * Cloudflare Workers KV を使用
  */
 import type { Context, Next } from 'hono'
+import { shouldRequireRateLimitKV } from '../lib/securityMode'
 
 // シンプルなKV型定義（ライブラリ依存回避）
 export interface KVNamespace {
@@ -18,6 +19,9 @@ interface RateLimitConfig {
 
 type Bindings = {
     RATE_LIMIT_KV?: KVNamespace
+    SENTRY_ENV?: string
+    ENVIRONMENT?: string
+    REQUIRE_RATE_LIMIT_KV?: string
 }
 
 const defaultConfig: RateLimitConfig = {
@@ -35,10 +39,15 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
     const cfg = { ...defaultConfig, ...config }
 
     return async (c: Context<{ Bindings: Bindings }>, next: Next) => {
+        if (c.req.path === '/api/health') {
+            return next()
+        }
+
         // Cloudflare環境では cf-connecting-ip が信頼できるクライアントIP
         // 開発環境などは x-forwarded-for や unknown にフォールバック
         const ip = c.req.header('cf-connecting-ip') || 'unknown'
         const key = `${cfg.keyPrefix}${ip}`
+        const requireKv = shouldRequireRateLimitKV(c.env)
 
         try {
             // KVが利用可能な場合
@@ -63,6 +72,14 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
             }
             // KVがない場合（メモリフォールバック）
             else {
+                if (requireKv) {
+                    console.error('RATE_LIMIT_KV is required but not configured')
+                    c.header('Retry-After', '5')
+                    return c.json(
+                        { error: 'レート制限基盤が利用できません。管理者に連絡してください。' },
+                        503
+                    )
+                }
                 console.warn('RATE_LIMIT_KV not found. Using memory store (dev only).')
                 const now = Date.now()
                 let record = memoryStore.get(key)
@@ -88,7 +105,13 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
             }
         } catch (e) {
             console.error('Rate limit error:', e)
-            // エラー時はフェイルオープン（可用性優先）
+            if (shouldRequireRateLimitKV(c.env)) {
+                c.header('Retry-After', '5')
+                return c.json(
+                    { error: 'レート制限基盤が利用できません。管理者に連絡してください。' },
+                    503
+                )
+            }
         }
 
         return next()

@@ -54,13 +54,21 @@ test.describe('KYセッション統合E2E', () => {
         await sendUserMessage(page, '高所作業を行います')
         await firstResponse
 
-        // 危険度選択（モックによりnextAction: ask_risk_levelになっているはず）
+        // ask_why 段階では危険度選択は表示されない
+        await expect(page.getByText('危険度を選択')).toHaveCount(0)
+
+        // 要因を回答して ask_risk_level に進む
         const riskSelector = page.getByText('危険度を選択').locator('..')
+        const secondResponse = page.waitForResponse('**/api/chat')
+        await sendUserMessage(page, '足元が不安定で安全帯を掛け替える場面があるためです')
+        await secondResponse
+
+        // 危険度選択（モックによりnextAction: ask_risk_levelになっているはず）
         await expect(riskSelector).toBeVisible({ timeout: 10000 })
 
-        const secondResponse = page.waitForResponse('**/api/chat')
+        const thirdResponse = page.waitForResponse('**/api/chat')
         await riskSelector.getByRole('button', { name: '3' }).click()
-        await secondResponse
+        await thirdResponse
 
         // 3. 完了フロー
         const finishButton = page.getByRole('button', { name: '行動目標を決めて終了する' })

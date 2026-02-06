@@ -1,9 +1,18 @@
 export const basicFlowResponses = [
     {
-        reply: '危険内容と対策を教えてください。',
+        reply: '想定される危険は分かりました。どのような状況で危険になりますか？',
         extracted: {
             workDescription: '高所作業',
             hazardDescription: '足場からの転落',
+            nextAction: 'ask_why',
+        },
+        usage: {
+            totalTokens: 120,
+        },
+    },
+    {
+        reply: 'ありがとうございます。危険度は1〜5のどれですか？',
+        extracted: {
             whyDangerous: [
                 '安全帯が外れる可能性がある',
                 '足元が不安定になりやすい',
@@ -15,7 +24,7 @@ export const basicFlowResponses = [
             nextAction: 'ask_risk_level',
         },
         usage: {
-            totalTokens: 120,
+            totalTokens: 100,
         },
     },
     {

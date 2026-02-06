@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
-import { logInfo } from '../observability/logger'
+import { logInfo, sanitizeLogContext } from '../observability/logger'
 
 export type AnalyticsEngineDataset = {
     writeDataPoint: (data: {
@@ -18,7 +18,16 @@ type Bindings = {
 const metrics = new Hono<{ Bindings: Bindings }>()
 
 const MetricEventSchema = z.object({
-    event: z.enum(['session_start', 'session_complete', 'input_length', 'web_vital']),
+    event: z.enum([
+        'session_start',
+        'session_complete',
+        'input_length',
+        'web_vital',
+        'chat_error',
+        'retry_clicked',
+        'retry_succeeded',
+        'retry_failed',
+    ]),
     timestamp: z.string().optional(),
     sessionId: z.string().uuid().optional(),
     value: z.number().optional(),
@@ -35,6 +44,7 @@ metrics.post(
     async (c) => {
         const payload = c.req.valid('json')
         const eventTime = payload.timestamp ?? new Date().toISOString()
+        const sanitizedData = payload.data ? sanitizeLogContext(payload.data) : undefined
 
         if (c.env.ANALYTICS_DATASET) {
             c.env.ANALYTICS_DATASET.writeDataPoint({
@@ -47,7 +57,7 @@ metrics.post(
                 ],
                 blobs: [
                     JSON.stringify({
-                        ...payload.data,
+                        ...sanitizedData,
                         timestamp: eventTime,
                     }),
                 ],
@@ -57,6 +67,7 @@ metrics.post(
                 event: payload.event,
                 sessionId: payload.sessionId,
                 value: payload.value ?? null,
+                dataKeys: sanitizedData ? Object.keys(sanitizedData).length : 0,
             })
         }
 

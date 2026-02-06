@@ -7,6 +7,7 @@ import { ChatBubble } from '@/components/ChatBubble'
 import { RiskLevelSelector } from '@/components/RiskLevelSelector'
 import { useKYStore } from '@/stores/kyStore'
 import { useChat } from '@/hooks/useChat'
+import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 
 export function KYSessionPage() {
     const navigate = useNavigate()
@@ -61,6 +62,7 @@ export function KYSessionPage() {
     }
 
     const handleComplete = () => {
+        if (!session) return
         completeSession({
             actionGoal: session.actionGoal ?? null,
             pointingConfirmed: session.pointingConfirmed ?? null,
@@ -76,6 +78,19 @@ export function KYSessionPage() {
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
     const hasCurrentWork = !!(currentWorkItem.workDescription || currentWorkItem.hazardDescription)
+    const lastAssistantNextAction = (() => {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const message = messages[i]
+            if (message.role === 'assistant' && message.extractedData?.nextAction) {
+                return message.extractedData.nextAction
+            }
+        }
+        return undefined
+    })()
+    const isRiskLevelSelectorVisible = shouldShowRiskLevelSelector({
+        lastAssistantNextAction,
+        currentRiskLevel: currentWorkItem.riskLevel,
+    })
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -141,7 +156,7 @@ export function KYSessionPage() {
             {/* フッター固定エリア */}
             <div className="shrink-0 bg-white border-t pb-[env(safe-area-inset-bottom)]">
                 {/* 危険度選択（AIが危険度を聞いているとき） */}
-                {currentWorkItem.hazardDescription && !currentWorkItem.riskLevel && (
+                {isRiskLevelSelectorVisible && (
                     <div className="px-4 py-2 border-b">
                         <div className="max-w-2xl mx-auto">
                             <RiskLevelSelector

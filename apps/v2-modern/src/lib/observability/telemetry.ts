@@ -3,6 +3,10 @@ export type TelemetryEventName =
     | 'session_complete'
     | 'input_length'
     | 'web_vital'
+    | 'chat_error'
+    | 'retry_clicked'
+    | 'retry_succeeded'
+    | 'retry_failed'
 
 export type TelemetryEvent = {
     event: TelemetryEventName
@@ -12,7 +16,17 @@ export type TelemetryEvent = {
     timestamp?: string
 }
 
-const endpoint = import.meta.env.VITE_TELEMETRY_ENDPOINT || '/api/metrics'
+function resolveApiBase(): string {
+    const envBase = import.meta.env.VITE_API_BASE_URL
+    if (!envBase || typeof envBase !== 'string') return ''
+    const trimmed = envBase.trim()
+    if (!trimmed) return ''
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+}
+
+const apiBase = resolveApiBase()
+const token = import.meta.env.VITE_API_TOKEN
+const endpoint = import.meta.env.VITE_TELEMETRY_ENDPOINT || (apiBase ? `${apiBase}/metrics` : '/api/metrics')
 const enabled = import.meta.env.VITE_TELEMETRY_ENABLED !== '0'
 const sampleRate = Number(import.meta.env.VITE_TELEMETRY_SAMPLE_RATE || '1')
 
@@ -32,14 +46,17 @@ export async function sendTelemetry(event: TelemetryEvent) {
     }
 
     try {
-        if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+        if (!token && typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
             const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
             navigator.sendBeacon(endpoint, blob)
             return
         }
         await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
             body: JSON.stringify(payload),
             keepalive: true,
         })

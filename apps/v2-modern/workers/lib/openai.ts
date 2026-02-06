@@ -15,8 +15,22 @@ interface OpenAIResponse {
     }
 }
 
+type OpenAIHTTPError = Error & { status?: number }
+
 const DEFAULT_TIMEOUT = 10000
-const MAX_RETRIES = 1
+const MAX_RETRIES = 2
+const BACKOFF_BASE_MS = 250
+const BACKOFF_MAX_MS = 700
+
+function getRetryDelayMs(attempt: number): number {
+    const baseDelay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** attempt))
+    const jitter = Math.floor(Math.random() * 120)
+    return baseDelay + jitter
+}
+
+async function sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
     const controller = new AbortController()
@@ -35,7 +49,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Promise<OpenAIResponse> {
     const { apiKey, body, timeoutMs = DEFAULT_TIMEOUT, reqId, retryCount = MAX_RETRIES } = options
 
-    const performRequest = async (currentRetry: number): Promise<Response> => {
+    const performRequest = async (currentRetry: number, attempt: number = 0): Promise<Response> => {
         try {
             const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -48,16 +62,20 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
 
             // Retryable errors (5xx, 429)
             if (!response.ok && (response.status >= 500 || response.status === 429) && currentRetry > 0) {
-                logWarn('openai_retry', { reqId, status: response.status })
-                return performRequest(currentRetry - 1)
+                const delayMs = getRetryDelayMs(attempt)
+                logWarn('openai_retry', { reqId, status: response.status, delayMs, attempt: attempt + 1 })
+                await sleep(delayMs)
+                return performRequest(currentRetry - 1, attempt + 1)
             }
 
             return response
         } catch (error) {
             // Retry on timeout/network error
             if (currentRetry > 0) {
-                logWarn('openai_network_retry', { reqId, error: String(error) })
-                return performRequest(currentRetry - 1)
+                const delayMs = getRetryDelayMs(attempt)
+                logWarn('openai_network_retry', { reqId, error: String(error), delayMs, attempt: attempt + 1 })
+                await sleep(delayMs)
+                return performRequest(currentRetry - 1, attempt + 1)
             }
             throw error
         }
@@ -80,8 +98,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             status: response.status,
             body: errorText.slice(0, 500),
         })
-        const error = new Error(`OpenAI API Error: ${response.status}`)
-        // @ts-ignore
+        const error: OpenAIHTTPError = new Error(`OpenAI API Error: ${response.status}`)
         error.status = response.status
         throw error
     }
@@ -110,7 +127,7 @@ export function cleanJsonMarkdown(content: string): string {
         return content
     } catch {
         // Markdown記法の除去
-        let clean = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
+        const clean = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
 
         // { ... } の範囲を抽出
         const firstBrace = clean.indexOf('{')
@@ -132,7 +149,7 @@ export function safeParseJSON<T>(content: string): T {
     const cleaned = cleanJsonMarkdown(content)
     try {
         return JSON.parse(cleaned) as T
-    } catch (e) {
+    } catch {
         throw new Error('JSON_PARSE_FAILED')
     }
 }

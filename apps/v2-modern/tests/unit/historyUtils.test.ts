@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
-import { db, saveSession, getPastRisks, applyHistoryRetention, getRecentRisks, getHiyariHattoItems } from '@/lib/db'
+import { db, saveSession } from '@/lib/db'
 import { SoloKYSession } from '@/types/ky'
 import * as historyUtils from '@/lib/historyUtils'
 

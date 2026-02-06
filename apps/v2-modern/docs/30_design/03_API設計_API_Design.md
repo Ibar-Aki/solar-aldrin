@@ -1,7 +1,7 @@
 # API設計（v2-modern）
 
 **目的**: APIの入力/出力/認証/エラー仕様を現状コードに合わせて定義する  
-**更新日**: 2026-02-03
+**更新日**: 2026-02-06
 
 ---
 
@@ -11,7 +11,7 @@
 - Content-Type: `application/json`
 - CORS: Allowlist Origin のみ許可
 - レート制限: 1分あたり30回（KV使用）
-- 認証: `API_TOKEN` が設定されている場合のみ Bearer 必須
+- 認証: 本番は Bearer 必須（`API_TOKEN` 必須）。`REQUIRE_API_TOKEN` で強制可否を明示指定可能
 
 **認証の例**
 ```
@@ -70,12 +70,6 @@ curl -i "<BASE_URL>/api/health" \
 {
   "reply": "それは危険ですね。どのような状況で起きますか？",
   "extracted": {
-    "workDescription": "配管の溶接",
-    "hazardDescription": "火花が飛散して引火する",
-    "whyDangerous": ["周囲に可燃物がある"],
-    "countermeasures": ["消火器を近くに置く"],
-    "riskLevel": 4,
-    "actionGoal": null,
     "nextAction": "ask_why"
   },
   "usage": {
@@ -83,6 +77,13 @@ curl -i "<BASE_URL>/api/health" \
   }
 }
 ```
+
+**3.8 レスポンス簡素化ルール（2026-02-06反映）**
+- `reply` は必須
+- `extracted.nextAction` は必須
+- `workDescription` / `hazardDescription` / `whyDangerous` / `countermeasures` / `riskLevel` / `actionGoal` は判明時のみ返却
+- `null` / 空文字 / 空配列は返却前に除去する
+- 互換性維持のため、`extracted` と `usage.totalTokens` はレスポンスに残す
 
 **curl例**
 ```bash
@@ -212,6 +213,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ### 2.4 POST /api/metrics
 
 **用途**: KPI送信
+**認証**: Bearer 必須（他APIと同等）
 
 **Request**
 ```json
@@ -238,6 +240,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```bash
 curl -X POST "<BASE_URL>/api/metrics" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <API_TOKEN>" \
   -H "Origin: https://your-allowed-origin.example" \
   -d '{
     "event": "session_start",
@@ -315,3 +318,37 @@ curl -X POST "<BASE_URL>/api/metrics" \
   "retriable": true
 }
 ```
+
+---
+
+## 6. D1バッチ化設計（3.5 / 設計確定）
+
+**ステータス**: 設計完了（実装は次フェーズ）
+
+### 6.1 目的
+- `feedback` 系の複数書き込みを `DB.batch(...)` へ集約し、保存処理の整合性と負荷効率を高める
+
+### 6.2 想定テーブル
+- `feedback_sessions`
+  - `session_id` (PK), `client_id`, `payload_json`, `created_at`
+- `feedback_cache`
+  - `session_id` (PK), `client_id`, `response_json`, `cached_at`, `expires_at`
+- `feedback_events`
+  - `id` (PK), `session_id`, `event_type`, `event_payload_json`, `created_at`
+
+### 6.3 書き込み方針
+- `POST /api/feedback` で保存が必要な場合、以下を1回の `batch` で実行
+  - セッション初回保存（upsert）
+  - キャッシュ保存（upsert）
+  - 監査/分析イベント保存（insert）
+- 途中失敗時は全体失敗として扱い、部分更新を残さない
+
+### 6.4 エラー方針（予定）
+- D1書き込み失敗: `500` + `DB_WRITE_FAILED`
+- D1タイムアウト: `503` + `DB_TIMEOUT`（`retriable: true`）
+
+### 6.5 移行手順（予定）
+1. D1スキーマ作成とマイグレーション適用
+2. 読み取り互換層（既存KV + D1）を追加
+3. 書き込みをD1バッチへ段階切替
+4. KV依存を縮小し、運用確認後に整理

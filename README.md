@@ -32,7 +32,8 @@
 - **Status**: **開発中 (Active Development)**
 - **Target**: ソロKYの定着、安定稼働、PDF自動生成
 - **Code**: [`./apps/v2-modern/`](./apps/v2-modern/)
-- **Tech**: React, Vite, Cloudflare Workers, OpenAI, D1
+- **Tech**: React, Vite, Cloudflare Workers, OpenAI, IndexedDB (local)
+  - ※D1（サーバーDB）はPhase 3以降で導入予定
 - **[Documentation](./apps/v2-modern/docs/)**: 要件定義、詳細設計、API仕様書など
 
 ### Phase 3-4: Future Expansion

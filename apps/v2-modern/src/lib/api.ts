@@ -13,7 +13,50 @@ import {
     type FeedbackResponse,
 } from '@/lib/schema'
 
-const API_BASE = '/api'
+function resolveApiBase(): string {
+    const envBase = import.meta.env.VITE_API_BASE_URL
+    if (!envBase || typeof envBase !== 'string') return '/api'
+
+    const trimmed = envBase.trim()
+    if (!trimmed) return '/api'
+
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+}
+
+const API_BASE = resolveApiBase()
+
+export type ChatErrorType = 'network' | 'timeout' | 'rate_limit' | 'auth' | 'server' | 'unknown'
+
+type ApiErrorInit = {
+    status?: number
+    retriable?: boolean
+    errorType?: ChatErrorType
+    retryAfterSec?: number
+}
+
+export class ApiError extends Error {
+    status?: number
+    retriable: boolean
+    errorType: ChatErrorType
+    retryAfterSec?: number
+
+    constructor(message: string, init: ApiErrorInit = {}) {
+        super(message)
+        this.name = 'ApiError'
+        this.status = init.status
+        this.retriable = init.retriable ?? false
+        this.errorType = init.errorType ?? inferErrorType(init.status)
+        this.retryAfterSec = init.retryAfterSec
+    }
+}
+
+function inferErrorType(status?: number): ChatErrorType {
+    if (status === 401) return 'auth'
+    if (status === 429) return 'rate_limit'
+    if (status === 504) return 'timeout'
+    if (typeof status === 'number' && status >= 500) return 'server'
+    return 'unknown'
+}
 
 /**
  * Chat API を呼び出す
@@ -22,24 +65,35 @@ const API_BASE = '/api'
 export async function postChat(request: ChatRequest): Promise<ChatSuccessResponse> {
     const token = import.meta.env.VITE_API_TOKEN
 
-    const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(request),
-    })
+    let res: Response
+    try {
+        res = await fetch(`${API_BASE}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(request),
+        })
+    } catch {
+        throw new ApiError('通信が不安定です。電波の良い場所で再送してください。', {
+            errorType: 'network',
+            retriable: false,
+        })
+    }
 
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         const errorMessage = (errorData as { error?: string }).error || 'AI応答の取得に失敗しました'
-        const err = new Error(errorMessage)
-        ;(err as { status?: number }).status = res.status
-        ;(err as { retriable?: boolean }).retriable = Boolean(
-            (errorData as { retriable?: boolean }).retriable
-        )
-        throw err
+        const retryAfterRaw = res.headers.get('Retry-After')
+        const retryAfterParsed = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined
+        const retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
+        throw new ApiError(errorMessage, {
+            status: res.status,
+            retriable: Boolean((errorData as { retriable?: boolean }).retriable),
+            errorType: inferErrorType(res.status),
+            retryAfterSec,
+        })
     }
 
     const data = await res.json()
@@ -48,14 +102,21 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
     const result = ChatResponseSchema.safeParse(data)
     if (!result.success) {
         console.error('Invalid API Response:', result.error)
-        throw new Error('サーバーからの応答が不正な形式です')
+        throw new ApiError('サーバーからの応答が不正な形式です', {
+            status: 502,
+            errorType: 'server',
+            retriable: false,
+        })
     }
 
     const parsed = result.data
 
     // エラーレスポンスの場合は例外をスロー
     if ('error' in parsed) {
-        throw new Error(parsed.error)
+        throw new ApiError(parsed.error, {
+            errorType: 'unknown',
+            retriable: false,
+        })
     }
 
     return parsed

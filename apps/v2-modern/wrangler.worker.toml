@@ -1,0 +1,8 @@
+name = "voice-ky-v2"
+main = "workers/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_als"]
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "29283581797745f5a5a972236e19dec9"
