@@ -9,6 +9,7 @@ import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
 import type { ExtractedData } from '@/types/ky'
 import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
+import { buildConversationSummary } from '@/lib/chat/conversationSummary'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = (() => {
@@ -20,6 +21,7 @@ const ENABLE_SILENT_RETRY = (() => {
 })()
 
 type RetrySource = 'none' | 'manual' | 'silent'
+const MAX_CLIENT_HISTORY_MESSAGES = 12
 
 type NormalizedChatError = {
     message: string
@@ -168,6 +170,7 @@ export function useChat() {
         session,
         messages,
         currentWorkItem,
+        status,
         addMessage,
         updateCurrentWorkItem,
         commitWorkItem,
@@ -278,7 +281,8 @@ export function useChat() {
                     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
                 if (!shouldSkipUserMessage) {
-                    return [...chatMessages, { role: 'user' as const, content: text }]
+                    const combined = [...chatMessages, { role: 'user' as const, content: text }]
+                    return combined.slice(-MAX_CLIENT_HISTORY_MESSAGES)
                 }
 
                 // リトライ時は末尾のエラーメッセージを除去し、同じユーザー発言を末尾に置く
@@ -291,7 +295,7 @@ export function useChat() {
                 if (!lastAfter || lastAfter.role !== 'user' || lastAfter.content !== text) {
                     sanitized.push({ role: 'user' as const, content: text })
                 }
-                return sanitized
+                return sanitized.slice(-MAX_CLIENT_HISTORY_MESSAGES)
             }
 
             const contextEnabled = import.meta.env.VITE_ENABLE_CONTEXT_INJECTION !== '0'
@@ -328,6 +332,11 @@ export function useChat() {
                     healthCondition: session.healthCondition ?? undefined,
                 },
                 contextInjection,
+                conversationSummary: buildConversationSummary({
+                    session,
+                    currentWorkItem,
+                    status,
+                }),
             })
 
             let data: Awaited<ReturnType<typeof postChat>>
