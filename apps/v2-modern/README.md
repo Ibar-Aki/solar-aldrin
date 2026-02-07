@@ -1,6 +1,6 @@
 # Voice KY Assistant v2
 
-更新日: 2026-02-07（実費テスト運用を追記）
+更新日: 2026-02-07（実費テスト運用、/api/chat のJSONパース失敗時の扱いと観測情報を追記）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -69,6 +69,16 @@ npm run dev:workers
 
 - 任意: `VITE_API_BASE_URL`（例: `https://voice-ky-v2.solar-aldrin-ky.workers.dev/api`）
 - 任意: `VITE_API_TOKEN`（Workers側で `API_TOKEN` を設定した場合）
+
+#### /api/chat のエラーコードと観測用フィールド（実費テスト向け）
+
+- JSONパース失敗（LLM出力がJSONとして不正）: `502` / `code=AI_RESPONSE_INVALID_JSON` / `retriable=true`
+- 成功レスポンスには、実費テスト解析向けに観測用フィールドを付与します（フロントの型検証では未使用ですが、E2Eレポートで採取します）
+- 観測用フィールド: `usage.totalTokens`
+- 観測用フィールド: `meta.openai.requestCount`（/api/chat 内での OpenAI 呼び出し回数）
+- 観測用フィールド: `meta.openai.httpAttempts`（OpenAI HTTP 試行回数。内部リトライ込み）
+- 観測用フィールド: `meta.openai.durationMs`（OpenAI 呼び出しの合計時間）
+- 観測用フィールド: `meta.parseRetry.attempted` / `meta.parseRetry.succeeded`（JSONパース再試行の有無と結果）
 
 ### ビルド
 

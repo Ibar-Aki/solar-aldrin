@@ -1,5 +1,7 @@
 # Phase 2 (v2-modern) セットアップガイド
 
+更新日: 2026-02-07
+
 Voice KY Assistant v2 の開発環境セットアップとデプロイ手順です。
 
 ## 1. 必須アセットの配置 (フォント)
@@ -21,7 +23,7 @@ cd apps/v2-modern
 npx wrangler secret put OPENAI_API_KEY
 ```
 
-コマンド実行後、プロンプトに従って `sk-...` から始まるAPIキーを入力してください。
+コマンド実行後、プロンプトに従って OpenAI のAPIキーを入力してください。
 
 ## 3. その他の環境変数 (オプション)
 

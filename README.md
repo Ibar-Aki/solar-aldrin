@@ -1,5 +1,7 @@
 # Solar Aldrin: Voice KY Assistant
 
+更新日: 2026-02-07
+
 **「話すだけで、質の高い危険予知が完了する」**
 **「二度書きの無駄をなくし、現場の知恵をつなぐ」**
 
@@ -46,4 +48,4 @@
 ## 📚 Quick Links
 
 - [Phase 2 Setup Guide](./apps/v2-modern/docs/PHASE2_SETUP.md)
-- [Development Diary (開発日誌)](file:///C:/Users/AKIHIRO/.gemini/Tips&開発記録/dev-diary/)
+- Development Diary (開発日誌): リポジトリ外（ローカル管理のためリンクは掲載しません）

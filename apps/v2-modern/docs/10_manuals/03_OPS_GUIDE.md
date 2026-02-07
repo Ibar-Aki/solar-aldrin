@@ -2,6 +2,8 @@
 
 本ドキュメントは、Voice KY Assistant v2 の運用・保守に関する手順をまとめたものです。
 
+更新日: 2026-02-07
+
 ---
 
 ## 🔑 APIキー管理 (Key Management)
@@ -12,7 +14,7 @@
 
 1. **新しいキーの発行**:
     * OpenAI Platform の [API Keys](https://platform.openai.com/api-keys) ページにアクセス。
-    * "Create new secret key" をクリックし、新キーを発行 (`sk-new...`)。
+    * "Create new secret key" をクリックし、新キーを発行します。
 
 2. **Workersへの反映**:
     * 以下のコマンドで、本番環境の環境変数を更新します。
@@ -20,14 +22,14 @@
     ```bash
     cd apps/v2-modern
     npx wrangler secret put OPENAI_API_KEY
-    # プロンプトが表示されたら、新しいキー(sk-new...)を入力
+    # プロンプトが表示されたら、新しいキーを入力
     ```
 
 3. **動作確認**:
     * アプリでチャットを行い、正常に応答することを確認。
 
 4. **古いキーの無効化**:
-    * OpenAI Platform 上で、古いキー (`sk-old...`) を削除 (Delete) します。
+    * OpenAI Platform 上で、古いキーを削除 (Delete) します。
 
 ---
 
