@@ -106,6 +106,27 @@ describe('security middleware integration', () => {
         expect(res.status).toBe(200)
     })
 
+    it('STRICT_CORS有効でもPages固定デプロイURL（hash）Originは許可される', async () => {
+        const env: TestEnv = {
+            ...baseEnv,
+            SENTRY_ENV: 'production',
+            REQUIRE_API_TOKEN: '1',
+            REQUIRE_RATE_LIMIT_KV: '0',
+            STRICT_CORS: '1',
+            API_TOKEN: 'token123',
+        }
+        const res = await appWithRoutes.fetch(
+            metricsRequest({
+                headers: {
+                    Authorization: 'Bearer token123',
+                    Origin: 'https://26541138.voice-ky-v2.pages.dev',
+                },
+            }),
+            env
+        )
+        expect(res.status).toBe(200)
+    })
+
     it('healthは設定不備時にdegradedを返す', async () => {
         const res = await appWithRoutes.fetch(
             new Request('http://localhost/api/health'),

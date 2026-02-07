@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { FeedbackRequestSchema, FeedbackResponseSchema, type FeedbackRequest, type FeedbackResponse } from '../../src/lib/schema'
 import { FEEDBACK_SYSTEM_PROMPT } from '../prompts/feedbackKY'
 import { logError, logWarn } from '../observability/logger'
-import { fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
+import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 
 interface KVNamespace {
     get(key: string): Promise<string | null>
@@ -326,6 +326,17 @@ feedback.post(
                         requestId: reqId,
                     }
                 }, 408)
+            }
+            if (error instanceof OpenAIHTTPErrorWithDetails) {
+                // UX優先: フィードバックは必須ではないため、上流エラー時はフォールバックを返す。
+                logWarn('feedback_openai_upstream_error', {
+                    reqId,
+                    status: error.status,
+                    upstreamCode: error.upstreamCode,
+                    upstreamType: error.upstreamType,
+                })
+                const fallback = buildFallbackResponse(reqId)
+                return c.json(fallback)
             }
             logError('feedback_processing_error', { reqId })
             return c.json({

@@ -8,11 +8,12 @@ import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH, type ChatRequest } from '../../src/lib/schema'
 import type { ExtractedData } from '../../src/types/ky'
 import { logError, logWarn } from '../observability/logger'
-import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
+import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 
 type Bindings = {
     OPENAI_API_KEY: string
     ENABLE_CONTEXT_INJECTION?: string
+    OPENAI_TIMEOUT_MS?: string
 }
 
 const chat = new Hono<{
@@ -44,10 +45,77 @@ function hasBannedWord(text: string): boolean {
     return BANNED_WORDS.some(word => text.includes(word))
 }
 
+function resolveOpenAITimeoutMs(raw: string | undefined): number {
+    const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
+    // LIVEでは10sだと普通に超えるため、デフォルトは25sに上げる（E2E側は90s待てる設計）
+    if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 120000) return parsed
+    return 25000
+}
+
 function getErrorStatus(error: unknown): number | undefined {
     if (!error || typeof error !== 'object') return undefined
     const status = (error as { status?: unknown }).status
     return typeof status === 'number' ? status : undefined
+}
+
+function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { message: string; code: string; retriable: boolean; status: number } {
+    // Upstream errors are almost always server-side misconfig or temporary service issues.
+    // We keep the message short, avoid echoing request payload, and include upstream message if present.
+    const upstreamMsg = error.upstreamMessage?.trim()
+    const status = error.status
+
+    if (status === 401 || status === 403) {
+        return {
+            message: upstreamMsg
+                ? `AI認証エラーです（OpenAI）。設定を確認してください。詳細: ${upstreamMsg}`
+                : 'AI認証エラーです（OpenAI）。設定を確認してください。',
+            code: 'OPENAI_AUTH_ERROR',
+            retriable: false,
+            status: 502,
+        }
+    }
+
+    if (status === 400 || status === 404 || status === 409 || status === 422) {
+        return {
+            message: upstreamMsg
+                ? `AIリクエストが拒否されました（OpenAI）。詳細: ${upstreamMsg}`
+                : 'AIリクエストが拒否されました（OpenAI）。設定/入力/モデル指定を確認してください。',
+            code: 'OPENAI_BAD_REQUEST',
+            retriable: false,
+            status: 502,
+        }
+    }
+
+    if (status === 429) {
+        return {
+            message: upstreamMsg
+                ? `AIサービスが混雑しています（OpenAI）。詳細: ${upstreamMsg}`
+                : 'AIサービスが混雑しています（OpenAI）。少し待ってから再送してください。',
+            code: 'AI_UPSTREAM_ERROR',
+            retriable: true,
+            status: 429,
+        }
+    }
+
+    if (status >= 500) {
+        return {
+            message: upstreamMsg
+                ? `AIサービス側でエラーが発生しました（OpenAI）。詳細: ${upstreamMsg}`
+                : 'AIサービス側でエラーが発生しました（OpenAI）。少し待ってから再送してください。',
+            code: 'AI_UPSTREAM_ERROR',
+            retriable: true,
+            status: 503,
+        }
+    }
+
+    return {
+        message: upstreamMsg
+            ? `AI呼び出しに失敗しました（OpenAI）。詳細: ${upstreamMsg}`
+            : 'AI呼び出しに失敗しました（OpenAI）。',
+        code: 'OPENAI_UPSTREAM_ERROR',
+        retriable: false,
+        status: 502,
+    }
 }
 
 function sanitizeContextText(value: string, maxLength: number): string {
@@ -330,6 +398,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     try {
         const reqId = c.get('reqId')
+        const openaiTimeoutMs = resolveOpenAITimeoutMs(c.env.OPENAI_TIMEOUT_MS)
 
         const requestBodyBase = {
             model: 'gpt-4o-mini',
@@ -355,6 +424,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 apiKey,
                 body,
                 reqId,
+                timeoutMs: openaiTimeoutMs,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
@@ -417,6 +487,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     parseRetrySucceeded = true
                 } catch {
                     logError('json_parse_retry_failed', { reqId })
+                    // UX: 再送で回復する可能性があるため、短い待機を推奨する
+                    c.header('Retry-After', '1')
                     return c.json({
                         error: 'AIからの応答が不正な形式です。再試行してください。',
                         code: 'AI_RESPONSE_INVALID_JSON',
@@ -445,6 +517,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         if (!validationResult.success) {
             logError('response_schema_validation_error', { reqId: c.get('reqId') })
+            // UX: 再送で回復する可能性があるため、短い待機を推奨する
+            c.header('Retry-After', '1')
             return c.json({
                 error: 'AIからの応答が不正な形式です。再試行してください。',
                 code: 'AI_RESPONSE_INVALID_SCHEMA',
@@ -489,7 +563,25 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     } catch (error) {
         if (error instanceof Error && error.message === 'TIMEOUT') {
+            c.header('Retry-After', '2')
             return c.json({ error: 'AI応答がタイムアウトしました', code: 'AI_TIMEOUT', requestId: c.get('reqId'), retriable: true }, 504)
+        }
+
+        if (error instanceof OpenAIHTTPErrorWithDetails) {
+            const mapped = formatUpstreamOpenAIErrorMessage(error)
+            // Prefer upstream Retry-After if present (especially for 429), but keep a conservative default.
+            if (mapped.retriable) {
+                const retryAfter = typeof error.retryAfterSec === 'number' && error.retryAfterSec > 0
+                    ? String(Math.min(30, error.retryAfterSec))
+                    : (mapped.status === 429 ? '3' : '2')
+                c.header('Retry-After', retryAfter)
+            }
+            return c.json({
+                error: mapped.message,
+                code: mapped.code,
+                requestId: c.get('reqId'),
+                retriable: mapped.retriable,
+            }, mapped.status)
         }
 
         const status = getErrorStatus(error)
@@ -499,6 +591,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     status === 500 ? 500 :
                         status === 502 ? 502 :
                             status === 504 ? 504 : 503
+            c.header('Retry-After', status === 429 ? '3' : '2')
             return c.json({ error: 'AIサービスが混雑しています', code: 'AI_UPSTREAM_ERROR', requestId: c.get('reqId'), retriable: true }, retriableStatus)
         }
 

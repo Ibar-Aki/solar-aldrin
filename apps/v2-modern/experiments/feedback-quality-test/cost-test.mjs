@@ -64,7 +64,12 @@ async function runTest() {
         const messages = [...history, { role: 'user', content: userMsg }];
         const payload = {
             messages: messages,
-            sessionContext: { workItemCount: 1 }
+            sessionContext: {
+                workItemCount: 1,
+                userName: 'Test User',
+                siteName: 'Test Site',
+                weather: 'Sunny'
+            }
         };
 
         let reply = "";
@@ -98,7 +103,15 @@ async function runTest() {
                     console.log(`✓ Chat [OK] API usage: ${inputTokens + outputTokens} tokens`);
 
                 } else {
-                    console.log(`! Chat [Error ${res.status}] Switching to local estimation...`);
+                    let errorDetail = "";
+                    try {
+                        const errJson = await res.json();
+                        errorDetail = JSON.stringify(errJson);
+                    } catch (e) {
+                        errorDetail = await res.text();
+                    }
+                    console.log(`! Chat [Error ${res.status}] Details: ${errorDetail.substring(0, 500)}`);
+                    console.log(`! Switching to local estimation...`);
                     isApiWorking = false;
                 }
             } catch (e) {

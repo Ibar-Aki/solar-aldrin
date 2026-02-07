@@ -22,8 +22,6 @@ interface OpenAIResponse {
     meta: OpenAIResponseMeta
 }
 
-type OpenAIHTTPError = Error & { status?: number }
-
 const DEFAULT_TIMEOUT = 30000
 const MAX_RETRIES = 2
 const BACKOFF_BASE_MS = 250

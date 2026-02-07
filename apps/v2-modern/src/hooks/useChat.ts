@@ -30,6 +30,10 @@ type NormalizedChatError = {
     canRetry: boolean
 }
 
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function toApiError(error: unknown): ApiError {
     if (error instanceof ApiError) {
         return error
@@ -90,7 +94,8 @@ function normalizeChatError(error: unknown): NormalizedChatError {
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
-                canRetry: false,
+                // UX: 通信エラーも「もう一度試す」で回復することがあるため、手動リトライは許可する。
+                canRetry: true,
             }
         case 'timeout':
             return {
@@ -142,6 +147,20 @@ function shouldSilentRetry(error: NormalizedChatError): boolean {
     if (error.errorType === 'rate_limit') return true
     if (error.errorType === 'server' && error.retriable) return true
     return false
+}
+
+function computeSilentRetryDelayMs(error: NormalizedChatError): number {
+    const retryAfterSec = error.retryAfterSec
+    if (typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+        // 平均応答時間が増えすぎないよう、上限を設ける（UX優先: 即時連打を避ける）
+        return Math.min(10, retryAfterSec) * 1000
+    }
+
+    const jitter = Math.floor(Math.random() * 400)
+    if (error.errorType === 'rate_limit') return 2000 + jitter
+    if (error.errorType === 'timeout') return 1200 + jitter
+    if (error.errorType === 'server') return 1200 + jitter
+    return 0
 }
 
 export function useChat() {
@@ -340,6 +359,20 @@ export function useChat() {
                     })
 
                     try {
+                        const delayMs = computeSilentRetryDelayMs(normalizedFirstError)
+                        if (delayMs > 0) {
+                            void sendTelemetry({
+                                event: 'retry_waiting',
+                                sessionId: session.id,
+                                value: delayMs,
+                                data: {
+                                    source: 'silent',
+                                    error_type: normalizedFirstError.errorType,
+                                    retry_after_sec: normalizedFirstError.retryAfterSec ?? null,
+                                },
+                            })
+                            await sleep(delayMs)
+                        }
                         data = await requestChat(true)
                         void sendTelemetry({
                             event: 'retry_succeeded',

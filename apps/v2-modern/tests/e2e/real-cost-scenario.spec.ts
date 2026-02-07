@@ -32,6 +32,7 @@ const METRICS = {
     turns: 0,
     navigationSuccess: false,
     baseUrl: '',
+    retryButtonClicks: 0,
 }
 
 // レポート保存先
@@ -86,6 +87,7 @@ function resetRunState() {
     METRICS.turns = 0
     METRICS.navigationSuccess = false
     METRICS.baseUrl = ''
+    METRICS.retryButtonClicks = 0
     conversationLog.length = 0
     apiTrace.length = 0
     failureDiagnostics.length = 0
@@ -197,6 +199,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const openaiHttpAttempts = apiTrace.reduce((sum, entry) => sum + (entry.openaiHttpAttempts ?? 0), 0)
     const parseRetryUsed = apiTrace.reduce((sum, entry) => sum + (entry.parseRetryAttempted ? 1 : 0), 0)
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
+    const waitOver15sTurns = METRICS.aiResponseTimes.filter(ms => ms >= 15_000).length
 
     // 評価スコア算出 (簡易ロジック)
     let score = 'A'
@@ -245,6 +248,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **OpenAI HTTP Attempts** | ${openaiHttpAttempts} | - | ℹ️ |
 | **Parse Retry Used** | ${parseRetryUsed} | 0 | ${parseRetryUsed === 0 ? '🟢' : '🟡'} |
 | **Parse Retry Succeeded** | ${parseRetrySucceeded} | - | ℹ️ |
+| **Retry Button Clicks** | ${METRICS.retryButtonClicks} | 0 | ${METRICS.retryButtonClicks === 0 ? '🟢' : '🟡'} |
+| **Wait > 15s Turns** | ${waitOver15sTurns} | 0 | ${waitOver15sTurns === 0 ? '🟢' : '🟡'} |
 
 ## Conversation Log
 | Time | Speaker | Message |
@@ -291,6 +296,8 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     // Dry Run モック設定
     if (DRY_RUN) {
         let turnCount = 0
+        let successTurn = 0
+        let injectedFailure = false
         await page.route('**/api/chat', async route => {
             turnCount++
             const mockResponses = [
@@ -326,9 +333,28 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     needsWrapUp: true
                 }
             ]
-            // 単純なシーケンス応答
-            const index = Math.min(turnCount, mockResponses.length - 1)
+
+            // E2E要件: 自動テストでは「リトライ」ボタンを押して再実行できることを確認する。
+            // そのため、最初のリクエストだけ意図的に失敗させる（次回は同じターンの正常応答を返す）。
+            if (!injectedFailure) {
+                injectedFailure = true
+                await route.fulfill({
+                    status: 503,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        error: 'AIサービスが混雑しています',
+                        code: 'AI_UPSTREAM_ERROR',
+                        retriable: true,
+                    }),
+                })
+                console.log(`[Mock API] Injected failure on turn ${turnCount}`)
+                return
+            }
+
+            // 単純なシーケンス応答（失敗リクエストはsuccessTurnに含めない）
+            const index = Math.min(successTurn + 1, mockResponses.length - 1)
             const response = mockResponses[index]
+            successTurn++
             await route.fulfill({
                 contentType: 'application/json',
                 body: JSON.stringify(response)
@@ -401,13 +427,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await sendButton.click()
                 await recordLog('User', text)
 
-                // AI応答待ち
-                if (expectedResponsePart) {
-                    // 特定のテキストが画面に出るのを待つ (より確実)
-                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: CHAT_WAIT_TIMEOUT_MS })
-                    await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
-                } else {
-                    // 汎用Wait: 吹き出し追加 or 「考え中...」消失 + 入力復帰 を待つ（LIVEでの揺らぎに強くする）
+                const retryButton = page.getByTestId('button-retry')
+                const MAX_MANUAL_RETRIES_PER_TURN = 2
+
+                const waitForCompletion = async () => {
                     const startWait = Date.now()
                     const countBefore = await assistantBubbles.count()
                     const thinking = page.locator('text=考え中...').first()
@@ -426,12 +449,42 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     METRICS.aiResponseTimes.push(endWait - startWait)
                 }
 
+                // まずは通常の応答待ち
+                await waitForCompletion()
+
+                // エラーが出た場合は「リトライ」ボタンを押して再実行（回数を記録）
+                for (let attempt = 0; attempt < MAX_MANUAL_RETRIES_PER_TURN; attempt++) {
+                    const retryVisible = await retryButton.isVisible().catch(() => false)
+                    if (!retryVisible) break
+
+                    const retryEnabled = await retryButton.isEnabled().catch(() => false)
+                    if (!retryEnabled) {
+                        addFailureDiagnostic(`Retry button visible but disabled (Turn ${userTurn}).`)
+                        break
+                    }
+
+                    METRICS.retryButtonClicks++
+                    await retryButton.click()
+                    await recordLog('User', '(Clicked Retry Button)')
+
+                    await waitForCompletion()
+                }
+
+                // まだリトライが見えるなら、回復できていないので失敗として扱う
+                if (await retryButton.isVisible().catch(() => false)) {
+                    addFailureDiagnostic(`Retry button still visible after ${MAX_MANUAL_RETRIES_PER_TURN} retries (Turn ${userTurn}).`)
+                    throw new Error('retry did not recover')
+                }
+
+                if (expectedResponsePart) {
+                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: CHAT_WAIT_TIMEOUT_MS })
+                    await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
+                }
+
                 // 最新のAI応答を取得
                 const latestBubble = assistantBubbles.last()
                 const textContent = await latestBubble.textContent() || ''
-                if (!expectedResponsePart) {
-                    await recordLog('AI', textContent)
-                }
+                await recordLog('AI', textContent)
             } catch (error: unknown) {
                 const message = error instanceof Error ? error.message : String(error)
                 addFailureDiagnostic(`Turn ${userTurn} failed. User="${shortText(text, 40)}" reason="${shortText(message, 180)}"`)

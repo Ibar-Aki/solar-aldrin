@@ -96,7 +96,15 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins: string |
     if (envList.includes(origin)) return true
 
     if (strictMode) {
-        return PRODUCTION_ALLOWED_ORIGINS.includes(origin)
+        if (PRODUCTION_ALLOWED_ORIGINS.includes(origin)) return true
+
+        // Cloudflare Pages の「デプロイごとの固定URL」(例: https://<hash>.<project>.pages.dev) を許可する。
+        // 本番運用では STRICT_CORS を有効にしつつ、固定URLでの実機テストも可能にする。
+        if (!parsed || parsed.protocol !== 'https:') return false
+        const hostname = parsed.hostname.toLowerCase()
+        if (hostname.endsWith('.voice-ky-v2.pages.dev')) return true
+        if (hostname.endsWith('.voice-ky-assistant.pages.dev')) return true
+        return false
     }
 
     if (DEV_ALLOWED_ORIGINS.includes(origin)) return true

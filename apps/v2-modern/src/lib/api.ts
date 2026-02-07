@@ -100,7 +100,9 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
         throw new ApiError('サーバーからの応答が不正な形式です', {
             status: 502,
             errorType: 'server',
-            retriable: false,
+            // 一時的な整合性崩れの可能性があるため、UXとしては再試行可能にする
+            retriable: true,
+            retryAfterSec: 1,
         })
     }
 

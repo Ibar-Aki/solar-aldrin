@@ -125,6 +125,8 @@ function parseReport(filePath) {
     const openaiHttpAttempts = parseOptionalInteger(metrics['OpenAI HTTP Attempts'])
     const parseRetryUsed = parseOptionalInteger(metrics['Parse Retry Used'])
     const parseRetrySucceeded = parseOptionalInteger(metrics['Parse Retry Succeeded'])
+    const retryButtonClicks = parseOptionalInteger(metrics['Retry Button Clicks'])
+    const waitOver15sTurns = parseOptionalInteger(metrics['Wait > 15s Turns'])
 
     return {
         filePath,
@@ -142,6 +144,8 @@ function parseReport(filePath) {
         openaiHttpAttempts,
         parseRetryUsed,
         parseRetrySucceeded,
+        retryButtonClicks,
+        waitOver15sTurns,
     }
 }
 
@@ -208,6 +212,10 @@ function buildSummary(dayKey, stats, existingMeta) {
 | エラー率 | ${formatRate(stats.errorCount, stats.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRate(stats.retryCount, stats.total)} | Result=FAIL または Nav Success=No または Errors>0 |
 | JSONパース再試行率 | ${formatRate(stats.parseRetryReportCount, stats.total)} | Parse Retry Used > 0 |
+| リトライ押下率 | ${formatRate(stats.retryButtonReportCount, stats.total)} | Retry Button Clicks > 0 |
+| リトライ押下合計 | ${stats.retryButtonClicksTotal} | Retry Button Clicks の合計 |
+| 待機>15s発生率 | ${formatRate(stats.waitOver15sReportCount, stats.total)} | Wait > 15s Turns > 0 |
+| 待機>15s合計ターン | ${stats.waitOver15sTurnsTotal} | Wait > 15s Turns の合計 |
 
 ## LIVEのみサマリ
 
@@ -227,6 +235,10 @@ function buildSummary(dayKey, stats, existingMeta) {
 | エラー率 | ${formatRateForBucket(stats.live.errorCount, stats.live.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRateForBucket(stats.live.retryCount, stats.live.total)} | Result=FAIL または Nav Success=No または Errors>0 |
 | JSONパース再試行率 | ${formatRateForBucket(stats.live.parseRetryReportCount, stats.live.total)} | Parse Retry Used > 0 |
+| リトライ押下率 | ${formatRateForBucket(stats.live.retryButtonReportCount, stats.live.total)} | Retry Button Clicks > 0 |
+| リトライ押下合計 | ${stats.live.retryButtonClicksTotal} | Retry Button Clicks の合計 |
+| 待機>15s発生率 | ${formatRateForBucket(stats.live.waitOver15sReportCount, stats.live.total)} | Wait > 15s Turns > 0 |
+| 待機>15s合計ターン | ${stats.live.waitOver15sTurnsTotal} | Wait > 15s Turns の合計 |
 
 ## 内訳
 
@@ -262,6 +274,10 @@ function main() {
                 errorCount: 0,
                 retryCount: 0,
                 parseRetryReportCount: 0,
+                retryButtonReportCount: 0,
+                retryButtonClicksTotal: 0,
+                waitOver15sReportCount: 0,
+                waitOver15sTurnsTotal: 0,
                 modeCounts: {},
                 resultCounts: {},
                 files: [],
@@ -275,6 +291,10 @@ function main() {
                     errorCount: 0,
                     retryCount: 0,
                     parseRetryReportCount: 0,
+                    retryButtonReportCount: 0,
+                    retryButtonClicksTotal: 0,
+                    waitOver15sReportCount: 0,
+                    waitOver15sTurnsTotal: 0,
                 },
             }
         }
@@ -305,6 +325,14 @@ function main() {
         if ((report.parseRetryUsed ?? 0) > 0) {
             bucket.parseRetryReportCount += 1
         }
+        if ((report.retryButtonClicks ?? 0) > 0) {
+            bucket.retryButtonReportCount += 1
+            bucket.retryButtonClicksTotal += report.retryButtonClicks ?? 0
+        }
+        if ((report.waitOver15sTurns ?? 0) > 0) {
+            bucket.waitOver15sReportCount += 1
+            bucket.waitOver15sTurnsTotal += report.waitOver15sTurns ?? 0
+        }
         bucket.modeCounts[report.mode] = (bucket.modeCounts[report.mode] || 0) + 1
         bucket.resultCounts[report.result] = (bucket.resultCounts[report.result] || 0) + 1
         bucket.files.push(report.filePath)
@@ -334,6 +362,14 @@ function main() {
             }
             if ((report.parseRetryUsed ?? 0) > 0) {
                 bucket.live.parseRetryReportCount += 1
+            }
+            if ((report.retryButtonClicks ?? 0) > 0) {
+                bucket.live.retryButtonReportCount += 1
+                bucket.live.retryButtonClicksTotal += report.retryButtonClicks ?? 0
+            }
+            if ((report.waitOver15sTurns ?? 0) > 0) {
+                bucket.live.waitOver15sReportCount += 1
+                bucket.live.waitOver15sTurnsTotal += report.waitOver15sTurns ?? 0
             }
         }
     }
@@ -377,6 +413,8 @@ function main() {
 - **エラー率**: \`Errors (AI/System)\` が 1 以上のレポート比率
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
 - **JSONパース再試行率**: \`Parse Retry Used\` が 1 以上のレポート比率
+- **リトライ押下率**: \`Retry Button Clicks\` が 1 以上のレポート比率
+- **待機>15s発生率**: \`Wait > 15s Turns\` が 1 以上のレポート比率
 
 ---
 

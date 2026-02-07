@@ -13,6 +13,13 @@ export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
+    const WAIT_NOTICE_AFTER_MS = (() => {
+        const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
+        if (!raw) return 15_000
+        const parsed = Number.parseInt(raw, 10)
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000
+    })()
+
     const {
         session,
         messages,
@@ -149,6 +156,19 @@ export function KYSessionPage() {
                             </div>
                         </div>
                     )}
+                    {isLoading && (
+                        <div
+                            className="flex justify-start mb-3 opacity-0 animate-[waitNoticeShow_1ms_linear_forwards]"
+                            style={{ animationDelay: `${WAIT_NOTICE_AFTER_MS}ms` }}
+                            data-testid="notice-wait-over-15s"
+                        >
+                            <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded-2xl px-4 py-2">
+                                <span className="text-sm">
+                                    応答に{Math.ceil(WAIT_NOTICE_AFTER_MS / 1000)}秒以上かかっています。混雑している可能性があります。このままお待ちください。
+                                </span>
+                            </div>
+                        </div>
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
             </div>
@@ -192,6 +212,7 @@ export function KYSessionPage() {
                                     onClick={retryLastMessage}
                                     disabled={isLoading}
                                     className="shrink-0 border-red-200 text-red-700 hover:bg-red-100"
+                                    data-testid="button-retry"
                                 >
                                     リトライ
                                 </Button>
