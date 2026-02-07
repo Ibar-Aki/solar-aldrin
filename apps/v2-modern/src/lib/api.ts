@@ -12,15 +12,10 @@ import {
     type FeedbackRequest,
     type FeedbackResponse,
 } from '@/lib/schema'
+import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
 
 function resolveApiBase(): string {
-    const envBase = import.meta.env.VITE_API_BASE_URL
-    if (!envBase || typeof envBase !== 'string') return '/api'
-
-    const trimmed = envBase.trim()
-    if (!trimmed) return '/api'
-
-    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+    return normalizeApiBaseFromEnv(import.meta.env.VITE_API_BASE_URL, '/api')
 }
 
 const API_BASE = resolveApiBase()

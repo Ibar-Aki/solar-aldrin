@@ -7,8 +7,8 @@ import { zValidator } from '@hono/zod-validator'
 import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH, type ChatRequest } from '../../src/lib/schema'
 import type { ExtractedData } from '../../src/types/ky'
-import { logError } from '../observability/logger'
-import { fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
+import { logError, logWarn } from '../observability/logger'
+import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON } from '../lib/openai'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -329,20 +329,43 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     )
 
     try {
-        const responseData = await fetchOpenAICompletion({
-            apiKey,
-            body: {
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: SOLO_KY_SYSTEM_PROMPT },
-                    ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
-                    ...limitedHistory,
-                ],
-                max_tokens: MAX_TOKENS,
-                temperature: 0.7,
-                response_format: { type: 'json_object' },
-            },
-            reqId: c.get('reqId'),
+        const reqId = c.get('reqId')
+
+        const requestBodyBase = {
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: SOLO_KY_SYSTEM_PROMPT },
+                ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
+                ...limitedHistory,
+            ],
+            max_tokens: MAX_TOKENS,
+            response_format: { type: 'json_object' as const },
+        }
+
+        let openaiRequestCount = 0
+        let openaiHttpAttempts = 0
+        let openaiDurationMs = 0
+        let totalTokens = 0
+        let parseRetryAttempted = false
+        let parseRetrySucceeded = false
+
+        const callOpenAI = async (body: Record<string, unknown>) => {
+            openaiRequestCount += 1
+            const responseData = await fetchOpenAICompletion({
+                apiKey,
+                body,
+                reqId,
+            })
+            totalTokens += responseData.usage?.total_tokens ?? 0
+            openaiHttpAttempts += responseData.meta.httpAttempts
+            openaiDurationMs += responseData.meta.durationMs
+            return responseData
+        }
+
+        // UIUX優先: 低温度でJSONの壊れ率を下げる（多少の表現多様性は捨てる）
+        const responseData = await callOpenAI({
+            ...requestBodyBase,
+            temperature: 0.3,
         })
 
         let parsedContent: { reply?: string; extracted?: ExtractedData } = {}
@@ -350,11 +373,68 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         try {
             parsedContent = safeParseJSON(responseData.content)
         } catch {
-            logError('json_parse_retry_failed', { reqId: c.get('reqId') })
-            // Fallback for malformed JSON
-            parsedContent = {
-                reply: '申し訳ありません、システムの内部エラーが発生しました。もう一度お試しください。',
-                extracted: {}
+            parseRetryAttempted = true
+            logWarn('json_parse_failed', { reqId })
+
+            // Step 1: Try to "repair" the broken JSON with a minimal prompt (usually cheaper than full regeneration).
+            const broken = cleanJsonMarkdown(responseData.content)
+            const repairPrompt = [
+                'あなたはJSON修復ツールです。',
+                '入力はJSON形式にしたいテキストです。',
+                '次の条件を必ず守って、JSONオブジェクトのみを出力してください。',
+                '- Markdownや説明文を一切含めない',
+                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: string[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
+                '- extracted.nextAction は必須',
+                '- 未特定フィールドはキー自体を省略（null/空配列で埋めない）',
+                '',
+                `入力:\n${JSON.stringify(broken).slice(0, 8000)}`,
+            ].join('\n')
+
+            const repairData = await callOpenAI({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: 'You repair invalid JSON into a valid JSON object only.' },
+                    { role: 'user', content: repairPrompt },
+                ],
+                max_tokens: MAX_TOKENS,
+                temperature: 0,
+                response_format: { type: 'json_object' },
+            })
+
+            try {
+                parsedContent = safeParseJSON(repairData.content)
+                parseRetrySucceeded = true
+            } catch {
+                logWarn('json_repair_failed', { reqId })
+
+                // Step 2: Full regeneration once with a more deterministic setting.
+                const retryData = await callOpenAI({
+                    ...requestBodyBase,
+                    temperature: 0,
+                })
+                try {
+                    parsedContent = safeParseJSON(retryData.content)
+                    parseRetrySucceeded = true
+                } catch {
+                    logError('json_parse_retry_failed', { reqId })
+                    return c.json({
+                        error: 'AIからの応答が不正な形式です。再試行してください。',
+                        code: 'AI_RESPONSE_INVALID_JSON',
+                        requestId: reqId,
+                        retriable: true,
+                        meta: {
+                            openai: {
+                                requestCount: openaiRequestCount,
+                                httpAttempts: openaiHttpAttempts,
+                                durationMs: openaiDurationMs,
+                            },
+                            parseRetry: {
+                                attempted: parseRetryAttempted,
+                                succeeded: parseRetrySucceeded,
+                            },
+                        },
+                    }, 502)
+                }
             }
         }
 
@@ -370,7 +450,18 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 code: 'AI_RESPONSE_INVALID_SCHEMA',
                 requestId: c.get('reqId'),
                 retriable: true,
-                details: validationResult.error
+                details: validationResult.error,
+                meta: {
+                    openai: {
+                        requestCount: openaiRequestCount,
+                        httpAttempts: openaiHttpAttempts,
+                        durationMs: openaiDurationMs,
+                    },
+                    parseRetry: {
+                        attempted: parseRetryAttempted,
+                        succeeded: parseRetrySucceeded,
+                    },
+                },
             }, 502)
         }
 
@@ -381,7 +472,18 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             reply: validContent.reply,
             extracted: compactedExtracted || {},
             usage: {
-                totalTokens: responseData.usage?.total_tokens || 0,
+                totalTokens,
+            },
+            meta: {
+                openai: {
+                    requestCount: openaiRequestCount,
+                    httpAttempts: openaiHttpAttempts,
+                    durationMs: openaiDurationMs,
+                },
+                parseRetry: {
+                    attempted: parseRetryAttempted,
+                    succeeded: parseRetrySucceeded,
+                },
             },
         })
 

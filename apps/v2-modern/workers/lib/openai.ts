@@ -8,11 +8,18 @@ interface OpenAIRequestOptions {
     retryCount?: number
 }
 
+export type OpenAIResponseMeta = {
+    httpAttempts: number
+    httpRetries: number
+    durationMs: number
+}
+
 interface OpenAIResponse {
     content: string
     usage?: {
         total_tokens: number
     }
+    meta: OpenAIResponseMeta
 }
 
 type OpenAIHTTPError = Error & { status?: number }
@@ -49,8 +56,12 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
 export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Promise<OpenAIResponse> {
     const { apiKey, body, timeoutMs = DEFAULT_TIMEOUT, reqId, retryCount = MAX_RETRIES } = options
 
+    const startedAt = Date.now()
+    let httpAttempts = 0
+
     const performRequest = async (currentRetry: number, attempt: number = 0): Promise<Response> => {
         try {
+            httpAttempts += 1
             const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -113,7 +124,12 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
 
     return {
         content: cleanContent,
-        usage: data.usage
+        usage: data.usage,
+        meta: {
+            httpAttempts,
+            httpRetries: Math.max(0, httpAttempts - 1),
+            durationMs: Date.now() - startedAt,
+        },
     }
 }
 

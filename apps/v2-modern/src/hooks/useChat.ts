@@ -11,7 +11,13 @@ import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
-const ENABLE_SILENT_RETRY = import.meta.env.VITE_ENABLE_RETRY_SILENT === '1'
+const ENABLE_SILENT_RETRY = (() => {
+    const raw = import.meta.env.VITE_ENABLE_RETRY_SILENT
+    if (raw === '1') return true
+    if (raw === '0') return false
+    // UIUX優先: 本番ではデフォルトでサイレントリトライを有効化する
+    return Boolean(import.meta.env.PROD)
+})()
 
 type RetrySource = 'none' | 'manual' | 'silent'
 

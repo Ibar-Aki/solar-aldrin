@@ -45,6 +45,12 @@ function parseInteger(value) {
     return Number.isFinite(num) ? num : 0
 }
 
+function parseOptionalInteger(value) {
+    if (!value) return null
+    const num = parseInt(value.replace(/[^0-9-]/g, ''), 10)
+    return Number.isFinite(num) ? num : null
+}
+
 function percentile(values, p) {
     if (!values.length) return null
     const sorted = [...values].sort((a, b) => a - b)
@@ -56,6 +62,11 @@ function percentile(values, p) {
 function formatSeconds(value) {
     if (value === null || value === undefined) return '-'
     return `${value.toFixed(1)}s`
+}
+
+function formatInt(value) {
+    if (value === null || value === undefined) return '-'
+    return `${Math.round(value)}`
 }
 
 function formatRate(count, total) {
@@ -108,6 +119,13 @@ function parseReport(filePath) {
     const failed = result === 'FAIL'
     const needsRetry = failed || navFailed || errors > 0
 
+    const totalTokens = parseOptionalInteger(metrics['Total Tokens'])
+    const avgTokensPerChat = parseOptionalInteger(metrics['Avg Tokens / Chat'])
+    const openaiRequests = parseOptionalInteger(metrics['OpenAI Requests'])
+    const openaiHttpAttempts = parseOptionalInteger(metrics['OpenAI HTTP Attempts'])
+    const parseRetryUsed = parseOptionalInteger(metrics['Parse Retry Used'])
+    const parseRetrySucceeded = parseOptionalInteger(metrics['Parse Retry Succeeded'])
+
     return {
         filePath,
         dayKey,
@@ -118,6 +136,12 @@ function parseReport(filePath) {
         navFailed,
         needsRetry,
         mode: detectMode(filePath),
+        totalTokens,
+        avgTokensPerChat,
+        openaiRequests,
+        openaiHttpAttempts,
+        parseRetryUsed,
+        parseRetrySucceeded,
     }
 }
 
@@ -139,10 +163,22 @@ function buildSummary(dayKey, stats, existingMeta) {
     const p95 = percentile(stats.responses, 0.95)
     const durationP50 = percentile(stats.durations, 0.5)
     const durationP95 = percentile(stats.durations, 0.95)
+    const tokensP50 = percentile(stats.tokens, 0.5)
+    const tokensP95 = percentile(stats.tokens, 0.95)
+    const avgTokensP50 = percentile(stats.avgTokensPerChat, 0.5)
+    const avgTokensP95 = percentile(stats.avgTokensPerChat, 0.95)
+    const httpAttemptsP50 = percentile(stats.openaiHttpAttempts, 0.5)
+    const httpAttemptsP95 = percentile(stats.openaiHttpAttempts, 0.95)
     const liveP50 = percentile(stats.live.responses, 0.5)
     const liveP95 = percentile(stats.live.responses, 0.95)
     const liveDurationP50 = percentile(stats.live.durations, 0.5)
     const liveDurationP95 = percentile(stats.live.durations, 0.95)
+    const liveTokensP50 = percentile(stats.live.tokens, 0.5)
+    const liveTokensP95 = percentile(stats.live.tokens, 0.95)
+    const liveAvgTokensP50 = percentile(stats.live.avgTokensPerChat, 0.5)
+    const liveAvgTokensP95 = percentile(stats.live.avgTokensPerChat, 0.95)
+    const liveHttpAttemptsP50 = percentile(stats.live.openaiHttpAttempts, 0.5)
+    const liveHttpAttemptsP95 = percentile(stats.live.openaiHttpAttempts, 0.95)
 
     return `# 日次性能サマリ (${dayKey})
 
@@ -163,8 +199,15 @@ function buildSummary(dayKey, stats, existingMeta) {
 | 総所要時間 P95 | ${formatSeconds(durationP95)} | Total Duration を使用 |
 | 応答時間 P50 | ${formatSeconds(p50)} | Avg AI Response を使用 |
 | 応答時間 P95 | ${formatSeconds(p95)} | Avg AI Response を使用 |
+| 総トークン P50 | ${formatInt(tokensP50)} | Total Tokens を使用 |
+| 総トークン P95 | ${formatInt(tokensP95)} | Total Tokens を使用 |
+| トークン/チャット P50 | ${formatInt(avgTokensP50)} | Avg Tokens / Chat を使用 |
+| トークン/チャット P95 | ${formatInt(avgTokensP95)} | Avg Tokens / Chat を使用 |
+| OpenAI HTTP Attempts P50 | ${formatInt(httpAttemptsP50)} | OpenAI HTTP Attempts を使用 |
+| OpenAI HTTP Attempts P95 | ${formatInt(httpAttemptsP95)} | OpenAI HTTP Attempts を使用 |
 | エラー率 | ${formatRate(stats.errorCount, stats.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRate(stats.retryCount, stats.total)} | Result=FAIL または Nav Success=No または Errors>0 |
+| JSONパース再試行率 | ${formatRate(stats.parseRetryReportCount, stats.total)} | Parse Retry Used > 0 |
 
 ## LIVEのみサマリ
 
@@ -175,8 +218,15 @@ function buildSummary(dayKey, stats, existingMeta) {
 | 総所要時間 P95 | ${formatSecondsForBucket(liveDurationP95, stats.live.total)} | Total Duration を使用 |
 | 応答時間 P50 | ${formatSecondsForBucket(liveP50, stats.live.total)} | Avg AI Response を使用 |
 | 応答時間 P95 | ${formatSecondsForBucket(liveP95, stats.live.total)} | Avg AI Response を使用 |
+| 総トークン P50 | ${formatInt(liveTokensP50)} | Total Tokens を使用 |
+| 総トークン P95 | ${formatInt(liveTokensP95)} | Total Tokens を使用 |
+| トークン/チャット P50 | ${formatInt(liveAvgTokensP50)} | Avg Tokens / Chat を使用 |
+| トークン/チャット P95 | ${formatInt(liveAvgTokensP95)} | Avg Tokens / Chat を使用 |
+| OpenAI HTTP Attempts P50 | ${formatInt(liveHttpAttemptsP50)} | OpenAI HTTP Attempts を使用 |
+| OpenAI HTTP Attempts P95 | ${formatInt(liveHttpAttemptsP95)} | OpenAI HTTP Attempts を使用 |
 | エラー率 | ${formatRateForBucket(stats.live.errorCount, stats.live.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRateForBucket(stats.live.retryCount, stats.live.total)} | Result=FAIL または Nav Success=No または Errors>0 |
+| JSONパース再試行率 | ${formatRateForBucket(stats.live.parseRetryReportCount, stats.live.total)} | Parse Retry Used > 0 |
 
 ## 内訳
 
@@ -206,8 +256,12 @@ function main() {
                 total: 0,
                 responses: [],
                 durations: [],
+                tokens: [],
+                avgTokensPerChat: [],
+                openaiHttpAttempts: [],
                 errorCount: 0,
                 retryCount: 0,
+                parseRetryReportCount: 0,
                 modeCounts: {},
                 resultCounts: {},
                 files: [],
@@ -215,8 +269,12 @@ function main() {
                     total: 0,
                     responses: [],
                     durations: [],
+                    tokens: [],
+                    avgTokensPerChat: [],
+                    openaiHttpAttempts: [],
                     errorCount: 0,
                     retryCount: 0,
+                    parseRetryReportCount: 0,
                 },
             }
         }
@@ -229,11 +287,23 @@ function main() {
         if (typeof report.avgResponse === 'number') {
             bucket.responses.push(report.avgResponse)
         }
+        if (typeof report.totalTokens === 'number') {
+            bucket.tokens.push(report.totalTokens)
+        }
+        if (typeof report.avgTokensPerChat === 'number') {
+            bucket.avgTokensPerChat.push(report.avgTokensPerChat)
+        }
+        if (typeof report.openaiHttpAttempts === 'number') {
+            bucket.openaiHttpAttempts.push(report.openaiHttpAttempts)
+        }
         if (report.errors > 0) {
             bucket.errorCount += 1
         }
         if (report.needsRetry) {
             bucket.retryCount += 1
+        }
+        if ((report.parseRetryUsed ?? 0) > 0) {
+            bucket.parseRetryReportCount += 1
         }
         bucket.modeCounts[report.mode] = (bucket.modeCounts[report.mode] || 0) + 1
         bucket.resultCounts[report.result] = (bucket.resultCounts[report.result] || 0) + 1
@@ -247,11 +317,23 @@ function main() {
             if (typeof report.avgResponse === 'number') {
                 bucket.live.responses.push(report.avgResponse)
             }
+            if (typeof report.totalTokens === 'number') {
+                bucket.live.tokens.push(report.totalTokens)
+            }
+            if (typeof report.avgTokensPerChat === 'number') {
+                bucket.live.avgTokensPerChat.push(report.avgTokensPerChat)
+            }
+            if (typeof report.openaiHttpAttempts === 'number') {
+                bucket.live.openaiHttpAttempts.push(report.openaiHttpAttempts)
+            }
             if (report.errors > 0) {
                 bucket.live.errorCount += 1
             }
             if (report.needsRetry) {
                 bucket.live.retryCount += 1
+            }
+            if ((report.parseRetryUsed ?? 0) > 0) {
+                bucket.live.parseRetryReportCount += 1
             }
         }
     }
@@ -289,8 +371,12 @@ function main() {
 
 - **総所要時間 P50/P95**: 各レポートの \`Total Duration\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **応答時間 P50/P95**: 各レポートの \`Avg AI Response\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
+- **総トークン P50/P95**: 各レポートの \`Total Tokens\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
+- **トークン/チャット P50/P95**: 各レポートの \`Avg Tokens / Chat\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
+- **OpenAI HTTP Attempts P50/P95**: 各レポートの \`OpenAI HTTP Attempts\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **エラー率**: \`Errors (AI/System)\` が 1 以上のレポート比率
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
+- **JSONパース再試行率**: \`Parse Retry Used\` が 1 以上のレポート比率
 
 ---
 

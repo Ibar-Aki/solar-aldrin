@@ -1,3 +1,5 @@
+import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+
 export type TelemetryEventName =
     | 'session_start'
     | 'session_complete'
@@ -17,11 +19,9 @@ export type TelemetryEvent = {
 }
 
 function resolveApiBase(): string {
-    const envBase = import.meta.env.VITE_API_BASE_URL
-    if (!envBase || typeof envBase !== 'string') return ''
-    const trimmed = envBase.trim()
-    if (!trimmed) return ''
-    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+    // 空文字は「未指定扱い」として `/api/metrics` にフォールバックさせる
+    const normalized = normalizeApiBaseFromEnv(import.meta.env.VITE_API_BASE_URL, '')
+    return normalized
 }
 
 const apiBase = resolveApiBase()
