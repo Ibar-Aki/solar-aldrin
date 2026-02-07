@@ -1,6 +1,7 @@
 # Markdownファイル一覧
 
 作成日: 2026-01-30
+更新日: 2026-02-07（ファイル整理：一部ドキュメントの移動/リネーム）
 
 対象ルート: C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin
 除外: node_modules, .git, .wrangler, .agent, dist, build, playwright-report, test-results, .turbo, .vite, .next, .cache, coverage
@@ -8,9 +9,9 @@
 | No. | ファイル名 | 格納先 | 内容区分 | 内容詳細 |
 | --- | --- | --- | --- | --- |
 | 1 | README.md | apps\v1-legacy\README.md | 実装(v1) | Voice KY Assistant — 🏗️ 音声でKY活動を完了するPWAアプリ |
-| 2 | implementation_plan.md | apps\v2-modern\implementation_plan.md | 実装(v2) | Phase 2: Voice KY Assistant v2 (Modern) Implementation Plan — **目的**: ユーザー体験（ハンズフリー・モダンUI）と開発効率（React・TS）を両立した、次世代KYアプリの構築。 |
+| 2 | phase2-implementation-plan.md | apps\\v2-modern\\docs\\00_planning\\phases\\phase2-implementation-plan.md | 実装(v2) | Phase 2: Voice KY Assistant v2 (Modern) Implementation Plan — **目的**: ユーザー体験（ハンズフリー・モダンUI）と開発効率（React・TS）を両立した、次世代KYアプリの構築。 |
 | 3 | README.md | apps\v2-modern\README.md | 実装(v2) | Voice KY Assistant v2 — Phase 2の音声KYアシスタントアプリ。 |
-| 4 | review.md | apps\v2-modern\review.md | 実装(v2) | v2-modern 徹底辛口レビュー — - **[高] レート制限が常にメモリ版で、本番でも分散環境で無効化に近い（コスト爆発リスク）** |
+| 4 | harsh-review.md | apps\\v2-modern\\docs\\30_reviews\\harsh-review.md | 実装(v2) | v2-modern 徹底辛口レビュー — - **[高] レート制限が常にメモリ版で、本番でも分散環境で無効化に近い（コスト爆発リスク）** |
 | 5 | 01_Quality_Improvement.md | docs\00_planning\01_Quality_Improvement.md | 計画 | KY活動の質を高めるための改善提案書 — **目的**: マンネリ化を防ぎ、作業員が「自分ごと」として危険を認識できる（質の高い）KY活動を、AIアシスタントで実現する。 |
 | 6 | 02_Feature_Expansion_Phase2x.md | docs\00_planning\02_Feature_Expansion_Phase2x.md | 計画 | Phase 2.x 機能拡張一覧（機能カタログ） — 本ドキュメントは、Phase 2.0（基盤モダン化）完了後の**機能アイデアを体系化したカタログ**です。 |
 | 7 | 03_Phase2_Roadmap.md | docs\00_planning\03_Phase2_Roadmap.md | 計画 | Phase 2/3 Roadmap : Voice KY Assistant — **更新日**: 2026-01-27 |
@@ -58,4 +59,5 @@
 | 49 | PRESENTATION.md | docs\PRESENTATION.md | ドキュメント | 技術構成プレゼンテーション — [TECH_STACK.md](./TECH_STACK.md) |
 | 50 | README.md | README.md | その他 | Voice KY Assistant (Monorepo) — - **[Legacy App (v1)](apps/v1-legacy/README.md)**: 現在稼働中のVanilla JS版アプリです。 |
 | 51 | 09_TTS読み上げ速度_詳細計画書.md | docs\\00_planning\\09_TTS読み上げ速度_詳細計画書.md | 計画 | 音声読み上げ速度 切替機能 詳細計画書（v2） — 4段階プリセットによる速度切替と永続化の実装方針。 |
+
 
