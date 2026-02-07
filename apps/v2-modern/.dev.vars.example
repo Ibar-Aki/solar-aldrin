@@ -3,7 +3,8 @@
 
 # OpenAI API Key (必須)
 # https://platform.openai.com/api-keys から取得
-OPENAI_API_KEY="sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# NOTE: サンプルに実キーっぽい文字列を載せると誤検知やコピペ事故の原因になるため、プレースホルダにしています。
+OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
 
 # Supabase設定（Phase 3以降で使用予定）
 SUPABASE_URL=""

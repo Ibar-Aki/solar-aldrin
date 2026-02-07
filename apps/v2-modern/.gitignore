@@ -23,6 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
+# Local env files (do not commit)
+.env
+.env.*
+!.env.example
+
 # Cloudflare Workers Secrets
 .dev.vars
 .wrangler
