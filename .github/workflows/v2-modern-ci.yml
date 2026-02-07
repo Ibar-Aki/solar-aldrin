@@ -1,0 +1,50 @@
+name: v2-modern CI
+
+on:
+  push:
+    paths:
+      - "apps/v2-modern/**"
+      - ".github/workflows/v2-modern-ci.yml"
+  pull_request:
+    paths:
+      - "apps/v2-modern/**"
+      - ".github/workflows/v2-modern-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-modern-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit_lint_build:
+    name: Unit + Lint + Build (apps/v2-modern)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/v2-modern
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/v2-modern/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
