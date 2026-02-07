@@ -24,7 +24,7 @@ interface OpenAIResponse {
 
 type OpenAIHTTPError = Error & { status?: number }
 
-const DEFAULT_TIMEOUT = 10000
+const DEFAULT_TIMEOUT = 30000
 const MAX_RETRIES = 2
 const BACKOFF_BASE_MS = 250
 const BACKOFF_MAX_MS = 700
@@ -47,6 +47,47 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
         return response
     } finally {
         clearTimeout(timeout)
+    }
+}
+
+type OpenAIErrorPayload = {
+    error?: {
+        message?: string
+        type?: string
+        code?: string
+        param?: string
+    }
+}
+
+export type OpenAIHTTPErrorDetails = {
+    status: number
+    retryAfterSec?: number
+    upstreamMessage?: string
+    upstreamType?: string
+    upstreamCode?: string
+    upstreamParam?: string
+    bodySnippet?: string
+}
+
+export class OpenAIHTTPErrorWithDetails extends Error {
+    status: number
+    retryAfterSec?: number
+    upstreamMessage?: string
+    upstreamType?: string
+    upstreamCode?: string
+    upstreamParam?: string
+    bodySnippet?: string
+
+    constructor(message: string, details: OpenAIHTTPErrorDetails) {
+        super(message)
+        this.name = 'OpenAIHTTPError'
+        this.status = details.status
+        this.retryAfterSec = details.retryAfterSec
+        this.upstreamMessage = details.upstreamMessage
+        this.upstreamType = details.upstreamType
+        this.upstreamCode = details.upstreamCode
+        this.upstreamParam = details.upstreamParam
+        this.bodySnippet = details.bodySnippet
     }
 }
 
@@ -103,15 +144,47 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
     }
 
     if (!response.ok) {
+        const retryAfterRaw = response.headers.get('retry-after')
+        const retryAfterParsed = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined
+        const retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
+
         const errorText = await response.text()
+        const bodySnippet = errorText.slice(0, 500)
+
+        let upstreamMessage: string | undefined
+        let upstreamType: string | undefined
+        let upstreamCode: string | undefined
+        let upstreamParam: string | undefined
+        try {
+            const parsed = JSON.parse(errorText) as OpenAIErrorPayload
+            upstreamMessage = parsed.error?.message
+            upstreamType = parsed.error?.type
+            upstreamCode = parsed.error?.code
+            upstreamParam = parsed.error?.param
+        } catch {
+            // ignore json parse
+        }
+
         logError('openai_api_error', {
             reqId,
             status: response.status,
-            body: errorText.slice(0, 500),
+            body: bodySnippet,
         })
-        const error: OpenAIHTTPError = new Error(`OpenAI API Error: ${response.status}`)
-        error.status = response.status
-        throw error
+
+        const composedMessage = upstreamMessage
+            ? `OpenAI API Error: ${response.status} (${upstreamMessage.slice(0, 200)})`
+            : `OpenAI API Error: ${response.status}`
+
+        // Throw a typed error so routes can map it into user-visible, non-leaky messages.
+        throw new OpenAIHTTPErrorWithDetails(composedMessage, {
+            status: response.status,
+            retryAfterSec,
+            upstreamMessage,
+            upstreamType,
+            upstreamCode,
+            upstreamParam,
+            bodySnippet,
+        })
     }
 
     const data = await response.json() as {
