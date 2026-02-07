@@ -29,6 +29,29 @@ npm run dev
 
 ### Workers開発サーバー起動（OpenAI API）
 
+#### 初回セットアップ
+
+Workersの開発には`.dev.vars`ファイルが必要です：
+
+```bash
+# .dev.vars.example をコピー
+cp .dev.vars.example .dev.vars
+
+# .dev.vars を編集してOpenAI APIキーを設定
+```
+
+> [!IMPORTANT]
+> `.dev.vars`には実際のAPIキーなどの機密情報が含まれるため、**絶対にGitにコミットしないでください**。
+> このファイルは既に`.gitignore`に含まれています。
+
+OpenAI APIキーの取得方法：
+
+1. <https://platform.openai.com/api-keys> にアクセス
+2. 「Create new secret key」をクリック
+3. 生成されたキーを`.dev.vars`の`OPENAI_API_KEY`に設定
+
+#### Workersサーバー起動
+
 ```bash
 npm run dev:workers
 ```

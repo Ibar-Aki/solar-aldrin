@@ -1,0 +1,22 @@
+# Cloudflare Workers用の.dev.varsサンプルファイル
+# 実際の値は .dev.vars に設定してください（.dev.varsはGitにコミットされません）
+
+# OpenAI API Key (必須)
+# https://platform.openai.com/api-keys から取得
+OPENAI_API_KEY="sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Supabase設定（Phase 3以降で使用予定）
+SUPABASE_URL=""
+SUPABASE_ANON_KEY=""
+
+# 外部API
+WEATHER_API_BASE_URL=""
+
+# Sentry設定（オプション）
+SENTRY_DSN=""
+SENTRY_ENV="local"
+SENTRY_RELEASE="local"
+
+# 機能フラグ
+ENABLE_FEEDBACK="1"
+ENABLE_CONTEXT_INJECTION="1"

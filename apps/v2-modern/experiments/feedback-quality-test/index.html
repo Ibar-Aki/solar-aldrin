@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYフィードバック品質テストフィールド</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .star-rating { display: flex; gap: 4px; cursor: pointer; }
+        .star { color: #d1d5db; transition: color 0.15s; }
+        .star.active { color: #fbbf24; }
+        .star:hover { color: #f59e0b; }
+        .response-card { transition: all 0.3s ease; }
+        .response-card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold mb-2">🔬 KYフィードバック品質テストフィールド</h1>
+            <p class="text-slate-400">モデル・プロンプトの比較評価ツール</p>
+            <p class="text-xs text-slate-500 mt-1">Simulated by Antigravity | 実際のAPI呼び出しではありません</p>
+        </header>
+
+        <!-- Test Case Selector -->
+        <section class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mb-6 border border-slate-700">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-blue-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">1</span>
+                テストケース選択
+            </h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">ケース</label>
+                    <select id="testCaseSelect" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">読み込み中...</option>
+                    </select>
+                </div>
+                <div id="caseInfo" class="bg-slate-700/50 rounded-lg p-4">
+                    <p class="text-slate-400 text-sm">ケースを選択してください</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Input Display -->
+        <section id="inputSection" class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mb-6 border border-slate-700 hidden">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-green-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">📥</span>
+                インプット情報
+            </h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <h3 class="text-sm font-medium text-slate-400 mb-1">現場状況</h3>
+                    <p id="inputContext" class="text-white"></p>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-400 mb-1">危険</h3>
+                        <div id="inputRisks" class="flex flex-wrap gap-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-400 mb-1">対策</h3>
+                        <div id="inputMeasures" class="flex flex-wrap gap-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-400 mb-1">目標</h3>
+                        <p id="inputGoal" class="text-amber-400 font-medium"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="settingsSection" class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mb-6 border border-slate-700 hidden">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-purple-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">⚙️</span>
+                比較設定
+            </h2>
+            <div class="grid md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">プロンプト</label>
+                    <select id="promptSelect" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5">
+                        <option value="">読み込み中...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-2">Run（ブレ確認）</label>
+                    <select id="runSelect" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5">
+                        <option value="run1">Run 1</option>
+                        <option value="run2">Run 2</option>
+                        <option value="run3">Run 3</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button id="compareBtn" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all">
+                        🔍 比較実行
+                    </button>
+                </div>
+            </div>
+            <div id="promptDescription" class="mt-3 p-3 bg-slate-700/50 rounded-lg text-sm text-slate-300 hidden"></div>
+        </section>
+
+        <!-- Results Comparison -->
+        <section id="resultsSection" class="hidden">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-amber-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">📊</span>
+                アウトプット比較
+            </h2>
+            
+            <!-- Model Tabs -->
+            <div class="flex gap-1 mb-4 bg-slate-800/50 rounded-lg p-1">
+                <button class="model-tab flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all" data-model="gpt-4o-mini">gpt-4o-mini<br><span class="text-xs text-slate-400">現行</span></button>
+                <button class="model-tab flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all" data-model="gpt-5.2">gpt-5.2<br><span class="text-xs text-slate-400">最高品質</span></button>
+                <button class="model-tab flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all" data-model="gpt-5-mini">gpt-5-mini<br><span class="text-xs text-slate-400">バランス</span></button>
+                <button class="model-tab flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all bg-gradient-to-r from-blue-500/20 to-purple-500/20" data-model="all">全て表示<br><span class="text-xs text-slate-400">横並び</span></button>
+            </div>
+
+            <!-- Response Cards -->
+            <div id="responseCards" class="grid gap-4"></div>
+        </section>
+
+        <!-- Rating Section -->
+        <section id="ratingSection" class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mt-6 border border-slate-700 hidden">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-pink-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">⭐</span>
+                評価入力
+            </h2>
+            <div id="ratingForms" class="grid md:grid-cols-3 gap-4"></div>
+            <div class="mt-4 flex gap-4">
+                <button id="saveRatings" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all">
+                    💾 評価を保存
+                </button>
+                <button id="exportResults" class="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all">
+                    📥 JSONエクスポート
+                </button>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section id="chartsSection" class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mt-6 border border-slate-700 hidden">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-cyan-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">📈</span>
+                統計グラフ
+            </h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-slate-400 mb-3">モデル別スコア比較</h3>
+                    <canvas id="barChart"></canvas>
+                </div>
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-slate-400 mb-3">評価レーダーチャート</h3>
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Saved Results -->
+        <section class="bg-slate-800/50 backdrop-blur rounded-xl p-6 mt-6 border border-slate-700">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                <span class="bg-indigo-500 rounded-full w-6 h-6 flex items-center justify-center text-sm">📋</span>
+                保存済み評価一覧
+            </h2>
+            <div id="savedResults" class="space-y-2">
+                <p class="text-slate-400 text-sm">まだ評価が保存されていません</p>
+            </div>
+            <button id="clearResults" class="mt-4 text-sm text-red-400 hover:text-red-300 transition-colors">
+                🗑️ すべての評価をクリア
+            </button>
+        </section>
+    </div>
+
+    <script>
+        // Data stores
+        let testCases = [];
+        let prompts = [];
+        let mockResponses = {};
+        let savedRatings = JSON.parse(localStorage.getItem('kyFeedbackRatings') || '[]');
+        let currentComparison = null;
+        let charts = { bar: null, radar: null };
+
+        // Load data
+        async function loadData() {
+            try {
+                const [casesRes, promptsRes, responsesRes] = await Promise.all([
+                    fetch('test-cases.json'),
+                    fetch('prompts.json'),
+                    fetch('mock-responses.json')
+                ]);
+                testCases = (await casesRes.json()).testCases;
+                prompts = (await promptsRes.json()).prompts;
+                mockResponses = (await responsesRes.json()).responses;
+                
+                initUI();
+            } catch (e) {
+                console.error('Data load error:', e);
+                alert('データの読み込みに失敗しました');
+            }
+        }
+
+        // Initialize UI
+        function initUI() {
+            // Test case dropdown
+            const caseSelect = document.getElementById('testCaseSelect');
+            caseSelect.innerHTML = '<option value="">ケースを選択...</option>' +
+                testCases.map(tc => `<option value="${tc.id}">[${tc.category}] ${tc.name}</option>`).join('');
+            
+            // Prompt dropdown
+            const promptSelect = document.getElementById('promptSelect');
+            promptSelect.innerHTML = prompts.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            
+            // Event listeners
+            caseSelect.addEventListener('change', onCaseSelect);
+            promptSelect.addEventListener('change', onPromptSelect);
+            document.getElementById('compareBtn').addEventListener('click', runComparison);
+            document.getElementById('saveRatings').addEventListener('click', saveRatings);
+            document.getElementById('exportResults').addEventListener('click', exportResults);
+            document.getElementById('clearResults').addEventListener('click', clearResults);
+            
+            // Model tabs
+            document.querySelectorAll('.model-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchModelTab(tab.dataset.model));
+            });
+            
+            renderSavedResults();
+        }
+
+        // Case selection handler
+        function onCaseSelect(e) {
+            const tc = testCases.find(c => c.id == e.target.value);
+            if (!tc) {
+                document.getElementById('inputSection').classList.add('hidden');
+                document.getElementById('settingsSection').classList.add('hidden');
+                return;
+            }
+            
+            // Show case info
+            document.getElementById('caseInfo').innerHTML = `
+                <span class="inline-block px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs mb-1">${tc.category}</span>
+                <p class="font-medium">${tc.name}</p>
+            `;
+            
+            // Show input section
+            document.getElementById('inputSection').classList.remove('hidden');
+            document.getElementById('inputContext').textContent = tc.context;
+            document.getElementById('inputRisks').innerHTML = tc.risks.map(r => 
+                `<span class="px-2 py-1 bg-red-500/20 text-red-400 rounded-full text-sm">⚠️ ${r}</span>`
+            ).join('');
+            document.getElementById('inputMeasures').innerHTML = tc.measures.map(m => 
+                `<span class="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">✓ ${m}</span>`
+            ).join('');
+            document.getElementById('inputGoal').textContent = tc.goal;
+            
+            // Show settings
+            document.getElementById('settingsSection').classList.remove('hidden');
+            onPromptSelect();
+        }
+
+        // Prompt selection handler
+        function onPromptSelect() {
+            const prompt = prompts.find(p => p.id === document.getElementById('promptSelect').value);
+            const descEl = document.getElementById('promptDescription');
+            if (prompt) {
+                descEl.textContent = prompt.description;
+                descEl.classList.remove('hidden');
+            }
+        }
+
+        // Run comparison
+        function runComparison() {
+            const caseId = document.getElementById('testCaseSelect').value;
+            const promptId = document.getElementById('promptSelect').value;
+            const runId = document.getElementById('runSelect').value;
+            
+            if (!caseId) {
+                alert('テストケースを選択してください');
+                return;
+            }
+            
+            const caseData = mockResponses[caseId];
+            if (!caseData) {
+                // Generate simulated response for cases without pre-generated data
+                currentComparison = generateSimulatedResponses(caseId, promptId, runId);
+            } else {
+                currentComparison = {
+                    caseId, promptId, runId,
+                    responses: {
+                        'gpt-4o-mini': caseData['gpt-4o-mini']?.[promptId]?.[runId] || generateFallback('gpt-4o-mini'),
+                        'gpt-5.2': caseData['gpt-5.2']?.[promptId]?.[runId] || generateFallback('gpt-5.2'),
+                        'gpt-5-mini': caseData['gpt-5-mini']?.[promptId]?.[runId] || generateFallback('gpt-5-mini')
+                    }
+                };
+            }
+            
+            renderResponses();
+            document.getElementById('resultsSection').classList.remove('hidden');
+            document.getElementById('ratingSection').classList.remove('hidden');
+            document.getElementById('chartsSection').classList.remove('hidden');
+            
+            switchModelTab('all');
+            renderRatingForms();
+            updateCharts();
+        }
+
+        // Generate simulated responses for cases without pre-generated data
+        function generateSimulatedResponses(caseId, promptId, runId) {
+            const tc = testCases.find(c => c.id == caseId);
+            const models = ['gpt-4o-mini', 'gpt-5.2', 'gpt-5-mini'];
+            const responses = {};
+            
+            models.forEach(model => {
+                responses[model] = generateModelResponse(model, tc, promptId);
+            });
+            
+            return { caseId, promptId, runId, responses };
+        }
+
+        // Generate model-specific response
+        function generateModelResponse(model, tc, promptId) {
+            const styles = {
+                'gpt-4o-mini': {
+                    praisePrefix: ['良いです', '適切です', '基本的な対策ができています'],
+                    tipPrefix: ['さらに', '加えて', '念のため'],
+                    suppCount: 2
+                },
+                'gpt-5.2': {
+                    praisePrefix: ['多層的な防御が構築されています', '相互補完的な対策体系です', 'リスクマネジメントの観点から優れています'],
+                    tipPrefix: ['体系的な改善として', '統合的アプローチとして', '戦略的な強化として'],
+                    suppCount: 2
+                },
+                'gpt-5-mini': {
+                    praisePrefix: ['バランスの良い対策です', '実行可能性の高い対策です', '効果的な組み合わせです'],
+                    tipPrefix: ['実務的な観点から', '現場で取り入れやすい改善として', '効率的な強化として'],
+                    suppCount: 2
+                }
+            };
+            
+            const s = styles[model];
+            const praiseBase = s.praisePrefix[Math.floor(Math.random() * s.praisePrefix.length)];
+            const tipBase = s.tipPrefix[Math.floor(Math.random() * s.tipPrefix.length)];
+            
+            return {
+                praise: `${tc.measures[0]}を実施している点は${praiseBase}。${tc.risks[0]}に対する意識が高いことが伺えます。`,
+                tip: `${tipBase}、${tc.risks.length > 1 ? tc.risks[1] : tc.risks[0]}に対する追加対策を検討してください。`,
+                supplements: [
+                    `天候変化時の判断基準`,
+                    `緊急時の連絡体制確認`
+                ]
+            };
+        }
+
+        // Generate fallback response
+        function generateFallback(model) {
+            return {
+                praise: `[${model}] 対策が適切に設定されています。`,
+                tip: `[${model}] 継続的な改善をお願いします。`,
+                supplements: ['追加リスク1', '追加リスク2']
+            };
+        }
+
+        // Render response cards
+        function renderResponses() {
+            const container = document.getElementById('responseCards');
+            const models = Object.keys(currentComparison.responses);
+            
+            container.innerHTML = models.map(model => `
+                <div class="response-card bg-slate-700/50 rounded-xl p-5 border border-slate-600 fade-in" data-model="${model}">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-lg">${model}</h3>
+                        <span class="text-xs px-2 py-1 bg-slate-600 rounded-full">${getModelLabel(model)}</span>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="text-sm text-green-400 font-medium mb-1">👏 褒め</h4>
+                            <p class="text-sm leading-relaxed">${currentComparison.responses[model].praise}</p>
+                        </div>
+                        <div>
+                            <h4 class="text-sm text-amber-400 font-medium mb-1">💡 改善ヒント</h4>
+                            <p class="text-sm leading-relaxed">${currentComparison.responses[model].tip}</p>
+                        </div>
+                        <div>
+                            <h4 class="text-sm text-red-400 font-medium mb-1">⚠️ 補足リスク</h4>
+                            <ul class="text-sm space-y-1">
+                                ${currentComparison.responses[model].supplements.map(s => `<li class="flex items-start gap-2"><span class="text-red-400">•</span>${s}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Get model label
+        function getModelLabel(model) {
+            const labels = {
+                'gpt-4o-mini': '現行',
+                'gpt-5.2': '最高品質',
+                'gpt-5-mini': 'バランス'
+            };
+            return labels[model] || model;
+        }
+
+        // Switch model tab
+        function switchModelTab(model) {
+            document.querySelectorAll('.model-tab').forEach(tab => {
+                tab.classList.remove('bg-blue-500', 'text-white');
+                tab.classList.add('hover:bg-slate-700');
+            });
+            document.querySelector(`.model-tab[data-model="${model}"]`).classList.add('bg-blue-500', 'text-white');
+            
+            const cards = document.querySelectorAll('.response-card');
+            if (model === 'all') {
+                document.getElementById('responseCards').classList.remove('md:grid-cols-1');
+                document.getElementById('responseCards').classList.add('md:grid-cols-3');
+                cards.forEach(card => card.classList.remove('hidden'));
+            } else {
+                document.getElementById('responseCards').classList.add('md:grid-cols-1');
+                document.getElementById('responseCards').classList.remove('md:grid-cols-3');
+                cards.forEach(card => {
+                    card.classList.toggle('hidden', card.dataset.model !== model);
+                });
+            }
+        }
+
+        // Render rating forms
+        function renderRatingForms() {
+            const container = document.getElementById('ratingForms');
+            const models = Object.keys(currentComparison.responses);
+            
+            container.innerHTML = models.map(model => `
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <h4 class="font-medium mb-3">${model}</h4>
+                    <div class="space-y-3">
+                        ${renderStarRating(model, 'praise', '褒めの具体性')}
+                        ${renderStarRating(model, 'tip', 'ヒント実行可能性')}
+                        ${renderStarRating(model, 'supplements', '補足の妥当性')}
+                        ${renderStarRating(model, 'overall', '総合評価')}
+                        <div>
+                            <label class="text-xs text-slate-400">メモ</label>
+                            <textarea id="note-${model}" class="w-full mt-1 bg-slate-600 border border-slate-500 rounded px-2 py-1 text-sm resize-none" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Initialize star ratings
+            document.querySelectorAll('.star-rating').forEach(setupStarRating);
+        }
+
+        // Render star rating component
+        function renderStarRating(model, field, label) {
+            return `
+                <div>
+                    <label class="text-xs text-slate-400">${label}</label>
+                    <div class="star-rating" data-model="${model}" data-field="${field}">
+                        ${[1,2,3,4,5].map(i => `<span class="star text-xl" data-value="${i}">★</span>`).join('')}
+                        <span class="ml-2 text-sm text-slate-400 score-display">-/5</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Setup star rating interaction
+        function setupStarRating(container) {
+            const stars = container.querySelectorAll('.star');
+            const display = container.querySelector('.score-display');
+            
+            stars.forEach(star => {
+                star.addEventListener('click', () => {
+                    const value = parseInt(star.dataset.value);
+                    container.dataset.score = value;
+                    updateStars(container, value);
+                    display.textContent = `${value}/5`;
+                });
+                
+                star.addEventListener('mouseenter', () => {
+                    const value = parseInt(star.dataset.value);
+                    updateStars(container, value, true);
+                });
+            });
+            
+            container.addEventListener('mouseleave', () => {
+                const score = parseInt(container.dataset.score || 0);
+                updateStars(container, score);
+            });
+        }
+
+        // Update star display
+        function updateStars(container, value, isHover = false) {
+            container.querySelectorAll('.star').forEach((star, idx) => {
+                star.classList.toggle('active', idx < value);
+            });
+        }
+
+        // Save ratings
+        function saveRatings() {
+            if (!currentComparison) return;
+            
+            const tc = testCases.find(c => c.id == currentComparison.caseId);
+            const prompt = prompts.find(p => p.id === currentComparison.promptId);
+            
+            const rating = {
+                timestamp: new Date().toISOString(),
+                caseId: currentComparison.caseId,
+                caseName: tc?.name || 'Unknown',
+                promptId: currentComparison.promptId,
+                promptName: prompt?.name || 'Unknown',
+                runId: currentComparison.runId,
+                responses: currentComparison.responses,
+                ratings: {}
+            };
+            
+            ['gpt-4o-mini', 'gpt-5.2', 'gpt-5-mini'].forEach(model => {
+                rating.ratings[model] = {
+                    praise: getScore(model, 'praise'),
+                    tip: getScore(model, 'tip'),
+                    supplements: getScore(model, 'supplements'),
+                    overall: getScore(model, 'overall'),
+                    note: document.getElementById(`note-${model}`)?.value || ''
+                };
+            });
+            
+            savedRatings.push(rating);
+            localStorage.setItem('kyFeedbackRatings', JSON.stringify(savedRatings));
+            renderSavedResults();
+            updateCharts();
+            
+            alert('評価を保存しました');
+        }
+
+        // Get rating score
+        function getScore(model, field) {
+            const container = document.querySelector(`.star-rating[data-model="${model}"][data-field="${field}"]`);
+            return parseInt(container?.dataset?.score || 0);
+        }
+
+        // Export results
+        function exportResults() {
+            const data = {
+                exportedAt: new Date().toISOString(),
+                ratings: savedRatings
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ky-feedback-ratings-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Clear all results
+        function clearResults() {
+            if (confirm('すべての評価をクリアしてもよろしいですか？')) {
+                savedRatings = [];
+                localStorage.removeItem('kyFeedbackRatings');
+                renderSavedResults();
+                updateCharts();
+            }
+        }
+
+        // Render saved results
+        function renderSavedResults() {
+            const container = document.getElementById('savedResults');
+            if (savedRatings.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-sm">まだ評価が保存されていません</p>';
+                return;
+            }
+            
+            container.innerHTML = savedRatings.map((r, i) => `
+                <div class="bg-slate-700/50 rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                        <span class="text-sm font-medium">${r.caseName}</span>
+                        <span class="text-xs text-slate-400 ml-2">${r.promptName} / ${r.runId}</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-xs space-x-2">
+                            ${Object.entries(r.ratings).map(([m, v]) => 
+                                `<span class="text-slate-400">${m.replace('gpt-', '')}: ${v.overall || '-'}</span>`
+                            ).join('')}
+                        </div>
+                        <span class="text-xs text-slate-500">${new Date(r.timestamp).toLocaleString('ja-JP')}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update charts
+        function updateCharts() {
+            if (savedRatings.length === 0) return;
+            
+            const models = ['gpt-4o-mini', 'gpt-5.2', 'gpt-5-mini'];
+            const fields = ['praise', 'tip', 'supplements', 'overall'];
+            const fieldLabels = ['褒め具体性', 'ヒント実行可能性', '補足妥当性', '総合'];
+            
+            // Calculate averages
+            const avgScores = {};
+            models.forEach(m => {
+                avgScores[m] = {};
+                fields.forEach(f => {
+                    const scores = savedRatings
+                        .map(r => r.ratings[m]?.[f])
+                        .filter(s => s > 0);
+                    avgScores[m][f] = scores.length > 0 
+                        ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+                        : 0;
+                });
+            });
+            
+            // Bar chart
+            if (charts.bar) charts.bar.destroy();
+            charts.bar = new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: models.map(m => m.replace('gpt-', '')),
+                    datasets: [{
+                        label: '総合スコア平均',
+                        data: models.map(m => avgScores[m].overall),
+                        backgroundColor: ['#60a5fa', '#a78bfa', '#34d399'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, max: 5, grid: { color: '#334155' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+            
+            // Radar chart
+            if (charts.radar) charts.radar.destroy();
+            charts.radar = new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: fieldLabels,
+                    datasets: models.map((m, i) => ({
+                        label: m.replace('gpt-', ''),
+                        data: fields.map(f => avgScores[m][f]),
+                        borderColor: ['#60a5fa', '#a78bfa', '#34d399'][i],
+                        backgroundColor: ['rgba(96,165,250,0.1)', 'rgba(167,139,250,0.1)', 'rgba(52,211,153,0.1)'][i],
+                        borderWidth: 2
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 5,
+                            grid: { color: '#334155' },
+                            angleLines: { color: '#334155' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize
+        loadData();
+    </script>
+</body>
+</html>
