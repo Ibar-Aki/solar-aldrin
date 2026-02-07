@@ -23,8 +23,8 @@ export const mockPDFSession: SoloKYSession = {
                 '足元が不安定になっている'
             ],
             countermeasures: [
-                '安全帯を必ず使用する',
-                '作業前に足元の安全確認を行う'
+                { category: 'ppe', text: '安全帯を必ず使用する' },
+                { category: 'behavior', text: '作業前に足元の安全確認を行う' }
             ]
         },
         {
@@ -37,8 +37,8 @@ export const mockPDFSession: SoloKYSession = {
                 '一人で無理な重量を持つ'
             ],
             countermeasures: [
-                '二人以上で運搬する',
-                '台車を使用する'
+                { category: 'behavior', text: '二人以上で運搬する' },
+                { category: 'equipment', text: '台車を使用する' }
             ]
         }
     ],
@@ -76,11 +76,12 @@ export const mockLongPDFSession: SoloKYSession = {
                 '周囲の作業者との動線が交錯する'
             ],
             countermeasures: [
-                '作業前に足場の固定と安全帯の状態を確認する',
-                '資材置き場を整理し、通路を確保する',
-                '1時間ごとに短い休憩を取る',
-                '風が強い時間帯は作業を中断する',
-                '互いの動線を共有し声掛けを徹底する'
+                { category: 'equipment', text: '作業前に足場の固定を確認する' },
+                { category: 'ppe', text: '安全帯の状態を確認する' },
+                { category: 'equipment', text: '資材置き場を整理し、通路を確保する' },
+                { category: 'behavior', text: '1時間ごとに短い休憩を取る' },
+                { category: 'behavior', text: '風が強い時間帯は作業を中断する' },
+                { category: 'behavior', text: '互いの動線を共有し声掛けを徹底する' }
             ]
         },
         {
@@ -93,8 +94,8 @@ export const mockLongPDFSession: SoloKYSession = {
                 '水で足場が滑りやすくなる'
             ],
             countermeasures: [
-                'ホースの通り道を固定し、足元を整理する',
-                '滑り止め付きの安全靴を使用する'
+                { category: 'equipment', text: 'ホースの通り道を固定し、足元を整理する' },
+                { category: 'ppe', text: '滑り止め付きの安全靴を使用する' }
             ]
         }
     ],

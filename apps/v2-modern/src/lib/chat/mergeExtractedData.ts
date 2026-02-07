@@ -1,4 +1,4 @@
-import type { ExtractedData, WorkItem } from '@/types/ky'
+import type { Countermeasure, ExtractedData, WorkItem } from '@/types/ky'
 import { isWorkItemComplete } from '@/lib/validation'
 
 type MergeResult = {
@@ -18,6 +18,30 @@ function mergeUniqueList(base: string[] | undefined, incoming: string[] | undefi
     if (!incoming || incoming.length === 0) return null
     const merged = [...(base ?? []), ...incoming].filter((value, index, self) => self.indexOf(value) === index)
     return merged
+}
+
+function normalizeMeasureText(value: string): string {
+    return value.replace(/\s+/g, ' ').trim()
+}
+
+function mergeUniqueCountermeasures(
+    base: Countermeasure[] | undefined,
+    incoming: Countermeasure[] | undefined
+): Countermeasure[] | null {
+    if (!incoming || incoming.length === 0) return null
+    const merged = [...(base ?? []), ...incoming]
+        .map((cm) => ({ ...cm, text: normalizeMeasureText(cm.text) }))
+        .filter((cm) => cm.text.length > 0)
+
+    const seen = new Set<string>()
+    const out: Countermeasure[] = []
+    for (const cm of merged) {
+        const key = cm.text.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(cm)
+    }
+    return out
 }
 
 export function mergeExtractedData(
@@ -45,7 +69,7 @@ export function mergeExtractedData(
         workItemPatch.whyDangerous = mergedWhyDangerous
     }
 
-    const mergedCountermeasures = mergeUniqueList(currentWorkItem.countermeasures, data.countermeasures)
+    const mergedCountermeasures = mergeUniqueCountermeasures(currentWorkItem.countermeasures, data.countermeasures)
     if (mergedCountermeasures) {
         workItemPatch.countermeasures = mergedCountermeasures
     }

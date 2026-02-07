@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import type { WorkItem } from '@/types/ky'
 import type { KYStore } from '../kyStore'
+import { isWorkItemComplete } from '@/lib/validation'
 
 export interface WorkItemSlice {
     currentWorkItem: Partial<WorkItem>
@@ -29,25 +30,19 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
         const { session, currentWorkItem } = get()
         if (!session) return
 
-        // 必須フィールドのチェック
-        if (
-            !currentWorkItem.workDescription ||
-            !currentWorkItem.hazardDescription ||
-            !currentWorkItem.riskLevel ||
-            !currentWorkItem.whyDangerous?.length ||
-            !currentWorkItem.countermeasures?.length
-        ) {
-            set({ error: '作業項目が不完全です' })
+        // 必須フィールド + カテゴリ2種類以上のチェック
+        if (!isWorkItemComplete(currentWorkItem)) {
+            set({ error: '作業項目が不完全です（対策は2カテゴリ以上が必要です）' })
             return
         }
 
         const completeItem: WorkItem = {
             id: currentWorkItem.id || uuidv4(),
-            workDescription: currentWorkItem.workDescription,
-            hazardDescription: currentWorkItem.hazardDescription,
+            workDescription: currentWorkItem.workDescription ?? '',
+            hazardDescription: currentWorkItem.hazardDescription ?? '',
             riskLevel: currentWorkItem.riskLevel as 1 | 2 | 3 | 4 | 5,
-            whyDangerous: currentWorkItem.whyDangerous,
-            countermeasures: currentWorkItem.countermeasures,
+            whyDangerous: currentWorkItem.whyDangerous ?? [],
+            countermeasures: currentWorkItem.countermeasures ?? [],
         }
 
         set({

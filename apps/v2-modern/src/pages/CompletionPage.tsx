@@ -42,6 +42,14 @@ export function CompletionPage() {
     const { generateAndDownload, isGenerating } = usePDFGenerator()
 
     const shouldAutoFanfare = !!session && status === 'completed'
+    const categoryWarnings = session
+        ? session.workItems
+            .map((item, idx) => {
+                const categories = new Set(item.countermeasures.map((cm) => cm.category))
+                return categories.size >= 2 ? null : { index: idx + 1, categories: [...categories] }
+            })
+            .filter((v): v is NonNullable<typeof v> => Boolean(v))
+        : []
 
     // ファンファーレ状態管理
     const [fanfarePattern, setFanfarePattern] = useState<FanfarePattern>(() => (
@@ -167,7 +175,7 @@ export function CompletionPage() {
             },
             extracted: {
                 risks: normalizeList(session.workItems.map((item) => item.hazardDescription), 20, 120),
-                measures: normalizeList(session.workItems.flatMap((item) => item.countermeasures), 20, 120),
+                measures: normalizeList(session.workItems.flatMap((item) => item.countermeasures.map((cm) => cm.text)), 20, 120),
                 actionGoal: session.actionGoal ? sanitizeText(maskSensitive(session.actionGoal), 120) : undefined,
             },
             chatDigest,
@@ -321,6 +329,25 @@ export function CompletionPage() {
                         今日も一日ご安全に！
                     </p>
                 </div>
+
+                {/* 対策カテゴリ不足の警告（警告のみで完了は継続） */}
+                {categoryWarnings.length > 0 && (
+                    <Card className="border-amber-200 bg-amber-50">
+                        <CardHeader className="py-3">
+                            <CardTitle className="text-base text-amber-900">対策カテゴリの不足があります</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-sm text-amber-900 space-y-2">
+                            <p>
+                                完了はしましたが、一部の作業で対策が1カテゴリに偏っています（推奨: 2カテゴリ以上）。
+                            </p>
+                            <ul className="list-disc pl-5">
+                                {categoryWarnings.map((w) => (
+                                    <li key={w.index}>作業{w.index}: 対策カテゴリが不足</li>
+                                ))}
+                            </ul>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* 完了の儀式（簡易版） */}
                 <Card className="border-green-200 bg-green-50">

@@ -48,6 +48,7 @@ export const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema).min(1),
     sessionContext: SessionContextSchema.optional(),
     contextInjection: contentSchema(1200).optional(),
+    conversationSummary: contentSchema(1200).optional(),
 })
 
 /** チャット成功レスポンスのスキーマ */

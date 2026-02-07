@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH, type ChatRequest } from '../../src/lib/schema'
-import type { ExtractedData } from '../../src/types/ky'
+import type { Countermeasure, CountermeasureCategory, ExtractedData } from '../../src/types/ky'
 import { logError, logWarn } from '../observability/logger'
 import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 
@@ -158,6 +158,7 @@ function neutralizeInstructionLikeText(value: string): string {
 
 function buildReferenceContextMessage(
     contextInjection: string | undefined,
+    conversationSummary: string | undefined,
     sessionContext: ChatRequest['sessionContext']
 ): string | undefined {
     const blocks: string[] = []
@@ -184,6 +185,15 @@ function buildReferenceContextMessage(
         }
     }
 
+    if (conversationSummary) {
+        const safeSummary = neutralizeInstructionLikeText(
+            sanitizeContextText(conversationSummary, CONTEXT_INJECTION_MAX_LENGTH)
+        )
+        if (safeSummary) {
+            blocks.push(`conversation_summary_text:\n${safeSummary}`)
+        }
+    }
+
     if (blocks.length === 0) return undefined
 
     return [
@@ -206,6 +216,87 @@ function normalizeStringList(values: string[] | undefined): string[] | undefined
         .filter(value => value.length > 0)
     if (compacted.length === 0) return undefined
     return [...new Set(compacted)]
+}
+
+const COUNTERMEASURE_CATEGORIES: CountermeasureCategory[] = ['ppe', 'behavior', 'equipment']
+
+function isCountermeasureCategory(value: string): value is CountermeasureCategory {
+    return (COUNTERMEASURE_CATEGORIES as string[]).includes(value)
+}
+
+function fallbackClassifyCountermeasure(text: string): CountermeasureCategory {
+    const t = text.toLowerCase()
+    // ppe
+    if (t.includes('ヘルメ') || t.includes('ヘルメット') || t.includes('安全帯') || t.includes('ハーネス') || t.includes('手袋') || t.includes('保護') || t.includes('ゴーグル') || t.includes('マスク')) {
+        return 'ppe'
+    }
+    // equipment / preparation
+    if (t.includes('足場') || t.includes('手すり') || t.includes('親綱') || t.includes('点検') || t.includes('養生') || t.includes('区画') || t.includes('立入') || t.includes('台車') || t.includes('工具') || t.includes('設備') || t.includes('準備')) {
+        return 'equipment'
+    }
+    // default behavior
+    return 'behavior'
+}
+
+function normalizeCountermeasureText(value: string): string {
+    return value.replace(/\s+/g, ' ').trim()
+}
+
+function coerceCountermeasures(value: unknown): Countermeasure[] | undefined {
+    const out: Countermeasure[] = []
+
+    const push = (category: unknown, text: unknown) => {
+        if (typeof text !== 'string') return
+        const normalizedText = normalizeCountermeasureText(text)
+        if (!normalizedText) return
+
+        const cat = typeof category === 'string' && isCountermeasureCategory(category.trim())
+            ? (category.trim() as CountermeasureCategory)
+            : fallbackClassifyCountermeasure(normalizedText)
+
+        out.push({ category: cat, text: normalizedText })
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            if (typeof item === 'string') {
+                push(undefined, item)
+                continue
+            }
+            if (item && typeof item === 'object') {
+                const obj = item as Record<string, unknown>
+                push(obj.category, obj.text)
+            }
+        }
+        return out.length > 0 ? out : undefined
+    }
+
+    if (typeof value === 'string') {
+        push(undefined, value)
+        return out.length > 0 ? out : undefined
+    }
+
+    return undefined
+}
+
+function normalizeCountermeasures(values: Countermeasure[] | undefined): Countermeasure[] | undefined {
+    if (!values || values.length === 0) return undefined
+    const normalized = values
+        .map((cm) => ({
+            category: isCountermeasureCategory(String(cm.category)) ? cm.category : fallbackClassifyCountermeasure(cm.text),
+            text: normalizeCountermeasureText(cm.text),
+        }))
+        .filter((cm) => cm.text.length > 0)
+
+    const seen = new Set<string>()
+    const out: Countermeasure[] = []
+    for (const cm of normalized) {
+        const key = cm.text.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(cm)
+    }
+    return out.length > 0 ? out : undefined
 }
 
 function coerceStringArray(value: unknown): string[] | undefined {
@@ -281,7 +372,7 @@ function normalizeExtractedData(value: unknown): ExtractedData | undefined {
     const whyDangerous = coerceStringArray(raw.whyDangerous)
     if (whyDangerous) extracted.whyDangerous = whyDangerous
 
-    const countermeasures = coerceStringArray(raw.countermeasures)
+    const countermeasures = coerceCountermeasures(raw.countermeasures)
     if (countermeasures) extracted.countermeasures = countermeasures
 
     if (typeof raw.actionGoal === 'string') {
@@ -342,7 +433,7 @@ function compactExtractedData(extracted?: ExtractedData): ExtractedData | undefi
     const whyDangerous = normalizeStringList(extracted.whyDangerous)
     if (whyDangerous) compacted.whyDangerous = whyDangerous
 
-    const countermeasures = normalizeStringList(extracted.countermeasures)
+    const countermeasures = normalizeCountermeasures(extracted.countermeasures)
     if (countermeasures) compacted.countermeasures = countermeasures
 
     const actionGoal = normalizeString(extracted.actionGoal)
@@ -372,7 +463,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         return c.json({ error: 'OpenAI API key not configured', code: 'OPENAI_KEY_MISSING', requestId: c.get('reqId') }, 500)
     }
 
-    const { messages, sessionContext, contextInjection } = c.req.valid('json')
+    const { messages, sessionContext, contextInjection, conversationSummary } = c.req.valid('json')
 
     // 入力検証（禁止語・文字数制限）
     let totalLength = 0
@@ -393,6 +484,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     const contextEnabled = c.env.ENABLE_CONTEXT_INJECTION !== '0'
     const referenceMessage = buildReferenceContextMessage(
         contextEnabled ? contextInjection : undefined,
+        conversationSummary,
         sessionContext
     )
 
@@ -453,7 +545,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 '入力はJSON形式にしたいテキストです。',
                 '次の条件を必ず守って、JSONオブジェクトのみを出力してください。',
                 '- Markdownや説明文を一切含めない',
-                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: string[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
+                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: {category: \"ppe\"|\"behavior\"|\"equipment\", text: string}[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
                 '- extracted.nextAction は必須',
                 '- 未特定フィールドはキー自体を省略（null/空配列で埋めない）',
                 '',
@@ -581,7 +673,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 code: mapped.code,
                 requestId: c.get('reqId'),
                 retriable: mapped.retriable,
-            }, mapped.status)
+            }, mapped.status as 429 | 500 | 502 | 503 | 504)
         }
 
         const status = getErrorStatus(error)

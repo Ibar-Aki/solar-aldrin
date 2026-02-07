@@ -6,11 +6,18 @@
  */
 
 // Zodスキーマから推論された型をインポート
-import type { ProcessPhaseFromZod, HealthConditionFromZod } from '@/lib/kySchemas'
+import type {
+    ProcessPhaseFromZod,
+    HealthConditionFromZod,
+    CountermeasureCategoryFromZod,
+    CountermeasureFromZod,
+} from '@/lib/kySchemas'
 
 // 型エイリアスとしてエクスポート（単一真実源）
 export type ProcessPhase = ProcessPhaseFromZod
 export type HealthCondition = HealthConditionFromZod
+export type CountermeasureCategory = CountermeasureCategoryFromZod
+export type Countermeasure = CountermeasureFromZod
 
 /** 作業単位（作業 + 危険 + なぜ + 対策 のセット） */
 export interface WorkItem {
@@ -25,7 +32,7 @@ export interface WorkItem {
     /** なぜ危険か（複数の理由） */
     whyDangerous: string[]
     /** 対策（複数） */
-    countermeasures: string[]
+    countermeasures: Countermeasure[]
 }
 
 /** 一人KYセッション */
@@ -92,7 +99,7 @@ export interface ExtractedData {
     hazardDescription?: string | null
     riskLevel?: 1 | 2 | 3 | 4 | 5 | null
     whyDangerous?: string[]
-    countermeasures?: string[]
+    countermeasures?: Countermeasure[]
     actionGoal?: string | null
     nextAction?: 'ask_work' | 'ask_hazard' | 'ask_why' | 'ask_countermeasure' | 'ask_risk_level' | 'ask_more_work' | 'ask_goal' | 'confirm' | 'completed'
 }

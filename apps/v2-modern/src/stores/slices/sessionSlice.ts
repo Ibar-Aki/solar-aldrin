@@ -51,7 +51,7 @@ function countInputLength(session: SoloKYSession): number {
         add(item.workDescription)
         add(item.hazardDescription)
         for (const why of item.whyDangerous) add(why)
-        for (const measure of item.countermeasures) add(measure)
+        for (const measure of item.countermeasures) add(measure.text)
     }
 
     return total

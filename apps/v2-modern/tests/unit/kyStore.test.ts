@@ -53,7 +53,7 @@ describe('kyStore', () => {
         // 不完全なアイテムはコミットできない
         commitWorkItem()
         expect(useKYStore.getState().session?.workItems).toHaveLength(0)
-        expect(useKYStore.getState().error).toBe('作業項目が不完全です')
+        expect(useKYStore.getState().error).toBe('作業項目が不完全です（対策は2カテゴリ以上が必要です）')
 
         // 完全なアイテムを作成
         updateCurrentWorkItem({
@@ -61,7 +61,10 @@ describe('kyStore', () => {
             hazardDescription: 'Falling',
             riskLevel: 4,
             whyDangerous: ['High place'],
-            countermeasures: ['Use harness'],
+            countermeasures: [
+                { category: 'ppe', text: 'Use harness' },
+                { category: 'behavior', text: 'Confirm anchor point' },
+            ],
         })
 
         commitWorkItem()

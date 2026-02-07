@@ -18,8 +18,8 @@ export const basicFlowResponses = [
                 '足元が不安定になりやすい',
             ],
             countermeasures: [
-                '安全帯を二丁掛けする',
-                '作業前に足場の点検を行う',
+                { category: 'ppe', text: '安全帯を二丁掛けする' },
+                { category: 'equipment', text: '作業前に足場の点検を行う' },
             ],
             nextAction: 'ask_risk_level',
         },

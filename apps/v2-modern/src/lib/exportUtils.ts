@@ -3,7 +3,7 @@
  * Phase 2.3: HIS-04 CSV/JSONエクスポート
  */
 import type { SoloKYSession } from '@/types/ky'
-import { db } from './db'
+import { getAllSessions } from './db'
 import { formatDateForFilename } from './dateUtils'
 
 /**
@@ -69,7 +69,7 @@ const CSV_HEADER = [
  */
 export async function exportToJSON(): Promise<boolean> {
     try {
-        const sessions = await db.sessions.toArray()
+        const sessions = await getAllSessions()
         const json = JSON.stringify(sessions, null, 2)
         const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
         downloadBlob(blob, `ky-records-${formatDateForFilename(new Date())}.json`)
@@ -86,7 +86,7 @@ export async function exportToJSON(): Promise<boolean> {
  */
 export async function exportToCSV(): Promise<boolean> {
     try {
-        const sessions = await db.sessions.toArray()
+        const sessions = await getAllSessions()
         const rows = sessions.map(sessionToCSVRow)
         const csv = [CSV_HEADER, ...rows].join('\n')
         // BOM付きUTF-8でExcelでも文字化けしない

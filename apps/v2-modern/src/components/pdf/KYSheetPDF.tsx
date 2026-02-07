@@ -324,13 +324,39 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
 
                                 {/* 対策 */}
                                 <View style={styles.subSection}>
-                                    <Text style={styles.subTitle}>【対策】</Text>
-                                    {item.countermeasures.map((cm, i) => (
-                                        <View key={i} style={styles.listItem}>
-                                            <Text style={styles.bullet}>→</Text>
-                                            <Text>{cm}</Text>
-                                        </View>
-                                    ))}
+                                    {(() => {
+                                        const groups: Record<'ppe' | 'behavior' | 'equipment', string[]> = {
+                                            ppe: [],
+                                            behavior: [],
+                                            equipment: [],
+                                        }
+                                        for (const cm of item.countermeasures) {
+                                            const text = cm.text.trim()
+                                            if (!text) continue
+                                            groups[cm.category].push(text)
+                                        }
+                                        const labels: Record<keyof typeof groups, string> = {
+                                            ppe: '保護具',
+                                            behavior: '行動',
+                                            equipment: '設備・準備',
+                                        }
+                                        const order: Array<keyof typeof groups> = ['ppe', 'behavior', 'equipment']
+                                        return (
+                                            <View>
+                                                {order.filter((k) => groups[k].length > 0).map((k) => (
+                                                    <View key={k} style={{ marginBottom: 4 }}>
+                                                        <Text style={styles.subTitle}>【対策（{labels[k]}）】</Text>
+                                                        {groups[k].map((text, i) => (
+                                                            <View key={`${k}-${i}`} style={styles.listItem}>
+                                                                <Text style={styles.bullet}>→</Text>
+                                                                <Text>{text}</Text>
+                                                            </View>
+                                                        ))}
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        )
+                                    })()}
                                 </View>
                             </View>
                         </View>

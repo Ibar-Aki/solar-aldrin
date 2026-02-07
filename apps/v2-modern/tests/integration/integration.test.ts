@@ -220,7 +220,10 @@ describe('Chat API Integration Flow', () => {
                             workDescription: null,
                             hazardDescription: '   ',
                             whyDangerous: [],
-                            countermeasures: ['  ', '手袋を着用する'],
+                            countermeasures: [
+                                { category: 'ppe', text: '  ' },
+                                { category: 'ppe', text: '手袋を着用する' },
+                            ],
                             riskLevel: null,
                             actionGoal: null,
                             nextAction: 'ask_countermeasure',
@@ -254,7 +257,7 @@ describe('Chat API Integration Flow', () => {
 
         expect(body.reply).toBe('了解しました。')
         expect(body.extracted).toEqual({
-            countermeasures: ['手袋を着用する'],
+            countermeasures: [{ category: 'ppe', text: '手袋を着用する' }],
             nextAction: 'ask_countermeasure',
         })
     })

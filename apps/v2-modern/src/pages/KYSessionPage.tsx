@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ChatInput } from '@/components/ChatInput'
 import { ChatBubble } from '@/components/ChatBubble'
 import { RiskLevelSelector } from '@/components/RiskLevelSelector'
+import { ConfirmedInfoCard } from '@/components/ConfirmedInfoCard'
 import { useKYStore } from '@/stores/kyStore'
 import { useChat } from '@/hooks/useChat'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
@@ -68,6 +69,17 @@ export function KYSessionPage() {
         sendMessage(`危険度は${level}です`)
     }
 
+    const handleChangeCountermeasureCategory = (index: number, category: 'ppe' | 'behavior' | 'equipment') => {
+        const list = currentWorkItem.countermeasures ?? []
+        if (index < 0 || index >= list.length) return
+        const next = list.map((cm, i) => (i === index ? { ...cm, category } : cm))
+        updateCurrentWorkItem({ countermeasures: next })
+    }
+
+    const handleSendSuggestion = async (text: string) => {
+        await sendMessage(text)
+    }
+
     const handleComplete = () => {
         if (!session) return
         completeSession({
@@ -98,6 +110,13 @@ export function KYSessionPage() {
         lastAssistantNextAction,
         currentRiskLevel: currentWorkItem.riskLevel,
     })
+
+    const shouldShowConfirmedInfo = !!(
+        currentWorkItem.workDescription ||
+        currentWorkItem.hazardDescription ||
+        (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) ||
+        (currentWorkItem.countermeasures && currentWorkItem.countermeasures.length > 0)
+    )
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -138,6 +157,20 @@ export function KYSessionPage() {
                                     ⚠️ {session.environmentRisk}
                                 </AlertDescription>
                             </Alert>
+                        </div>
+                    </div>
+                )}
+
+                {/* 確認済み情報カード（対策カテゴリ進捗/不足誘導） */}
+                {shouldShowConfirmedInfo && (
+                    <div className="bg-gray-50 border-b px-4 py-2">
+                        <div className="max-w-2xl mx-auto w-full">
+                            <ConfirmedInfoCard
+                                currentWorkItem={currentWorkItem}
+                                disabled={isLoading}
+                                onChangeCountermeasureCategory={handleChangeCountermeasureCategory}
+                                onSendSuggestion={handleSendSuggestion}
+                            />
                         </div>
                     </div>
                 )}

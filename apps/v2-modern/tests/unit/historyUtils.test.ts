@@ -8,27 +8,34 @@ import * as historyUtils from '@/lib/historyUtils'
 const createSession = (id: string, date: string, hazard: string, siteName = 'Site A'): SoloKYSession => ({
     id,
     createdAt: date,
-    updatedAt: date,
     completedAt: date,
-    userId: 'user1',
     userName: 'Test User',
     siteName,
     weather: 'Sunny',
-    processPhase: 'Test Phase',
-    healthCondition: 'Good',
+    temperature: null,
+    processPhase: 'フリー',
+    healthCondition: 'good',
+    workStartTime: date,
+    workEndTime: date,
+    environmentRisk: null,
     workItems: [
         {
             id: 'w1',
             workDescription: 'Test Work',
             hazardDescription: hazard,
-            situation: 'Test Situation',
-            countermeasures: ['Measure 1'],
+            countermeasures: [
+                { category: 'behavior', text: 'Measure 1' },
+                { category: 'equipment', text: 'Measure 2' },
+            ],
             riskLevel: 3,
-            completed: true
+            whyDangerous: ['Test factor'],
         }
     ],
     actionGoal: 'Goal 1',
-    status: 'completed'
+    pointingConfirmed: true,
+    allMeasuresImplemented: true,
+    hadNearMiss: false,
+    nearMissNote: null,
 })
 
 describe('History Utils', () => {

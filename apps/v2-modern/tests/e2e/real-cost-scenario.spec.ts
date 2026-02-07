@@ -317,13 +317,17 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         riskLevel: 5
                     }
                 },
-                {
-                    reply: "消火器とスパッタシートですね。他にはありますか？",
-                    extracted: {
-                        countermeasures: ["消火器をすぐに使える位置に配置", "スパッタシートで隙間なく養生"],
-                        nextAction: 'ask_goal' // Commit trigger
-                    }
-                },
+                 {
+                     reply: "消火器とスパッタシートですね。他にはありますか？",
+                     extracted: {
+                        countermeasures: [
+                            { category: 'equipment', text: "消火器をすぐに使える位置に配置" },
+                            { category: 'equipment', text: "スパッタシートで隙間なく養生" },
+                            { category: 'ppe', text: "防炎手袋を着用する" },
+                        ],
+                         nextAction: 'ask_goal' // Commit trigger
+                     }
+                 },
                 {
                     reply: "了解しました。行動目標を設定して終了してください。",
                     extracted: {

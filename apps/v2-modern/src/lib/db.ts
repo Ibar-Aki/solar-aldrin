@@ -5,6 +5,22 @@
 import Dexie, { type Table } from 'dexie'
 import type { SoloKYSession } from '@/types/ky'
 
+function normalizeSession(session: SoloKYSession): SoloKYSession {
+    // Backward compatibility: old records may store countermeasures as string[].
+    const workItems = session.workItems.map((item) => {
+        const raw = (item as unknown as { countermeasures?: unknown }).countermeasures
+        if (Array.isArray(raw) && raw.every((v) => typeof v === 'string')) {
+            const normalized = (raw as string[])
+                .map((text) => String(text).trim())
+                .filter(Boolean)
+                .map((text) => ({ category: 'behavior' as const, text }))
+            return { ...item, countermeasures: normalized } as unknown as typeof item
+        }
+        return item
+    })
+    return { ...session, workItems }
+}
+
 /**
  * Voice KY データベース
  * - sessions: 完了したKYセッションを保存
@@ -49,21 +65,24 @@ export async function saveSession(session: SoloKYSession): Promise<void> {
  * 全セッションを取得（降順）
  */
 export async function getAllSessions(): Promise<SoloKYSession[]> {
-    return getDb().sessions.orderBy('createdAt').reverse().toArray()
+    const sessions = await getDb().sessions.orderBy('createdAt').reverse().toArray()
+    return sessions.map(normalizeSession)
 }
 
 /**
  * 最新のセッションを取得
  */
 export async function getLatestSession(): Promise<SoloKYSession | undefined> {
-    return getDb().sessions.orderBy('createdAt').reverse().first()
+    const session = await getDb().sessions.orderBy('createdAt').reverse().first()
+    return session ? normalizeSession(session) : undefined
 }
 
 /**
  * IDでセッションを取得
  */
 export async function getSessionById(id: string): Promise<SoloKYSession | undefined> {
-    return getDb().sessions.get(id)
+    const session = await getDb().sessions.get(id)
+    return session ? normalizeSession(session) : undefined
 }
 
 /**

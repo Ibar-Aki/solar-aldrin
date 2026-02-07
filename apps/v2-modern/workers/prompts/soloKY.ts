@@ -95,6 +95,11 @@ export const SOLO_KY_SYSTEM_PROMPT = `あなたは建設現場の安全管理AI�
 - 「workDescription」/「hazardDescription」/「whyDangerous」/「countermeasures」/「riskLevel」/「actionGoal」は
   **判明しているときのみ出力**し、未特定ならキー自体を省略すること
 - 未特定項目を null や [] で埋めないこと
+- 「countermeasures」は **カテゴリ付き**で出力すること:
+  - category は "ppe" | "behavior" | "equipment"
+  - text は具体的な対策文
+- **重要**: 対策は1カテゴリに偏りやすい。可能なら「保護具(ppe)」「行動(behavior)」「設備・準備(equipment)」のうち
+  **2カテゴリ以上**が含まれるように確認・追加提案すること。
 
 {
   "reply": "ユーザーへの自然な応答テキスト（ここだけがユーザーに表示されます）",
@@ -103,7 +108,9 @@ export const SOLO_KY_SYSTEM_PROMPT = `あなたは建設現場の安全管理AI�
     "workDescription": "作業内容（判明時のみ）",
     "hazardDescription": "危険内容（判明時のみ）",
     "whyDangerous": ["危険因子・要因（判明時のみ）"],
-    "countermeasures": ["具体的な対策（判明時のみ）"],
+    "countermeasures": [
+      { "category": "ppe", "text": "具体的な対策（判明時のみ）" }
+    ],
     "riskLevel": 1,
     "actionGoal": "行動目標（判明時のみ）"
   }

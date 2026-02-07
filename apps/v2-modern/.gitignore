@@ -40,3 +40,4 @@ server_log*.txt
 test_log*.txt
 test_result*.txt
 test_cost*.txt
+cost-report*.txt

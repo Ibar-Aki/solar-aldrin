@@ -163,22 +163,27 @@ export function HistoryDetailPage() {
                     <CardHeader className="py-3">
                         <CardTitle className="text-lg">作業項目 ({session.workItems.length}件)</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        {session.workItems.map((item, index) => (
-                            <div key={item.id} className="border-l-4 border-blue-400 pl-3 py-1">
-                                <p className="font-medium text-sm">
-                                    {index + 1}. {item.workDescription}
-                                </p>
-                                <p className="text-xs text-red-600">
-                                    危険: {item.hazardDescription}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                    リスクレベル: {item.riskLevel}
-                                </p>
-                            </div>
-                        ))}
-                    </CardContent>
-                </Card>
+                        <CardContent className="space-y-4">
+                            {session.workItems.map((item, index) => (
+                                <div key={item.id} className="border-l-4 border-blue-400 pl-3 py-1">
+                                    <p className="font-medium text-sm">
+                                        {index + 1}. {item.workDescription}
+                                    </p>
+                                    <p className="text-xs text-red-600">
+                                        危険: {item.hazardDescription}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        リスクレベル: {item.riskLevel}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                        対策カテゴリ: 保護具{item.countermeasures.filter((cm) => cm.category === 'ppe').length}
+                                        {' / '}行動{item.countermeasures.filter((cm) => cm.category === 'behavior').length}
+                                        {' / '}設備・準備{item.countermeasures.filter((cm) => cm.category === 'equipment').length}
+                                    </p>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
 
                 {/* 行動目標 */}
                 {session.actionGoal && (
