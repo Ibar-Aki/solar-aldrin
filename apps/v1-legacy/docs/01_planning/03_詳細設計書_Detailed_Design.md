@@ -1,5 +1,7 @@
 # 📐 Voice KY Assistant 詳細設計書 v2
 
+更新日: 2026-02-07
+
 **バージョン**: 2.0  
 **作成日**: 2026年1月21日  
 **対象**: MVP（足場設置 × 一人KY）
@@ -638,7 +640,7 @@ const RETRY_CONFIG = {
 
 ```
 # Cloudflare Workers
-OPENAI_API_KEY=sk-xxx
+OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_KEY=xxx
 WEATHER_API_KEY=xxx
