@@ -406,8 +406,59 @@ function normalizeModelResponse(rawParsed: unknown): { reply: string; extracted?
 
     const extracted = normalizeExtractedData(extractedCandidate)
 
+    const buildFallbackReply = (value: ExtractedData | undefined): string => {
+        const nextAction = value?.nextAction
+        if (nextAction) {
+            switch (nextAction) {
+                case 'ask_work':
+                    return '今日行う作業内容を教えてください。'
+                case 'ask_hazard':
+                    return 'その作業で考えられる危険を教えてください。'
+                case 'ask_why':
+                    return 'どのような状況でその危険が起きそうですか？'
+                case 'ask_risk_level':
+                    return 'この作業の危険度は1〜5でいくつですか？'
+                case 'ask_countermeasure':
+                    return 'その危険を防ぐための対策を教えてください。（保護具/行動/設備・準備のうち2カテゴリ以上あると安心です）'
+                case 'ask_more_work':
+                    return '他に今日行う作業はありますか？'
+                case 'ask_goal':
+                    return '今日いちばん意識する行動目標を、短い言葉で決めると何にしますか？'
+                case 'confirm':
+                    return 'ここまでの内容で確定してよろしいですか？'
+                case 'completed':
+                    return 'ありがとうございます。画面の案内に沿って完了してください。'
+                default:
+                    break
+            }
+        }
+
+        // nextAction が欠落するケースの保険（欠落フィールドから推測）
+        if (!value?.workDescription) return '今日行う作業内容を教えてください。'
+        if (!value?.hazardDescription) return 'その作業で考えられる危険を教えてください。'
+        if (!value?.whyDangerous || value.whyDangerous.length === 0) return 'どのような状況でその危険が起きそうですか？'
+        if (typeof value?.riskLevel !== 'number') return 'この作業の危険度は1〜5でいくつですか？'
+        if (!value?.countermeasures || value.countermeasures.length === 0) return 'その危険を防ぐための対策を教えてください。'
+        if (!value?.actionGoal) return '今日いちばん意識する行動目標を、短い言葉で決めると何にしますか？'
+
+        return '続けてください。'
+    }
+
+    const normalizedReply = typeof reply === 'string' ? reply.trim() : ''
+    const GENERIC_NON_FACILITATION_PREFIXES = [
+        '承知しました。続けてください。',
+        '了解しました。続けてください。',
+        '分かりました。続けてください。',
+        'わかりました。続けてください。',
+        '続けてください。',
+    ]
+
+    const looksLikeNonFacilitation =
+        normalizedReply === '' ||
+        GENERIC_NON_FACILITATION_PREFIXES.some((p) => normalizedReply === p || normalizedReply.startsWith(p))
+
     return {
-        reply: reply || '承知しました。続けてください。',
+        reply: looksLikeNonFacilitation ? buildFallbackReply(extracted) : reply,
         ...(extracted ? { extracted } : {}),
     }
 }
