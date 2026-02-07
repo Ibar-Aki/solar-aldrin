@@ -94,6 +94,7 @@ Phase 1 (MVP) においては対応を見送り、Phase 2以降の課題とさ�
 
 ## 5. 今後のアクション (Next Actions)
 
-* **Phase 2**: [03_Phase2ロードマップ_Phase2_Roadmap.md](../00_planning/03_Phase2ロードマップ_Phase2_Roadmap.md) を参照。
-* **品質改善**: [01_品質改善提案_Quality_Improvement.md](../00_planning/01_品質改善提案_Quality_Improvement.md) を参照。
+* **Phase 2**: [03_Phase2_Roadmap.md](../00_planning/03_Phase2_Roadmap.md) を参照。
+* **品質改善**: [01_Quality_Improvement.md](../00_planning/01_Quality_Improvement.md) を参照。
+
 

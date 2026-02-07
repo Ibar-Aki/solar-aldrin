@@ -17,6 +17,7 @@
 ## 🏗️ システムアーキテクチャ
 
 詳細は [ARCHITECTURE.md](./ARCHITECTURE.md) を参照してください。  
-設計詳細は [30_design/01_システムアーキテクチャ_System_Architecture.md](./30_design/01_システムアーキテクチャ_System_Architecture.md) に統合されています。
+設計詳細は [30_design/01_System_Architecture.md](./30_design/01_System_Architecture.md) に統合されています。
 
 ![Architecture Diagram](./assets/architecture_diagram.png)
+

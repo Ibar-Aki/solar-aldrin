@@ -11,27 +11,27 @@
 以下の文書は、プロジェクトの意思決定の根拠となる**正式文書**です。  
 番号順に読むことで、プロジェクトの意思決定プロセスを追体験できます。
 
-1. **[01_品質改善提案_Quality_Improvement.md](01_品質改善提案_Quality_Improvement.md)**
+1. **[01_Quality_Improvement.md](01_Quality_Improvement.md)**
    * 現場課題と改善方針の整理（検討段階）
    * なぜv2が必要なのか、何を目指すのか
 
-2. **[02_機能拡張一覧_Phase2x.md](02_機能拡張一覧_Phase2x.md)**
+2. **[02_Feature_Expansion_Phase2x.md](02_Feature_Expansion_Phase2x.md)**
    * 機能候補の棚卸しと判定
    * どんなアイデアがあるか、優先度はどうするか
 
-3. **[03_Phase2ロードマップ_Phase2_Roadmap.md](03_Phase2ロードマップ_Phase2_Roadmap.md)** ⭐
+3. **[03_Phase2_Roadmap.md](03_Phase2_Roadmap.md)** ⭐
    * **採用された項目の決定事項（最重要・正本）**
    * いつ、何を実装するか
    * ※ 不整合時は本資料を正とします
 
-4. **[04_要件定義書_REQUIREMENTS.md](04_要件定義書_REQUIREMENTS.md)**
+4. **[04_Requirements.md](04_Requirements.md)**
    * 決定事項を開発要件に落とし込んだもの
    * ISO準拠の詳細仕様
 
-5. **[05_技術仕様書_Technical_Spec.md](05_技術仕様書_Technical_Spec.md)**
+5. **[05_Technical_Spec.md](05_Technical_Spec.md)**
    * 要件を実現するための技術選定と設計方針
 
-6. **[06_システム設計書_System_Design.md](06_システム設計書_System_Design.md)**
+6. **[06_System_Design.md](06_System_Design.md)**
    * ER図、API設計、コンポーネント構成などの詳細設計
 
 ---
@@ -67,9 +67,9 @@
 
 ## 🔗 関連ドキュメント
 
-* **設計ドキュメント**: [`../30_design/`](../30_design/) - アーキテクチャ、データモデル等
-* **レビュー記録**: [`../20_reviews/`](../20_reviews/) - Phase 1総括等
-* **マニュアル**: [`../10_manuals/`](../10_manuals/) - 環境構築、デプロイ手順
+* **設計ドキュメント**: [`../10_design/`](../10_design/) - アーキテクチャ、データモデル等
+* **レビュー記録**: [`../30_reviews/`](../30_reviews/) - Phase 1総括等
+* **マニュアル**: [`../20_manuals/`](../20_manuals/) - 環境構築、デプロイ手順
 
 ---
 
@@ -79,3 +79,4 @@
 2. 決定事項は **04_要件定義書** に反映
 3. Phase別の詳細検討は **phases/** 配下に新規作成
 4. コアドキュメント（01-06）の番号は変更しない
+

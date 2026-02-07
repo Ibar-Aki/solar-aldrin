@@ -3,6 +3,7 @@
  * Web Speech API のラッパー（オプション機能）
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { getSpeechRecognitionErrorMessage, normalizeSpeechRecognitionError } from '@/lib/speechRecognitionErrors'
 
 interface UseVoiceRecognitionOptions {
     lang?: string
@@ -20,6 +21,7 @@ interface UseVoiceRecognitionResult {
     start: () => void
     stop: () => void
     setAutoRestart: (enabled: boolean) => void
+    clearError: () => void
 }
 
 // SpeechRecognition のブラウザ互換性
@@ -59,10 +61,15 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
         setIsListening(false)
     }, [])
 
+    const clearError = useCallback(() => {
+        setError(null)
+    }, [])
+
     const start = useCallback(() => {
         if (!isSupported) {
-            setError('このブラウザは音声認識に対応していません')
-            onError?.('このブラウザは音声認識に対応していません')
+            const msg = 'このブラウザは音声認識に対応していません'
+            setError((prev) => (prev === msg ? prev : msg))
+            onError?.(msg)
             return
         }
 
@@ -107,21 +114,33 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             }
 
             recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-                console.error('Speech recognition error:', event.error)
+                const normalized = normalizeSpeechRecognitionError(event.error)
+                console.error('Speech recognition error:', normalized)
 
                 // 一時的なエラーは無視
-                if (event.error === 'no-speech' || event.error === 'aborted') {
+                if (normalized === 'no-speech' || normalized === 'aborted') {
                     return
                 }
 
-                // 致命的なエラーの場合は自動再開を無効化
-                if (event.error === 'not-allowed' || event.error === 'audio-capture') {
+                const isFatal =
+                    normalized === 'not-allowed' ||
+                    normalized === 'audio-capture' ||
+                    normalized === 'service-not-allowed'
+
+                // 致命的なエラーの場合は止めて悪化（エラー連打）を防ぐ
+                if (isFatal) {
                     setAutoRestart(false)
-                    isStoppingRef.current = true // 意図的な停止とみなす
+                    isStoppingRef.current = true // 意図的な停止とみなす（自動再開を抑制）
+                    try {
+                        recognitionRef.current?.stop()
+                    } catch {
+                        // no-op
+                    }
+                    setIsListening(false)
                 }
 
-                const errorMessage = getErrorMessage(event.error)
-                setError(errorMessage)
+                const errorMessage = getSpeechRecognitionErrorMessage(normalized)
+                setError((prev) => (prev === errorMessage ? prev : errorMessage))
                 onError?.(errorMessage)
             }
 
@@ -134,8 +153,9 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
         } catch (e) {
             console.error('Failed to start speech recognition:', e)
-            setError('音声認識の開始に失敗しました')
-            onError?.('音声認識の開始に失敗しました')
+            const msg = '音声認識の開始に失敗しました'
+            setError((prev) => (prev === msg ? prev : msg))
+            onError?.(msg)
         }
     }, [isSupported, lang, continuous, onResult, onError])
 
@@ -196,20 +216,6 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
         start,
         stop,
         setAutoRestart,
-    }
-}
-
-function getErrorMessage(error: string): string {
-    switch (error) {
-        case 'not-allowed':
-            return 'マイクの使用が許可されていません'
-        case 'no-speech':
-            return '音声が検出されませんでした'
-        case 'network':
-            return 'ネットワークエラーが発生しました'
-        case 'audio-capture':
-            return 'マイクにアクセスできません'
-        default:
-            return `音声認識エラー: ${error}`
+        clearError,
     }
 }

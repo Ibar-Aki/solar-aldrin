@@ -25,9 +25,9 @@
 
 ### 1.3 参照資料
 
-* [01_品質改善提案](01_品質改善提案_Quality_Improvement.md): 企画背景
-* [03_Phase2ロードマップ](03_Phase2ロードマップ_Phase2_Roadmap.md): 決定事項（※ 正本）
-* [05_技術仕様書](05_技術仕様書_Technical_Spec.md): アーキテクチャ詳細
+* [01_品質改善提案](01_Quality_Improvement.md): 企画背景
+* [03_Phase2ロードマップ](03_Phase2_Roadmap.md): 決定事項（※ 正本）
+* [05_技術仕様書](05_Technical_Spec.md): アーキテクチャ詳細
 
 ---
 
@@ -120,3 +120,4 @@
 | **L-01** | FR-LGC-001 | 具体化深掘り | 2.4 |
 | **L-02** | FR-LGC-002 | AIコーチング | 2.4 (Hold) |
 | **C-01** | FR-EXT-001 | 気象連動 | 2.3 |
+

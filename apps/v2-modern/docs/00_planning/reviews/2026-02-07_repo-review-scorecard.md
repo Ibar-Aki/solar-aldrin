@@ -39,7 +39,7 @@
    - 実施内容:
      - ルート `README.md` のローカルリンクを削除し、更新日を追記
      - `apps/v2-modern/.dev.vars.example` を「実キーっぽい文字列」を含まないプレースホルダに変更
-     - `apps/v2-modern/docs/PHASE2_SETUP.md` / `apps/v2-modern/docs/10_manuals/03_OPS_GUIDE.md` のキー表現を一般化
+     - `apps/v2-modern/docs/PHASE2_SETUP.md` / `apps/v2-modern/docs/20_manuals/03_OPS_GUIDE.md` のキー表現を一般化
      - `apps/v1-legacy` 側の例示もプレースホルダに変更
    - 例外:
      - `apps/v2-modern/workers/observability/logger.ts` に「キー形式を検出する正規表現」が残ります（監査/マスキング目的のため、削除しません）。
@@ -110,3 +110,4 @@
    - 状態: 対応済み
    - 関連:
      - `README.md`
+

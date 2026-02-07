@@ -9,7 +9,7 @@
 ## 1. 参照資料
 
 - `../ARCHITECTURE.md`
-- `../00_planning/03_Phase2ロードマップ_Phase2_Roadmap.md`
+- `../00_planning/03_Phase2_Roadmap.md`
 - `../00_planning/04_要件定義書_SRS.md`
 
 ---
@@ -182,7 +182,8 @@ flowchart LR
 
 ## 8. 関連ドキュメント
 
-- `../30_design/02_機能設計_Phase2_Detail.md`
-- `../30_design/03_API設計_API_Design.md`
-- `../30_design/04_データモデル設計_Data_Model.md`
-- `../30_design/05_対話UX設計_Conversation_UX.md`
+- `../10_design/02_Feature_Design_Phase2.md`
+- `../10_design/03_API_Design.md`
+- `../10_design/04_Data_Model_Design.md`
+- `../10_design/05_Conversation_UX_Design.md`
+

@@ -82,7 +82,7 @@ export function ChatInput({
                 containerClassName
             )}
         >
-            <MicButton onTranscript={handleTranscript} disabled={disabled} />
+            <MicButton onTranscript={handleTranscript} disabled={disabled} inputValue={value} />
             <Textarea
                 ref={textareaRef}
                 value={value}

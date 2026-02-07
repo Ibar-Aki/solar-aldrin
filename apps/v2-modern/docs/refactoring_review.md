@@ -69,10 +69,11 @@
 - 全ユニットテストが成功
 
 **ドキュメント更新（推奨）**
-- `docs/30_design/02_機能設計_Phase2_Detail.md` のパス記載修正
-- `docs/10_manuals/AI_Response_Time_Optimization.md` のパス記載修正
+- `docs/10_design/02_Feature_Design_Phase2.md` のパス記載修正
+- `docs/20_manuals/AI_Response_Time_Optimization.md` のパス記載修正
 
 **効果見込み**
 - 変更の影響範囲が局所化され、バグ混入率が下がる
 - API/Worker と UI の責務分離でレビュー効率が上がる
 - テストが書きやすくなり、回帰検知が強化される
+

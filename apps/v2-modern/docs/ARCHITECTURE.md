@@ -1,6 +1,6 @@
 # System Architecture
 
-**統合先**: `./30_design/01_システムアーキテクチャ_System_Architecture.md`  
+**統合先**: `./30_design/01_System_Architecture.md`  
 本ファイルは概要のみを維持します。詳細設計は統合先を参照してください。
 
 Voice KY Assistant v2 のシステム構成図です。
@@ -50,3 +50,4 @@ graph TD
 3. **AI推論**: `OpenAI` が応答を生成し、Workers経由でクライアントに返します。
 4. **ローカル保存**: セッションデータは `IndexedDB (Dexie.js)` に永続化されます。
 5. **PDF生成/エクスポート**: 最終的なデータはブラウザ上で処理され、PDF化またはCSV/JSONエクスポートされます。
+

@@ -6,9 +6,10 @@ import { Mic, Square } from 'lucide-react'
 interface MicButtonProps {
     onTranscript: (text: string) => void
     disabled?: boolean
+    inputValue: string
 }
 
-export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
+export function MicButton({ onTranscript, disabled = false, inputValue }: MicButtonProps) {
     const isTTSSpeaking = useTTSStore((s) => s.isSpeaking)
 
     /** ユーザーが手動で停止したかどうか（強制停止と区別するため） */
@@ -21,7 +22,8 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
         isSupported,
         start,
         stop,
-        error
+        error,
+        clearError,
     } = useVoiceRecognition({
         autoRestart: false, // 手動制御に切り替え
         onResult: (transcript, isFinal) => {
@@ -30,6 +32,13 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
             }
         },
     })
+
+    // エラーが表示されていても、入力が1文字でも入ったら消す（入力欄の圧迫防止）
+    useEffect(() => {
+        if (error && inputValue.trim().length > 0) {
+            clearError()
+        }
+    }, [error, inputValue, clearError])
 
     /** 強制停止が必要な条件 */
     const shouldForcePause = disabled || isTTSSpeaking
@@ -93,10 +102,14 @@ export function MicButton({ onTranscript, disabled = false }: MicButtonProps) {
                 )}
             </button>
 
-            {error && (
-                <span className="text-[10px] leading-none text-red-500">{error}</span>
-            )}
+            <span
+                className={`text-[10px] leading-none text-red-500 max-w-[6.5rem] truncate ${error ? '' : 'invisible'}`}
+                aria-hidden={!error}
+                role={error ? 'status' : undefined}
+                aria-live={error ? 'polite' : undefined}
+            >
+                {error || 'error'}
+            </span>
         </div>
     )
 }
-

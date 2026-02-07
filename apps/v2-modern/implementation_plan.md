@@ -34,5 +34,6 @@ Phase 2.2 の残課題（O-02: データモデル柔軟化）について調査�
 
 | ファイル | 更新内容 |
 | :--- | :--- |
-| `02_機能拡張一覧_Phase2x.md` | O-02を「実装済」に変更 |
-| `03_Phase2ロードマップ_Phase2_Roadmap.md` | Phase 2.2のO-02を「実装済」に反映 |
+| `02_Feature_Expansion_Phase2x.md` | O-02を「実装済」に変更 |
+| `03_Phase2_Roadmap.md` | Phase 2.2のO-02を「実装済」に反映 |
+
