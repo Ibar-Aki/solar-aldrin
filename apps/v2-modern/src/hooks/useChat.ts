@@ -22,6 +22,7 @@ const ENABLE_SILENT_RETRY = (() => {
 
 type RetrySource = 'none' | 'manual' | 'silent'
 const MAX_CLIENT_HISTORY_MESSAGES = 12
+const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
 
 type NormalizedChatError = {
     message: string
@@ -332,11 +333,17 @@ export function useChat() {
                     healthCondition: session.healthCondition ?? undefined,
                 },
                 contextInjection,
-                conversationSummary: buildConversationSummary({
-                    session,
-                    currentWorkItem,
-                    status,
-                }),
+                conversationSummary: (() => {
+                    // Short chats shouldn't pay the summary token cost.
+                    const baseCount = messages.filter(m => m.role !== 'system').length
+                    const effectiveCount = baseCount + (shouldSkipUserMessage ? 0 : 1)
+                    if (effectiveCount < CONVERSATION_SUMMARY_MIN_MESSAGES) return undefined
+                    return buildConversationSummary({
+                        session,
+                        currentWorkItem,
+                        status,
+                    })
+                })(),
             })
 
             let data: Awaited<ReturnType<typeof postChat>>
