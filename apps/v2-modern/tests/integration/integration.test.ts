@@ -99,41 +99,6 @@ describe('Chat API Integration Flow', () => {
         expect(body.extracted?.nextAction).toBe('ask_countermeasure')
     })
 
-    it('should fall back to asking countermeasures when extracted is missing but user just sent risk level', async () => {
-        // extracted が欠落しても、直近のユーザー発話が「危険度」なら会話を前進させる
-        const mockOpenAIResponse = {
-            choices: [{
-                message: {
-                    content: JSON.stringify({
-                        reply: '承知しました。続けてください。',
-                        // extracted intentionally missing
-                    }),
-                },
-            }],
-            usage: { total_tokens: 50 },
-        }
-
-        vi.mocked(fetch).mockResolvedValue({
-            ok: true,
-            json: async () => mockOpenAIResponse,
-            text: async () => '',
-        } as Response)
-
-        const req = new Request('http://localhost/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messages: [{ role: 'user', content: '危険度は5です' }],
-            }),
-        })
-
-        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
-        expect(res.status).toBe(200)
-        const body = await res.json() as { reply: string }
-        expect(body.reply).toContain('対策')
-        expect(body.reply).not.toContain('続けてください')
-    })
-
     it('should handle malformed JSON from OpenAI gracefully', async () => {
         // Mock OpenAI Response with Bad JSON
         const mockOpenAIResponse = {

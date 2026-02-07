@@ -386,10 +386,7 @@ function normalizeExtractedData(value: unknown): ExtractedData | undefined {
     return Object.keys(extracted).length > 0 ? extracted : undefined
 }
 
-function normalizeModelResponse(
-    rawParsed: unknown,
-    requestMessages: Array<{ role: 'user' | 'assistant'; content: string }>
-): { reply: string; extracted?: ExtractedData } {
+function normalizeModelResponse(rawParsed: unknown): { reply: string; extracted?: ExtractedData } {
     const obj = (rawParsed && typeof rawParsed === 'object')
         ? (rawParsed as Record<string, unknown>)
         : {}
@@ -408,14 +405,6 @@ function normalizeModelResponse(
         : obj
 
     const extracted = normalizeExtractedData(extractedCandidate)
-
-    const lastUserText = (() => {
-        for (let i = requestMessages.length - 1; i >= 0; i -= 1) {
-            const msg = requestMessages[i]
-            if (msg.role === 'user') return msg.content ?? ''
-        }
-        return ''
-    })()
 
     const buildFallbackReply = (value: ExtractedData | undefined): string => {
         const nextAction = value?.nextAction
@@ -444,25 +433,15 @@ function normalizeModelResponse(
             }
         }
 
-        // extracted が欠落/不十分な場合は、直近のユーザー発話から復旧する（会話を巻き戻しすぎない）
-        const last = String(lastUserText || '').trim()
-        if (last) {
-            if (last.includes('危険度') || /(?:危険度|リスク)\s*(?:は|=|:)?\s*[1-5]/.test(last)) {
-                return 'その危険を防ぐための対策を教えてください。（具体的に「どこに」「どう使うか」まで）'
-            }
-            if (/(他に|ほかに).*(ありません|ない)/.test(last) || /ありません/.test(last)) {
-                return 'では、今日いちばん意識する行動目標を、短い言葉で決めると何にしますか？'
-            }
-            if (
-                last.includes('対策') ||
-                /(消火器|養生|スパッタ|手袋|ヘルメ|安全帯|ハーネス|点検|区画|立入|足場|工具)/.test(last)
-            ) {
-                return '他に対策はありますか？なければ「他にありません」と教えてください。'
-            }
-        }
+        // nextAction が欠落するケースの保険（欠落フィールドから推測）
+        if (!value?.workDescription) return '今日行う作業内容を教えてください。'
+        if (!value?.hazardDescription) return 'その作業で考えられる危険を教えてください。'
+        if (!value?.whyDangerous || value.whyDangerous.length === 0) return 'どのような状況でその危険が起きそうですか？'
+        if (typeof value?.riskLevel !== 'number') return 'この作業の危険度は1〜5でいくつですか？'
+        if (!value?.countermeasures || value.countermeasures.length === 0) return 'その危険を防ぐための対策を教えてください。'
+        if (!value?.actionGoal) return '今日いちばん意識する行動目標を、短い言葉で決めると何にしますか？'
 
-        // 最後の保険（単発で状況を取り戻す）
-        return 'すみません、確認します。今の作業について、危険・要因・危険度・対策のうち、まだ確認できていないものから教えてください。'
+        return '続けてください。'
     }
 
     const normalizedReply = typeof reply === 'string' ? reply.trim() : ''
@@ -675,7 +654,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         // --- Zodによる構造検証 ---
         // usageは後で付与するため除外して検証
-        const normalized = normalizeModelResponse(parsedContent, limitedHistory)
+        const normalized = normalizeModelResponse(parsedContent)
         const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(normalized)
 
         if (!validationResult.success) {
