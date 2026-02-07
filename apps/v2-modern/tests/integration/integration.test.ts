@@ -86,15 +86,73 @@ describe('Chat API Integration Flow', () => {
 
         const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
 
+        expect(res.status).toBe(502)
+        const body = await res.json() as {
+            error: string
+            code?: string
+            retriable?: boolean
+        }
+
+        expect(body.code).toBe('AI_RESPONSE_INVALID_JSON')
+        expect(body.retriable).toBe(true)
+        expect(body.error).toContain('再試行')
+    })
+
+    it('should retry once on malformed JSON and succeed if retry response is valid JSON', async () => {
+        const mockBad = {
+            choices: [{
+                message: {
+                    content: 'This is not JSON'
+                }
+            }],
+            usage: { total_tokens: 10 }
+        }
+
+        const mockGood = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: 'リトライ成功',
+                        extracted: { nextAction: 'ask_hazard' },
+                    })
+                }
+            }],
+            usage: { total_tokens: 20 }
+        }
+
+        vi.mocked(fetch)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => mockBad,
+                text: async () => '',
+            } as Response)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => mockGood,
+                text: async () => '',
+            } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場の確認をします' }]
+            })
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
         expect(res.status).toBe(200)
         const body = await res.json() as {
             reply: string
-            extracted: Record<string, unknown>
+            extracted?: Record<string, unknown>
+            usage?: { totalTokens: number }
+            meta?: { parseRetry?: { attempted?: boolean; succeeded?: boolean } }
         }
 
-        // Should return fallback error message but successful 200 OK for the client
-        expect(body.reply).toContain('申し訳ありません')
-        expect(body.extracted).toEqual({})
+        expect(body.reply).toBe('リトライ成功')
+        expect(body.usage?.totalTokens).toBe(30)
+        expect(body.meta?.parseRetry?.attempted).toBe(true)
+        expect(body.meta?.parseRetry?.succeeded).toBe(true)
     })
 
     it('should keep system prompt fixed and move external context into a user reference message', async () => {

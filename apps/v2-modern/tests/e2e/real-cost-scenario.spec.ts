@@ -6,6 +6,9 @@ const RUN_LIVE = process.env.RUN_LIVE_TESTS === '1'
 const DRY_RUN = process.env.DRY_RUN === '1'
 const SHOULD_SKIP = !RUN_LIVE && !DRY_RUN
 
+// LIVEは上流混雑・リトライ等で 30s を超えることがあるため、待ち時間を長めに取る。
+const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
+
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
 test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
 
@@ -52,6 +55,12 @@ interface ApiTraceEntry {
     retriable?: boolean
     error?: string
     details?: string
+    usageTotalTokens?: number
+    openaiRequestCount?: number
+    openaiHttpAttempts?: number
+    openaiDurationMs?: number
+    parseRetryAttempted?: boolean
+    parseRetrySucceeded?: boolean
 }
 
 // Initialize the log array properly
@@ -93,8 +102,10 @@ async function recordLog(speaker: string, message: string) {
     const timestamp = new Date().toISOString().split('T')[1].slice(0, 8) // HH:mm:ss
     conversationLog.push({ time: timestamp, speaker, message })
 
-    // エラー検知
-    if (speaker === 'AI' && (message.includes('申し訳ありません') || message.includes('エラー'))) {
+    // エラー検知:
+    // テキスト一致ベースは誤検知・二重カウントが起きやすいので、基本は API Trace (status>=400) に寄せる。
+    // ただし旧実装の「200で内部エラー文言」だけは保険としてカウントする。
+    if (speaker === 'AI' && message.includes('システムの内部エラーが発生しました')) {
         METRICS.errors++
     }
     // ターン数カウント (AIの発言を1ターンとする)
@@ -119,11 +130,28 @@ async function recordApiTrace(response: Response) {
     }
 
     try {
-        const payload = await response.json() as { code?: string; requestId?: string; retriable?: boolean; error?: string; details?: unknown }
+        const payload = await response.json() as {
+            code?: string
+            requestId?: string
+            retriable?: boolean
+            error?: string
+            details?: unknown
+            usage?: { totalTokens?: number }
+            meta?: {
+                openai?: { requestCount?: number; httpAttempts?: number; durationMs?: number }
+                parseRetry?: { attempted?: boolean; succeeded?: boolean }
+            }
+        }
         entry.code = payload.code
         entry.requestId = payload.requestId || response.headers()['x-request-id']
         entry.retriable = payload.retriable
         entry.error = payload.error
+        entry.usageTotalTokens = typeof payload.usage?.totalTokens === 'number' ? payload.usage.totalTokens : undefined
+        entry.openaiRequestCount = typeof payload.meta?.openai?.requestCount === 'number' ? payload.meta.openai.requestCount : undefined
+        entry.openaiHttpAttempts = typeof payload.meta?.openai?.httpAttempts === 'number' ? payload.meta.openai.httpAttempts : undefined
+        entry.openaiDurationMs = typeof payload.meta?.openai?.durationMs === 'number' ? payload.meta.openai.durationMs : undefined
+        entry.parseRetryAttempted = typeof payload.meta?.parseRetry?.attempted === 'boolean' ? payload.meta.parseRetry.attempted : undefined
+        entry.parseRetrySucceeded = typeof payload.meta?.parseRetry?.succeeded === 'boolean' ? payload.meta.parseRetry.succeeded : undefined
         if (payload.details) {
             try {
                 entry.details = JSON.stringify(payload.details).slice(0, 500)
@@ -162,6 +190,14 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
         ? (METRICS.aiResponseTimes.reduce((a, b) => a + b, 0) / METRICS.aiResponseTimes.length / 1000).toFixed(1)
         : 'N/A'
 
+    const chatCount = apiTrace.length
+    const totalTokens = apiTrace.reduce((sum, entry) => sum + (entry.usageTotalTokens ?? 0), 0)
+    const avgTokensPerChat = chatCount > 0 ? Math.round(totalTokens / chatCount) : null
+    const openaiRequests = apiTrace.reduce((sum, entry) => sum + (entry.openaiRequestCount ?? 0), 0)
+    const openaiHttpAttempts = apiTrace.reduce((sum, entry) => sum + (entry.openaiHttpAttempts ?? 0), 0)
+    const parseRetryUsed = apiTrace.reduce((sum, entry) => sum + (entry.parseRetryAttempted ? 1 : 0), 0)
+    const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
+
     // 評価スコア算出 (簡易ロジック)
     let score = 'A'
     if (METRICS.errors > 0 || !METRICS.navigationSuccess) score = 'C'
@@ -173,9 +209,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
             const note = entry.error
                 ? `${entry.error}${entry.details ? ` details=${entry.details}` : ''}`
                 : entry.url
-            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${escapeTableText(shortText(note, 140))} |`
+            const parseRetryLabel = entry.parseRetryAttempted
+                ? (entry.parseRetrySucceeded ? 'attempted:yes (ok)' : 'attempted:yes (failed)')
+                : '-'
+            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(note, 140))} |`
         }).join('\n')
-        : '| - | - | - | - | - | - | - |'
+        : '| - | - | - | - | - | - | - | - | - | - | - |'
 
     const failureRows = failureDiagnostics.length > 0
         ? failureDiagnostics.map(item => `- ${item}`).join('\n')
@@ -184,6 +223,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const markdown = `
 # Real-Cost KY Test Report (${mode})
 
+- **作成日**: ${new Date().toISOString()}
+- **作成者**: Codex＋GPT-5
 - **Date**: ${new Date().toISOString()}
 - **Result**: ${status === 'PASS' ? '✅ PASS' : '❌ FAIL'}
 - **Score**: ${score}
@@ -198,6 +239,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **Conversation Turns** | ${METRICS.turns} | 3-5 | ${METRICS.turns <= 5 ? '🟢' : (METRICS.turns > 8 ? '🔴' : '🟡')} |
 | **Errors (AI/System)** | ${METRICS.errors} | 0 | ${METRICS.errors === 0 ? '🟢' : '🔴'} |
 | **Nav Success** | ${METRICS.navigationSuccess ? 'Yes' : 'No'} | Yes | ${METRICS.navigationSuccess ? '🟢' : '🔴'} |
+| **Total Tokens** | ${totalTokens} | - | ℹ️ |
+| **Avg Tokens / Chat** | ${avgTokensPerChat ?? 'N/A'} | - | ℹ️ |
+| **OpenAI Requests** | ${openaiRequests} | - | ℹ️ |
+| **OpenAI HTTP Attempts** | ${openaiHttpAttempts} | - | ℹ️ |
+| **Parse Retry Used** | ${parseRetryUsed} | 0 | ${parseRetryUsed === 0 ? '🟢' : '🟡'} |
+| **Parse Retry Succeeded** | ${parseRetrySucceeded} | - | ℹ️ |
 
 ## Conversation Log
 | Time | Speaker | Message |
@@ -205,8 +252,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 ${conversationLog.map(log => `| ${log.time} | **${log.speaker}** | ${log.message.replace(/\n/g, '<br>').slice(0, 100)}${log.message.length > 100 ? '...' : ''} |`).join('\n')}
 
 ## API Trace (/api/chat)
-| Time | Method | Status | Code | Request ID | Latency ms | Note |
-|---|---|---|---|---|---|---|
+| Time | Method | Status | Code | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | Note |
+|---|---|---|---|---|---|---|---|---|---|---|
 ${apiTraceRows}
 
 ## Failure Diagnostics
@@ -332,7 +379,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         // 初期メッセージの吹き出しを待つ
         await expect(async () => {
             expect(await assistantBubbles.count()).toBeGreaterThan(0)
-        }).toPass({ timeout: 30000 })
+        }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
 
         const endWait = Date.now()
         METRICS.aiResponseTimes.push(endWait - startWait)
@@ -357,16 +404,24 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 // AI応答待ち
                 if (expectedResponsePart) {
                     // 特定のテキストが画面に出るのを待つ (より確実)
-                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: 30000 })
+                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: CHAT_WAIT_TIMEOUT_MS })
                     await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
                 } else {
-                    // 汎用Wait (吹き出しが増えるのを待つ)
+                    // 汎用Wait: 吹き出し追加 or 「考え中...」消失 + 入力復帰 を待つ（LIVEでの揺らぎに強くする）
                     const startWait = Date.now()
                     const countBefore = await assistantBubbles.count()
+                    const thinking = page.locator('text=考え中...').first()
                     await expect(async () => {
                         const countAfter = await assistantBubbles.count()
+                        if (countAfter > countBefore) return
+
+                        const isThinkingVisible = await thinking.isVisible().catch(() => false)
+                        const isInputEnabled = await chatInput.isEnabled().catch(() => false)
+                        // 返答バブルが「追加」されない実装でも、thinkingが消えて入力が戻れば完了扱いとする。
+                        if (!isThinkingVisible && isInputEnabled) return
+
                         expect(countAfter).toBeGreaterThan(countBefore)
-                    }).toPass({ timeout: 30000 })
+                    }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
                     const endWait = Date.now()
                     METRICS.aiResponseTimes.push(endWait - startWait)
                 }
@@ -412,7 +467,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await expect(async () => {
                     const countAfter = await assistantBubbles.count()
                     expect(countAfter).toBeGreaterThan(countBefore)
-                }).toPass({ timeout: 30000 })
+                }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
 
                 const endWait = Date.now()
                 METRICS.aiResponseTimes.push(endWait - startWait)
