@@ -52,36 +52,35 @@ export function ConfirmedInfoCard(props: {
         Boolean(currentWorkItem.whyDangerous?.length) ||
         measures.length > 0
 
-    if (!hasAny) return null
-
     return (
         <Card className="border-slate-200 bg-white/90">
             <CardHeader className="py-3">
                 <CardTitle className="text-base text-slate-900">確認済み情報</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-                <div className="text-xs text-slate-600">
-                    <div className="font-medium text-slate-700">対策カテゴリ進捗</div>
-                    <div>{progressText}</div>
-                    <div className="mt-1 text-slate-500">
-                        この作業は対策が2カテゴリ以上そろうと保存されます。
+                {/* 入力内容を常に可視化（未入力は空欄） */}
+                <div className="rounded border border-slate-200 overflow-hidden">
+                    <div className="grid grid-cols-2 bg-slate-50 text-xs text-slate-600">
+                        <div className="px-3 py-2 border-r border-slate-200">何の作業時に</div>
+                        <div className="px-3 py-2">何をするときに</div>
+                    </div>
+                    <div className="grid grid-cols-2 text-sm text-slate-900">
+                        <div className="px-3 py-2 border-r border-slate-200 min-h-6 whitespace-pre-wrap break-words">
+                            {currentWorkItem.workDescription ?? ''}
+                        </div>
+                        <div className="px-3 py-2 min-h-6 whitespace-pre-wrap break-words">
+                            {currentWorkItem.hazardDescription ?? ''}
+                        </div>
                     </div>
                 </div>
 
-                {(currentWorkItem.workDescription || currentWorkItem.hazardDescription) && (
-                    <div className="text-sm space-y-1">
-                        {currentWorkItem.workDescription && (
-                            <div>
-                                <span className="text-slate-500">作業内容: </span>
-                                <span className="text-slate-900">{currentWorkItem.workDescription}</span>
-                            </div>
-                        )}
-                        {currentWorkItem.hazardDescription && (
-                            <div>
-                                <span className="text-slate-500">危険: </span>
-                                <span className="text-slate-900">{currentWorkItem.hazardDescription}</span>
-                            </div>
-                        )}
+                {hasAny && (
+                    <div className="text-xs text-slate-600">
+                        <div className="font-medium text-slate-700">対策カテゴリ進捗</div>
+                        <div>{progressText}</div>
+                        <div className="mt-1 text-slate-500">
+                            この作業は対策が2カテゴリ以上そろうと保存されます。
+                        </div>
                     </div>
                 )}
 
@@ -120,7 +119,7 @@ export function ConfirmedInfoCard(props: {
                     </div>
                 )}
 
-                {missing.length > 0 && (
+                {hasAny && missing.length > 0 && (
                     <div className="text-sm">
                         <div className="text-slate-500 mb-2">
                             不足カテゴリ: {missing.map((c) => CATEGORY_LABELS[c]).join(' / ')}
@@ -148,4 +147,3 @@ export function ConfirmedInfoCard(props: {
         </Card>
     )
 }
-

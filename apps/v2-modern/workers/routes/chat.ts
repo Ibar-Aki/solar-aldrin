@@ -545,7 +545,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 '入力はJSON形式にしたいテキストです。',
                 '次の条件を必ず守って、JSONオブジェクトのみを出力してください。',
                 '- Markdownや説明文を一切含めない',
-                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: {category: \"ppe\"|\"behavior\"|\"equipment\", text: string}[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
+                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: {category: "ppe"|"behavior"|"equipment", text: string}[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
                 '- extracted.nextAction は必須',
                 '- 未特定フィールドはキー自体を省略（null/空配列で埋めない）',
                 '',

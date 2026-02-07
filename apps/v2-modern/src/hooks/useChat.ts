@@ -461,7 +461,7 @@ export function useChat() {
             setLoading(false)
             inFlightRef.current = false
         }
-    }, [session, messages, addMessage, setLoading, setError, handleExtractedData])
+    }, [session, messages, addMessage, setLoading, setError, handleExtractedData, currentWorkItem, status])
 
     const sendMessage = useCallback(async (text: string) => {
         await sendMessageInternal(text, { retrySource: 'none' })

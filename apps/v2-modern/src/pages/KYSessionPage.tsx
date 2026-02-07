@@ -111,13 +111,6 @@ export function KYSessionPage() {
         currentRiskLevel: currentWorkItem.riskLevel,
     })
 
-    const shouldShowConfirmedInfo = !!(
-        currentWorkItem.workDescription ||
-        currentWorkItem.hazardDescription ||
-        (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) ||
-        (currentWorkItem.countermeasures && currentWorkItem.countermeasures.length > 0)
-    )
-
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
             {/* ヘッダー */}
@@ -162,18 +155,16 @@ export function KYSessionPage() {
                 )}
 
                 {/* 確認済み情報カード（対策カテゴリ進捗/不足誘導） */}
-                {shouldShowConfirmedInfo && (
-                    <div className="bg-gray-50 border-b px-4 py-2">
-                        <div className="max-w-2xl mx-auto w-full">
-                            <ConfirmedInfoCard
-                                currentWorkItem={currentWorkItem}
-                                disabled={isLoading}
-                                onChangeCountermeasureCategory={handleChangeCountermeasureCategory}
-                                onSendSuggestion={handleSendSuggestion}
-                            />
-                        </div>
+                <div className="bg-gray-50 border-b px-4 py-2">
+                    <div className="max-w-2xl mx-auto w-full">
+                        <ConfirmedInfoCard
+                            currentWorkItem={currentWorkItem}
+                            disabled={isLoading}
+                            onChangeCountermeasureCategory={handleChangeCountermeasureCategory}
+                            onSendSuggestion={handleSendSuggestion}
+                        />
                     </div>
-                )}
+                </div>
             </div>
 
             {/* チャットエリア */}

@@ -7,6 +7,7 @@ import { createSessionSlice, type SessionSlice } from './slices/sessionSlice'
 import { createWorkItemSlice, type WorkItemSlice } from './slices/workItemSlice'
 import { createChatSlice, type ChatSlice } from './slices/chatSlice'
 import { createFeedbackSlice, type FeedbackSlice } from './slices/feedbackSlice'
+import type { Countermeasure, CountermeasureCategory } from '@/types/ky'
 
 export type KYStore = SessionSlice & WorkItemSlice & ChatSlice & FeedbackSlice
 
@@ -28,28 +29,41 @@ export const useKYStore = create<KYStore>()(
                 if (version >= 2) return persisted as KYStore
                 const state = persisted as unknown as KYStore
 
-                const normalizeMeasures = (values: unknown) => {
-                    if (!Array.isArray(values)) return values
-                    if (values.every((v) => typeof v === 'string')) {
-                        return (values as string[])
-                            .map((text) => String(text).trim())
-                            .filter(Boolean)
-                            .map((text) => ({ category: 'behavior' as const, text }))
+                const isCategory = (value: string): value is CountermeasureCategory =>
+                    value === 'ppe' || value === 'behavior' || value === 'equipment'
+
+                const normalizeMeasures = (values: unknown): Countermeasure[] => {
+                    if (!Array.isArray(values)) return []
+
+                    const out: Countermeasure[] = []
+                    for (const v of values) {
+                        if (typeof v === 'string') {
+                            const text = v.trim()
+                            if (text) out.push({ category: 'behavior', text })
+                            continue
+                        }
+                        if (v && typeof v === 'object') {
+                            const obj = v as { category?: unknown; text?: unknown }
+                            const text = typeof obj.text === 'string' ? obj.text.trim() : ''
+                            if (!text) continue
+                            const rawCategory = typeof obj.category === 'string' ? obj.category.trim() : ''
+                            out.push({ category: isCategory(rawCategory) ? rawCategory : 'behavior', text })
+                        }
                     }
-                    return values
+                    return out
                 }
 
                 const session = state.session
                 if (session) {
                     session.workItems = session.workItems.map((item) => ({
                         ...item,
-                        countermeasures: normalizeMeasures((item as { countermeasures?: unknown }).countermeasures) as any,
+                        countermeasures: normalizeMeasures((item as { countermeasures?: unknown }).countermeasures),
                     }))
                 }
 
                 state.currentWorkItem = {
                     ...state.currentWorkItem,
-                    countermeasures: normalizeMeasures((state.currentWorkItem as { countermeasures?: unknown }).countermeasures) as any,
+                    countermeasures: normalizeMeasures((state.currentWorkItem as { countermeasures?: unknown }).countermeasures),
                 }
 
                 return state
