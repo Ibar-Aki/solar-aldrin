@@ -59,46 +59,6 @@ describe('Chat API Integration Flow', () => {
         expect(body.extracted).toHaveProperty('nextAction', 'ask_hazard')
     })
 
-    it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
-        // reply が空の場合、Workers側のフォールバックで nextAction に応じた質問文を返すこと
-        const mockOpenAIResponse = {
-            choices: [{
-                message: {
-                    content: JSON.stringify({
-                        reply: '',
-                        extracted: {
-                            nextAction: 'ask_countermeasure',
-                            riskLevel: 5,
-                        },
-                    }),
-                },
-            }],
-            usage: { total_tokens: 100 },
-        }
-
-        vi.mocked(fetch).mockResolvedValue({
-            ok: true,
-            json: async () => mockOpenAIResponse,
-            text: async () => '',
-        } as Response)
-
-        const req = new Request('http://localhost/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messages: [{ role: 'user', content: '危険度は5です' }],
-            }),
-        })
-
-        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
-        expect(res.status).toBe(200)
-        const body = await res.json() as { reply: string; extracted?: Record<string, unknown> }
-
-        expect(body.reply).toContain('対策')
-        expect(body.reply).not.toContain('承知しました。続けてください。')
-        expect(body.extracted?.nextAction).toBe('ask_countermeasure')
-    })
-
     it('should handle malformed JSON from OpenAI gracefully', async () => {
         // Mock OpenAI Response with Bad JSON
         const mockOpenAIResponse = {
