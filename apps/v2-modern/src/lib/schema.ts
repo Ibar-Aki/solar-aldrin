@@ -63,6 +63,11 @@ export const ChatSuccessResponseSchema = z.object({
 /** チャットエラーレスポンスのスキーマ */
 export const ChatErrorResponseSchema = z.object({
     error: z.string(),
+    // Backend may include these even when it responds with 2xx (e.g. via proxying layers).
+    code: z.string().optional(),
+    requestId: z.string().optional(),
+    retriable: z.boolean().optional(),
+    details: z.unknown().optional(),
 })
 
 /** チャットレスポンスのスキーマ（成功 OR エラー） */

@@ -54,6 +54,7 @@ interface ApiTraceEntry {
     code?: string
     requestId?: string
     retriable?: boolean
+    retryAfterSec?: number
     error?: string
     details?: string
     usageTotalTokens?: number
@@ -132,6 +133,12 @@ async function recordApiTrace(response: Response) {
     }
 
     try {
+        const retryAfterRaw = response.headers()['retry-after']
+        if (retryAfterRaw) {
+            const retryAfterParsed = Number.parseInt(retryAfterRaw, 10)
+            entry.retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
+        }
+
         const payload = await response.json() as {
             code?: string
             requestId?: string
@@ -432,7 +439,14 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await recordLog('User', text)
 
                 const retryButton = page.getByTestId('button-retry')
-                const MAX_MANUAL_RETRIES_PER_TURN = 2
+                const MAX_MANUAL_RETRIES_PER_TURN = 5
+                const computeRetryDelayMs = (attemptIndex: number): number => {
+                    const lastFailure = [...apiTrace].reverse().find((e) => e.status >= 400 && e.retriable)
+                    if (lastFailure?.retryAfterSec && Number.isFinite(lastFailure.retryAfterSec)) {
+                        return Math.min(30, lastFailure.retryAfterSec) * 1000
+                    }
+                    return Math.min(10_000, 1000 * (attemptIndex + 1))
+                }
 
                 const waitForCompletion = async () => {
                     const startWait = Date.now()
@@ -465,6 +479,12 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     if (!retryEnabled) {
                         addFailureDiagnostic(`Retry button visible but disabled (Turn ${userTurn}).`)
                         break
+                    }
+
+                    // Respect Retry-After (when available) to avoid hammering the live API.
+                    const delayMs = computeRetryDelayMs(attempt)
+                    if (delayMs > 0) {
+                        await page.waitForTimeout(delayMs)
                     }
 
                     METRICS.retryButtonClicks++

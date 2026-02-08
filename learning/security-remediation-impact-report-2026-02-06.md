@@ -3,7 +3,8 @@
 - 作成日時: 2026-02-06 21:23:29 +09:00
 - 作成者: Codex＋GPT-5
 - 更新日: 2026-02-06（#4 API認証が任意運用の詳細を追記）
-- 対象チェック: `C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\詳細セキュリティチェックリスト.md`
+- 更新日: 2026-02-08（チェックリスト参照先を移動後のパスへ更新）
+- 対象チェック: `docs/project/security/detailed-security-checklist.md`（旧: `詳細セキュリティチェックリスト.md`）
 - 監査結果参照: `apps/v2-modern/docs/20_reviews/Security_Check_Report_2026-02-06.md`
 - 目的: 指摘済み課題に対して、実施すべき対応、実施影響（技術/運用/コスト）、UI/UX影響を意思決定できる粒度で整理する
 - 注意: 本書は「対応方針レポート」であり、コード修正は未実施

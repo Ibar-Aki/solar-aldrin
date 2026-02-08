@@ -110,9 +110,13 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
 
     // エラーレスポンスの場合は例外をスロー
     if ('error' in parsed) {
-        throw new ApiError(parsed.error, {
-            errorType: 'unknown',
-            retriable: false,
+        // Some deployments/proxies may return an "error" payload with 2xx.
+        // Preserve retriable metadata when present so the UI can offer retry.
+        const ext = parsed as { error: string; retriable?: boolean; requestId?: string; code?: string }
+        throw new ApiError(ext.error, {
+            status: res.status,
+            errorType: inferErrorType(res.status),
+            retriable: Boolean(ext.retriable),
         })
     }
 

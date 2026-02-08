@@ -346,7 +346,7 @@ export function useChat() {
                 })(),
             })
 
-            let data: Awaited<ReturnType<typeof postChat>>
+            let data: Awaited<ReturnType<typeof postChat>> | undefined
             try {
                 data = await requestChat(skipUserMessage)
             } catch (firstError) {
@@ -371,61 +371,84 @@ export function useChat() {
                         data: {
                             source: 'silent',
                             error_type: normalizedFirstError.errorType,
+                            attempt: 0,
                         },
                     })
 
-                    try {
-                        const delayMs = computeSilentRetryDelayMs(normalizedFirstError)
-                        if (delayMs > 0) {
+                    // Live APIs can be intermittently flaky. Retry a few times, respecting Retry-After when available.
+                    const MAX_SILENT_RETRIES = 2
+                    let lastError = normalizedFirstError
+
+                    for (let attempt = 1; attempt <= MAX_SILENT_RETRIES; attempt++) {
+                        try {
+                            const baseDelayMs = computeSilentRetryDelayMs(lastError)
+                            const delayMs = baseDelayMs > 0 ? Math.min(10_000, baseDelayMs * attempt) : 0
+                            if (delayMs > 0) {
+                                void sendTelemetry({
+                                    event: 'retry_waiting',
+                                    sessionId: session.id,
+                                    value: delayMs,
+                                    data: {
+                                        source: 'silent',
+                                        error_type: lastError.errorType,
+                                        retry_after_sec: lastError.retryAfterSec ?? null,
+                                        attempt,
+                                    },
+                                })
+                                await sleep(delayMs)
+                            }
+
+                            data = await requestChat(true)
                             void sendTelemetry({
-                                event: 'retry_waiting',
+                                event: 'retry_succeeded',
                                 sessionId: session.id,
-                                value: delayMs,
                                 data: {
                                     source: 'silent',
-                                    error_type: normalizedFirstError.errorType,
-                                    retry_after_sec: normalizedFirstError.retryAfterSec ?? null,
+                                    attempt,
                                 },
                             })
-                            await sleep(delayMs)
+                            lastError = null as never
+                            break
+                        } catch (silentRetryError) {
+                            const normalizedSilentRetryError = normalizeChatError(silentRetryError)
+                            lastError = normalizedSilentRetryError
+
+                            void sendTelemetry({
+                                event: 'chat_error',
+                                sessionId: session.id,
+                                value: normalizedSilentRetryError.status ?? 0,
+                                data: {
+                                    error_type: normalizedSilentRetryError.errorType,
+                                    status: normalizedSilentRetryError.status ?? null,
+                                    retriable: normalizedSilentRetryError.retriable,
+                                    network_online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+                                    retry_after_sec: normalizedSilentRetryError.retryAfterSec ?? null,
+                                    source: 'silent',
+                                    attempt,
+                                },
+                            })
+
+                            if (attempt >= MAX_SILENT_RETRIES || !shouldSilentRetry(normalizedSilentRetryError)) {
+                                void sendTelemetry({
+                                    event: 'retry_failed',
+                                    sessionId: session.id,
+                                    data: {
+                                        source: 'silent',
+                                        error_type: normalizedSilentRetryError.errorType,
+                                        attempt,
+                                    },
+                                })
+                                throw normalizedSilentRetryError
+                            }
                         }
-                        data = await requestChat(true)
-                        void sendTelemetry({
-                            event: 'retry_succeeded',
-                            sessionId: session.id,
-                            data: {
-                                source: 'silent',
-                            },
-                        })
-                    } catch (silentRetryError) {
-                        const normalizedSilentRetryError = normalizeChatError(silentRetryError)
-                        void sendTelemetry({
-                            event: 'chat_error',
-                            sessionId: session.id,
-                            value: normalizedSilentRetryError.status ?? 0,
-                            data: {
-                                error_type: normalizedSilentRetryError.errorType,
-                                status: normalizedSilentRetryError.status ?? null,
-                                retriable: normalizedSilentRetryError.retriable,
-                                network_online: typeof navigator !== 'undefined' ? navigator.onLine : null,
-                                retry_after_sec: normalizedSilentRetryError.retryAfterSec ?? null,
-                                source: 'silent',
-                            },
-                        })
-                        void sendTelemetry({
-                            event: 'retry_failed',
-                            sessionId: session.id,
-                            data: {
-                                source: 'silent',
-                                error_type: normalizedSilentRetryError.errorType,
-                            },
-                        })
-                        throw normalizedSilentRetryError
                     }
                 } else {
                     throw normalizedFirstError
                 }
             }
+
+            // TypeScript can't always prove the control-flow guarantees above.
+            if (!data) throw new Error('Chat request completed without a response payload')
 
             // AI応答を追加 (extractedDataも含めて保存)
             addMessage('assistant', data.reply, data.extracted)
