@@ -10,6 +10,7 @@ import type { ExtractedData } from '@/types/ky'
 import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
+import { getTimeGreeting } from '@/lib/greeting'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = (() => {
@@ -211,9 +212,11 @@ export function useChat() {
         }
 
         // 初回AIメッセージ
+        const greeting = getTimeGreeting()
+        const processPhase = (session.processPhase ?? 'フリー').trim() || 'フリー'
         addMessage(
             'assistant',
-            `${session.userName}さん、今日も安全に作業しましょう！\n${session.siteName}での作業ですね。天候は${session.weather}です。\n今日行う作業内容を教えてください。`
+            `${greeting}\n本日は${processPhase}ですね。今日もこれから安全に作業をしましょう。\n本日の作業の中に、どんな危険があるか教えてください。`
         )
     }, [session, addMessage, setEnvironmentRisk])
 

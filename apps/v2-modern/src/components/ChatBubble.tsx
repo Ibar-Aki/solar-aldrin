@@ -24,23 +24,14 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     })
 
     return (
-        <div
-            className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}
-            data-testid="chat-bubble"
-            data-role={message.role}
-        >
-            {/* AIメッセージの場合は左側にスピーカーアイコンを表示 */}
-            {!isUser && isSupported && (
-                <button
-                    onClick={handleSpeak}
-                    className="mr-2 p-2 text-gray-400 hover:text-blue-500 rounded-full hover:bg-gray-100 transition-colors self-end mb-1"
-                    title={isSpeaking ? "読み上げ停止" : "読み上げ"}
-                >
-                    {isSpeaking ? <Square size={16} /> : <Volume2 size={16} />}
-                </button>
-            )}
+        <div className="mb-3 w-full" data-testid="chat-bubble" data-role={message.role}>
+            <div className={`flex w-full items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                {isUser && (
+                    <span className="shrink-0 text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
+                        {timeLabel}
+                    </span>
+                )}
 
-            <div className="flex items-end">
                 <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2 ${isUser
                         ? 'bg-blue-500 text-white rounded-br-md'
@@ -49,14 +40,23 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                 >
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
-                {isUser ? (
-                    <span className="mr-2 text-xs text-gray-400 order-first" aria-label={`時刻 ${timeLabel}`}>
-                        {timeLabel}
-                    </span>
-                ) : (
-                    <span className="ml-2 text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
-                        {timeLabel}
-                    </span>
+
+                {/* AIメッセージの場合: 読み上げボタンは時刻の上に表示 */}
+                {!isUser && (
+                    <div className="shrink-0 flex flex-col items-center gap-0.5">
+                        {isSupported && (
+                            <button
+                                onClick={handleSpeak}
+                                className="p-2 text-gray-400 hover:text-blue-500 rounded-full hover:bg-gray-100 transition-colors"
+                                title={isSpeaking ? "読み上げ停止" : "読み上げ"}
+                            >
+                                {isSpeaking ? <Square size={16} /> : <Volume2 size={16} />}
+                            </button>
+                        )}
+                        <span className="text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
+                            {timeLabel}
+                        </span>
+                    </div>
                 )}
             </div>
         </div>

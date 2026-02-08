@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ChatInput } from '@/components/ChatInput'
@@ -13,6 +14,7 @@ import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const [isMetaOpen, setIsMetaOpen] = useState(false)
 
     const WAIT_NOTICE_AFTER_MS = (() => {
         const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
@@ -95,6 +97,20 @@ export function KYSessionPage() {
 
     if (!session) return null
 
+    const processPhaseLabel = (session.processPhase ?? 'フリー').trim() || 'フリー'
+    const meta2Line = (
+        <div className="text-sm text-gray-500 leading-snug">
+            <div className="flex min-w-0 items-center justify-end gap-1">
+                <span className="min-w-0 truncate">{session.siteName}</span>
+                <span className="shrink-0">、{session.weather}</span>
+            </div>
+            <div className="flex min-w-0 items-center justify-end gap-1">
+                <span className="min-w-0 truncate">{processPhaseLabel}</span>
+                <span className="shrink-0">、{session.userName}</span>
+            </div>
+        </div>
+    )
+
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
     const hasCurrentWork = !!(currentWorkItem.workDescription || currentWorkItem.hazardDescription)
@@ -117,17 +133,43 @@ export function KYSessionPage() {
             {/* ヘッダー */}
             <div className="shrink-0">
                 <div className="bg-white border-b px-4 py-2">
-                    <div className="max-w-2xl mx-auto">
+                    <div className="max-w-4xl mx-auto flex items-start justify-between gap-3">
                         <h1 className="text-lg font-bold text-blue-600">一人KY活動</h1>
-                        <p className="text-sm text-gray-500">
-                            {session.siteName} | {session.weather} | {session.userName}
-                        </p>
+
+                        {/* 右側メタ情報（2行）: 1行目=作業場所,天候 / 2行目=作業内容(工程),ユーザー名 */}
+                        <div className="hidden lg:block w-80 min-w-0 text-right">
+                            {meta2Line}
+                        </div>
+
+                        {/* 小さい画面では折りたたみ */}
+                        <div className="lg:hidden">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setIsMetaOpen((v) => !v)}
+                                className="text-gray-600"
+                                aria-expanded={isMetaOpen}
+                                aria-controls="ky-session-meta"
+                            >
+                                情報
+                                {isMetaOpen ? <ChevronUp /> : <ChevronDown />}
+                            </Button>
+                        </div>
                     </div>
+
+                    {isMetaOpen && (
+                        <div className="pt-2 lg:hidden" id="ky-session-meta">
+                            <div className="max-w-4xl mx-auto">
+                                {meta2Line}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* 進捗バー */}
                 <div className="bg-white border-b px-4 py-1">
-                    <div className="max-w-2xl mx-auto flex items-center gap-2 text-sm">
+                    <div className="max-w-4xl mx-auto flex items-center gap-2 text-sm">
                         <span className={`px-2 py-1 rounded ${status === 'work_items' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
                             作業・危険 ({workItemCount}件)
                         </span>
@@ -145,7 +187,7 @@ export function KYSessionPage() {
                 {/* 環境リスク */}
                 {session.environmentRisk && (
                     <div className="bg-white border-b px-4 py-1">
-                        <div className="max-w-2xl mx-auto w-full">
+                        <div className="max-w-4xl mx-auto w-full">
                             <Alert>
                                 <AlertDescription>
                                     ⚠️ {session.environmentRisk}
@@ -157,7 +199,7 @@ export function KYSessionPage() {
 
                 {/* 確認済み情報カード（対策カテゴリ進捗/不足誘導） */}
                 <div className="bg-gray-50 border-b px-4 py-2">
-                    <div className="max-w-2xl mx-auto w-full">
+                    <div className="max-w-4xl mx-auto w-full">
                         <ConfirmedInfoCard
                             currentWorkItem={currentWorkItem}
                             disabled={isLoading}
@@ -170,7 +212,7 @@ export function KYSessionPage() {
 
             {/* チャットエリア */}
             <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-2 pb-3">
-                <div className="max-w-2xl mx-auto">
+                <div className="max-w-4xl mx-auto">
                     {messages.map((msg) => (
                         <ChatBubble key={msg.id} message={msg} />
                     ))}
@@ -203,7 +245,7 @@ export function KYSessionPage() {
                 {/* 危険度選択（AIが危険度を聞いているとき） */}
                 {isRiskLevelSelectorVisible && (
                     <div className="px-4 py-2 border-b">
-                        <div className="max-w-2xl mx-auto">
+                        <div className="max-w-4xl mx-auto">
                             <RiskLevelSelector
                                 value={currentWorkItem.riskLevel}
                                 onChange={handleRiskLevelChange}
@@ -216,7 +258,7 @@ export function KYSessionPage() {
                 {/* 完了ボタン（すべての作業が終わったら表示） */}
                 {workItemCount > 0 && status === 'work_items' && !hasCurrentWork && (
                     <div className="px-4 py-2 border-b">
-                        <div className="max-w-2xl mx-auto">
+                        <div className="max-w-4xl mx-auto">
                             <Button onClick={handleComplete} className="w-full" data-testid="button-complete-session">
                                 行動目標を決めて終了する
                             </Button>
@@ -227,7 +269,7 @@ export function KYSessionPage() {
                 {/* エラー表示 */}
                 {error && (
                     <div className="px-4 py-2 border-b border-red-100 bg-red-50">
-                        <div className="max-w-2xl mx-auto text-red-600 text-sm flex items-center justify-between gap-2">
+                        <div className="max-w-4xl mx-auto text-red-600 text-sm flex items-center justify-between gap-2">
                             <span>{error}</span>
                             {errorSource === 'chat' && canRetry && (
                                 <Button
@@ -248,7 +290,7 @@ export function KYSessionPage() {
 
                 {/* 入力エリア */}
                 <div className="px-4 py-2">
-                    <div className="max-w-2xl mx-auto w-full">
+                    <div className="max-w-4xl mx-auto w-full">
                         <ChatInput
                             onSend={handleSend}
                             disabled={isLoading}
