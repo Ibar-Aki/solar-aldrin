@@ -20,4 +20,6 @@ if [ "${ALLOW_PUSH}" != "1" ] || [ "${explicit}" != "1" ]; then
   exit 1
 fi
 
-exit 0
+# Git LFS pre-push hook
+command -v git-lfs >/dev/null 2>&1 || { echo >&2 "Git LFS not installed, skipping LFS push."; exit 0; }
+git lfs pre-push "$@"
