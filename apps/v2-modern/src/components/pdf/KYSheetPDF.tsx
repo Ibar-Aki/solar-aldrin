@@ -10,7 +10,10 @@ import type { RecentRiskMatch } from '@/lib/historyUtils'
 // 注意: フォントファイルは public/fonts/ に配置する必要があります
 Font.register({
     family: 'NotoSansJP',
-    src: '/fonts/Noto_Sans_JP/static/NotoSansJP-Regular.ttf',
+    fonts: [
+        { src: '/fonts/Noto_Sans_JP/static/NotoSansJP-Regular.ttf', fontWeight: 'normal' },
+        { src: '/fonts/Noto_Sans_JP/static/NotoSansJP-Bold.ttf', fontWeight: 'bold' },
+    ],
 })
 
 // スタイル定義

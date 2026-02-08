@@ -47,3 +47,6 @@ Thumbs.db
 # Local secrets for Workers (do not commit)
 **/.dev.vars
 !**/.dev.vars.example
+
+# Large doc assets (keep repo lean; fetch from upstream or Releases as needed)
+apps/v2-modern/docs/20_manuals/assets/*.zip

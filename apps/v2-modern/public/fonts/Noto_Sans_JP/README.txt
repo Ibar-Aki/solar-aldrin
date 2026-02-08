@@ -1,6 +1,10 @@
 Noto Sans JP Variable Font
 ==========================
 
+NOTE (repo): This project vendors only the static fonts needed for PDF generation
+(Regular + Bold) to keep the deployed asset size small. Other weights/variable font
+may be fetched from Google Fonts if needed.
+
 This download contains Noto Sans JP as both a variable font and static fonts.
 
 Noto Sans JP is a variable font with this axis:
