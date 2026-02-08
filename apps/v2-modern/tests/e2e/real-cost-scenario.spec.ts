@@ -55,6 +55,9 @@ interface ApiTraceEntry {
     requestId?: string
     retriable?: boolean
     retryAfterSec?: number
+    replyType?: string
+    replyLen?: number
+    payloadKeys?: string
     error?: string
     details?: string
     usageTotalTokens?: number
@@ -69,6 +72,9 @@ interface ApiTraceEntry {
 const conversationLog: LogEntry[] = []
 const apiTrace: ApiTraceEntry[] = []
 const failureDiagnostics: string[] = []
+const browserConsole: string[] = []
+const pageErrors: string[] = []
+let authHeaderObserved: boolean = false
 const requestStartTimes = new Map<PWRequest, number>()
 
 function shortText(value: string, limit = 160): string {
@@ -92,7 +98,10 @@ function resetRunState() {
     conversationLog.length = 0
     apiTrace.length = 0
     failureDiagnostics.length = 0
+    browserConsole.length = 0
+    pageErrors.length = 0
     requestStartTimes.clear()
+    authHeaderObserved = false
 }
 
 function addFailureDiagnostic(message: string) {
@@ -139,7 +148,17 @@ async function recordApiTrace(response: Response) {
             entry.retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
         }
 
-        const payload = await response.json() as {
+        // Some responses can be non-JSON / contain unexpected chars; prefer text then parse.
+        const rawText = await response.text()
+        const parsedJson = (() => {
+            try {
+                return JSON.parse(rawText)
+            } catch {
+                return null
+            }
+        })()
+
+        const payload = (parsedJson ?? {}) as {
             code?: string
             requestId?: string
             retriable?: boolean
@@ -155,6 +174,13 @@ async function recordApiTrace(response: Response) {
         entry.requestId = payload.requestId || response.headers()['x-request-id']
         entry.retriable = payload.retriable
         entry.error = payload.error
+
+        const payloadAny = payload as unknown as Record<string, unknown>
+        entry.payloadKeys = Object.keys(payloadAny).slice(0, 12).join(',')
+        const replyValue = (payloadAny as { reply?: unknown }).reply
+        entry.replyType = replyValue === null ? 'null' : typeof replyValue
+        entry.replyLen = typeof replyValue === 'string' ? replyValue.length : undefined
+
         entry.usageTotalTokens = typeof payload.usage?.totalTokens === 'number' ? payload.usage.totalTokens : undefined
         entry.openaiRequestCount = typeof payload.meta?.openai?.requestCount === 'number' ? payload.meta.openai.requestCount : undefined
         entry.openaiHttpAttempts = typeof payload.meta?.openai?.httpAttempts === 'number' ? payload.meta.openai.httpAttempts : undefined
@@ -167,6 +193,10 @@ async function recordApiTrace(response: Response) {
             } catch {
                 entry.details = String(payload.details).slice(0, 500)
             }
+        }
+        if (!parsedJson) {
+            // Keep a short preview so the report can reveal "200 but not JSON" cases.
+            entry.details = `non_json_response_preview=${shortText(rawText ?? '', 200)}`
         }
     } catch {
         // noop: JSONレスポンスでないケースは本文解析しない
@@ -216,9 +246,13 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 
     const apiTraceRows = apiTrace.length > 0
         ? apiTrace.map(entry => {
-            const note = entry.error
+            const baseNote = entry.error
                 ? `${entry.error}${entry.details ? ` details=${entry.details}` : ''}`
                 : entry.url
+            const shapeNote = entry.payloadKeys
+                ? ` keys=${entry.payloadKeys} replyType=${entry.replyType ?? '-'} replyLen=${entry.replyLen ?? '-'} retryAfter=${entry.retryAfterSec ?? '-'}s`
+                : ''
+            const note = `${baseNote}${shapeNote}`
             const parseRetryLabel = entry.parseRetryAttempted
                 ? (entry.parseRetrySucceeded ? 'attempted:yes (ok)' : 'attempted:yes (failed)')
                 : '-'
@@ -271,6 +305,12 @@ ${apiTraceRows}
 ## Failure Diagnostics
 ${failureRows}
 
+## Browser Console (warning/error)
+${browserConsole.length > 0 ? browserConsole.slice(-50).map(line => `- ${escapeTableText(shortText(line, 240))}`).join('\n') : '- (none)'}
+
+## Page Errors
+${pageErrors.length > 0 ? pageErrors.slice(-20).map(line => `- ${escapeTableText(shortText(line, 240))}`).join('\n') : '- (none)'}
+
 ## Analysis
 - **Flow Completeness**: ${METRICS.navigationSuccess ? 'Full flow completed' : 'Stopped mid-flow'}
 - **AI Responsiveness**: Verified via ChatBubble detection.
@@ -287,9 +327,39 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     resetRunState()
     METRICS.startTime = Date.now()
 
+    page.on('console', (msg) => {
+        const type = msg.type()
+        if (type === 'error' || type === 'warning') {
+            browserConsole.push(`[${type}] ${msg.text()}`)
+        }
+    })
+
+    page.on('pageerror', (err) => {
+        pageErrors.push(err.message)
+    })
+
     page.on('request', (request: PWRequest) => {
         if (request.url().includes('/api/chat')) {
             requestStartTimes.set(request, Date.now())
+
+            // Capture auth header shape once (avoid leaking token).
+            if (!authHeaderObserved) {
+                authHeaderObserved = true
+                const headers = request.headers()
+                const auth = headers['authorization']
+                if (!auth) {
+                    addFailureDiagnostic('Request Authorization header: (none)')
+                    return
+                }
+                const lower = auth.toLowerCase()
+                if (!lower.startsWith('bearer ')) {
+                    addFailureDiagnostic(`Request Authorization header: present (non-bearer, len=${auth.length})`)
+                    return
+                }
+                const token = auth.slice('bearer '.length)
+                const isHex64 = /^[a-f0-9]{64}$/i.test(token)
+                addFailureDiagnostic(`Request Authorization token: len=${token.length} hex64=${isHex64}`)
+            }
         }
     })
 
@@ -481,6 +551,17 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         break
                     }
 
+                    // Capture the visible error message (helps distinguish chat errors vs validation errors).
+                    const errorText = await retryButton
+                        .locator('xpath=..')
+                        .locator('span')
+                        .first()
+                        .textContent()
+                        .catch(() => null)
+                    if (errorText) {
+                        addFailureDiagnostic(`Retry visible with error="${shortText(errorText, 120)}" (Turn ${userTurn}, attempt ${attempt + 1}).`)
+                    }
+
                     // Respect Retry-After (when available) to avoid hammering the live API.
                     const delayMs = computeRetryDelayMs(attempt)
                     if (delayMs > 0) {
@@ -496,6 +577,15 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
                 // まだリトライが見えるなら、回復できていないので失敗として扱う
                 if (await retryButton.isVisible().catch(() => false)) {
+                    const errorText = await retryButton
+                        .locator('xpath=..')
+                        .locator('span')
+                        .first()
+                        .textContent()
+                        .catch(() => null)
+                    if (errorText) {
+                        addFailureDiagnostic(`Retry still visible with error="${shortText(errorText, 160)}" (Turn ${userTurn}).`)
+                    }
                     addFailureDiagnostic(`Retry button still visible after ${MAX_MANUAL_RETRIES_PER_TURN} retries (Turn ${userTurn}).`)
                     throw new Error('retry did not recover')
                 }
