@@ -1,6 +1,6 @@
 # Solar Aldrin: Voice KY Assistant
 
-更新日: 2026-02-07
+更新日: 2026-02-07（ファイル整理：ドキュメント移動/リネーム）
 
 **「話すだけで、質の高い危険予知が完了する」**
 **「二度書きの無駄をなくし、現場の知恵をつなぐ」**
@@ -13,9 +13,9 @@
 
 詳細は以下のコア・ドキュメントを参照してください：
 
-- **[Project Master Plan](./PROJECT_MASTER_PLAN.md)**: プロジェクト全体のビジョン、ロードマップ、ROI定義
-- **[Requirements Definition](./REQUIREMENTS_DEFINITION.md)**: 機能要件、業務フロー、データ要件
-- **[Architecture Design](./ARCHITECTURE_DESIGN.md)**: 技術設計、システム構成
+- **[Project Master Plan](./docs/project/core/project-master-plan.md)**: プロジェクト全体のビジョン、ロードマップ、ROI定義
+- **[Requirements Definition](./docs/project/core/requirements-definition.md)**: 機能要件、業務フロー、データ要件
+- **[Architecture Design](./docs/project/core/architecture-design.md)**: 技術設計、システム構成
 
 ## 🗺️ Roadmap & App Status
 
@@ -49,3 +49,4 @@
 
 - [Phase 2 Setup Guide](./apps/v2-modern/docs/PHASE2_SETUP.md)
 - Development Diary (開発日誌): リポジトリ外（ローカル管理のためリンクは掲載しません）
+

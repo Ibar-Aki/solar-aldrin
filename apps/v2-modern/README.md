@@ -1,6 +1,6 @@
 # Voice KY Assistant v2
 
-更新日: 2026-02-07（実費テスト運用、/api/chat のJSONパース失敗時の扱いと観測情報を追記）
+更新日: 2026-02-07（実費テスト運用、/api/chat のJSONパース失敗時の扱いと観測情報を追記／ファイル整理：ドキュメント移動/リネーム）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -151,12 +151,12 @@ apps/v2-modern/
 ├── workers/             # Hono API (Cloudflare Workers)
 ├── tests/               # Vitest / Playwright
 ├── public/              # 静的ファイル
-└── implementation_plan.md  # 実装計画
+└── docs/00_planning/phases/phase2-implementation-plan.md  # 実装計画
 ```
 
 ## 実装計画
 
-詳細は [implementation_plan.md](./implementation_plan.md) を参照。
+詳細は [docs/00_planning/phases/phase2-implementation-plan.md](./docs/00_planning/phases/phase2-implementation-plan.md) を参照。
 
 ## 開発状況
 
@@ -168,3 +168,4 @@ apps/v2-modern/
 - [x] 音声読み上げ（Web Speech API）
 - [x] PDF出力（@react-pdf/renderer）
 - [ ] Supabase認証 / データ永続化
+
