@@ -4,12 +4,19 @@
 作成者: Codex (GPT-5)
 更新日: 2026-02-07
 更新日: 2026-02-08（ユーザー依頼なしのgit push禁止を追記）
+更新日: 2026-02-08（Vibe Coding Full Timeline Logger 運用を追加）
 
 ## 基本方針
 - 回答は日本語で、丁寧な文体にします。
 - 迷った場合は、質問で止まるより「手を動かして確かめる（ローカルの探索・検証）」を優先します。
 - OpenAI Docs MCP が利用可能な場合は、公式ドキュメントを優先して参照します。
 - ユーザーから明示的に依頼がない限り、`git push` は実行しません（必要時は対象ブランチ/リモートを明示してから実行）。
+
+## Vibe Coding Full Timeline Logger
+- 日次ログは `logs/vibe/YYYY-MM-DD.log.md`（JST）に **追記のみ** で残します（必ず `Input (verbatim):` を含め、成功/失敗/撤回も隠さない）。
+- 原文・差分・コマンド出力等の保存先は `logs/vibe/artifacts/` とし、ログの `DiffRef:` で参照します。
+- `logs/vibe/` はgit管理、`logs/vibe/artifacts/` は原則ローカル運用（`.gitignore` で除外）とします。
+- ルール原文は `logs/vibe/README.md` に保存します（改変しない）。
 
 ## Proposed Plan（作業計画）の必須要件
 Proposed Plan を提示する場合、各工程に **推定作業時間（CODEX high でのざっくり推定）** を必ず併記します。
