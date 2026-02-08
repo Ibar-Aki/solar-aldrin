@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Safety: block pushes unless the user explicitly requested it.
+# To allow pushing, set BOTH env vars:
+#   ALLOW_PUSH=1
+#   CODEX_EXPLICIT_PUSH=1
+
+if [ "${ALLOW_PUSH}" != "1" ] || [ "${CODEX_EXPLICIT_PUSH}" != "1" ]; then
+  echo "[Blocked] git push is disabled by repo policy." 1>&2
+  echo "Set ALLOW_PUSH=1 and CODEX_EXPLICIT_PUSH=1 to allow pushing." 1>&2
+  exit 1
+fi
+
+exit 0
