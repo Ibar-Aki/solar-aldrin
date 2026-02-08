@@ -8,26 +8,32 @@
 更新日: 2026-02-08（Push Policy を Codex/Antigravity 共通化）
 
 ## 基本方針
+
 - 回答は日本語で、丁寧な文体にします。
 - 迷った場合は、質問で止まるより「手を動かして確かめる（ローカルの探索・検証）」を優先します。
 - OpenAI Docs MCP が利用可能な場合は、公式ドキュメントを優先して参照します。
 - ユーザーから明示的に依頼がない限り、`git push` は実行しません（必要時は対象ブランチ/リモートを明示してから実行）。
+- なんのAgentによる作業結果なのか、わかるようにしておいてください。(例) codex,Antigravity
 
 ## Vibe Coding Full Timeline Logger
+
 - 日次ログは `logs/vibe/YYYY-MM-DD.log.md`（JST）に **追記のみ** で残します（必ず `Input (verbatim):` を含め、成功/失敗/撤回も隠さない）。
 - 原文・差分・コマンド出力等の保存先は `logs/vibe/artifacts/` とし、ログの `DiffRef:` で参照します。
 - `logs/vibe/` はgit管理、`logs/vibe/artifacts/` は原則ローカル運用（`.gitignore` で除外）とします。
 - ルール原文は `logs/vibe/README.md` に保存します（改変しない）。
 
 ## Push Policy（Codex/Antigravity共通）
+
 - push は `.githooks/pre-push` でブロックされます。
 - ユーザーの明示依頼があった場合のみ、`ALLOW_PUSH=1` と `EXPLICIT_PUSH=1`（またはエイリアス）を一時的に設定して push します。
 - 詳細は `docs/agent/PUSH_POLICY.md` を参照。
 
 ## Proposed Plan（作業計画）の必須要件
+
 Proposed Plan を提示する場合、各工程に **推定作業時間（CODEX high でのざっくり推定）** を必ず併記します。
 
 ### 書式（例）
+
 1. 目的/現状確認（推定: 5-10分）
 2. 調査・影響範囲の特定（推定: 10-20分）
 3. 実装（推定: 20-60分）
@@ -35,10 +41,12 @@ Proposed Plan を提示する場合、各工程に **推定作業時間（CODEX 
 5. 仕上げ（差分整理/ドキュメント）（推定: 5-15分）
 
 ### ルール
+
 - 不確実性が高い工程は「幅（最小-最大）」で書きます。
 - 前提（例: 既存テストが動く、依存関係が揃っている等）がある場合は、工程の行に短く併記します。
 
 ## 推定精度の自己フィードバック（毎回）
+
 Proposed Plan を出して作業した場合、完了時に以下を行います。
 
 1. 最終回答に「見積り振り返り（1-3行）」を付けます（推定 vs 実績、ズレの理由を短く）。

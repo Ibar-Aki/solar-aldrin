@@ -607,13 +607,13 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let parseRetryAttempted = false
         let parseRetrySucceeded = false
 
-        const callOpenAI = async (body: Record<string, unknown>) => {
+        const callOpenAI = async (body: Record<string, unknown>, opts?: { timeoutMs?: number }) => {
             openaiRequestCount += 1
             const responseData = await fetchOpenAICompletion({
                 apiKey,
                 body,
                 reqId,
-                timeoutMs: openaiTimeoutMs,
+                timeoutMs: opts?.timeoutMs ?? openaiTimeoutMs,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
@@ -658,7 +658,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 max_tokens: MAX_TOKENS,
                 temperature: 0,
                 response_format: { type: 'json_object' },
-            })
+            }, { timeoutMs: 10000 })
 
             try {
                 parsedContent = safeParseJSON(repairData.content)

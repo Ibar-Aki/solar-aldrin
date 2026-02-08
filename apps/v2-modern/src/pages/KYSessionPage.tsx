@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ChatInput } from '@/components/ChatInput'
@@ -14,7 +13,6 @@ import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
-    const [isMetaOpen, setIsMetaOpen] = useState(false)
 
     const WAIT_NOTICE_AFTER_MS = (() => {
         const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
@@ -130,37 +128,13 @@ export function KYSessionPage() {
             <div className="shrink-0">
                 <div className="bg-white border-b px-4 py-2">
                     <div className="max-w-4xl mx-auto flex items-start justify-between gap-3">
-                        <h1 className="text-lg font-bold text-blue-600">一人KY活動</h1>
+                        <h1 className="text-base sm:text-lg font-bold text-blue-600">一人KY活動</h1>
 
                         {/* 右側メタ情報（2行）: 1行目=作業場所,天候 / 2行目=作業内容(工程),ユーザー名 */}
-                        <div className="hidden lg:block w-80 min-w-0 text-right">
+                        <div className="w-[12.5rem] sm:w-64 lg:w-80 min-w-0 text-right text-xs sm:text-sm">
                             {meta2Line}
                         </div>
-
-                        {/* 小さい画面では折りたたみ */}
-                        <div className="lg:hidden">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setIsMetaOpen((v) => !v)}
-                                className="text-gray-600"
-                                aria-expanded={isMetaOpen}
-                                aria-controls="ky-session-meta"
-                            >
-                                情報
-                                {isMetaOpen ? <ChevronUp /> : <ChevronDown />}
-                            </Button>
-                        </div>
                     </div>
-
-                    {isMetaOpen && (
-                        <div className="pt-2 lg:hidden" id="ky-session-meta">
-                            <div className="max-w-4xl mx-auto">
-                                {meta2Line}
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* 進捗バー */}

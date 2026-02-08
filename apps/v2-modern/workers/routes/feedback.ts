@@ -47,7 +47,13 @@ const sessionStore = new Map<string, { value: StoredSession; expiresAt: number }
 async function loadCachedResponse(c: { env: Bindings }, key: string): Promise<CachedFeedback | null> {
     if (c.env.FEEDBACK_KV) {
         const stored = await c.env.FEEDBACK_KV.get(key)
-        return stored ? (JSON.parse(stored) as CachedFeedback) : null
+        if (!stored) return null
+        try {
+            return JSON.parse(stored) as CachedFeedback
+        } catch {
+            logWarn('feedback_cache_json_parse_error', { key })
+            return null
+        }
     }
 
     const record = responseCache.get(key)
@@ -71,7 +77,13 @@ async function saveCachedResponse(c: { env: Bindings }, key: string, response: F
 async function loadStoredSession(c: { env: Bindings }, key: string): Promise<StoredSession | null> {
     if (c.env.FEEDBACK_KV) {
         const stored = await c.env.FEEDBACK_KV.get(key)
-        return stored ? (JSON.parse(stored) as StoredSession) : null
+        if (!stored) return null
+        try {
+            return JSON.parse(stored) as StoredSession
+        } catch {
+            logWarn('feedback_session_json_parse_error', { key })
+            return null
+        }
     }
 
     const record = sessionStore.get(key)

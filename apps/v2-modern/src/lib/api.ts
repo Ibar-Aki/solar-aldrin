@@ -133,15 +133,27 @@ export async function postFeedback(
 ): Promise<FeedbackResponse | null> {
     const token = import.meta.env.VITE_API_TOKEN
 
-    const res = await fetch(`${API_BASE}/feedback`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(request),
-        signal: options?.signal,
-    })
+    let res: Response
+    try {
+        res = await fetch(`${API_BASE}/feedback`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(request),
+            signal: options?.signal,
+        })
+    } catch (error) {
+        // Abortはユーザー操作なのでエラー扱いしない
+        if (error instanceof Error && error.name === 'AbortError') {
+            throw error
+        }
+        throw new ApiError('通信が不安定です。電波の良い場所で再送してください。', {
+            errorType: 'network',
+            retriable: false,
+        })
+    }
 
     if (res.status === 204) {
         return null
@@ -150,19 +162,35 @@ export async function postFeedback(
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         const message = (errorData as { error?: { message?: string } })?.error?.message
-        throw new Error(message || 'フィードバックの取得に失敗しました')
+        const retryAfterRaw = res.headers.get('Retry-After')
+        const retryAfterParsed = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined
+        const retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
+        throw new ApiError(message || 'フィードバックの取得に失敗しました', {
+            status: res.status,
+            retriable: res.status === 429 || res.status >= 500,
+            errorType: inferErrorType(res.status),
+            retryAfterSec,
+        })
     }
 
     const data = await res.json()
     const result = FeedbackApiResponseSchema.safeParse(data)
     if (!result.success) {
         console.error('Invalid Feedback API Response:', result.error)
-        throw new Error('サーバーからの応答が不正な形式です')
+        throw new ApiError('サーバーからの応答が不正な形式です', {
+            status: 502,
+            errorType: 'server',
+            retriable: true,
+            retryAfterSec: 1,
+        })
     }
 
     const parsed = result.data
     if ('error' in parsed) {
-        throw new Error(parsed.error.message)
+        throw new ApiError(parsed.error.message, {
+            errorType: 'unknown',
+            retriable: parsed.error.retriable ?? false,
+        })
     }
 
     return parsed
