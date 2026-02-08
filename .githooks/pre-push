@@ -3,11 +3,20 @@
 # Safety: block pushes unless the user explicitly requested it.
 # To allow pushing, set BOTH env vars:
 #   ALLOW_PUSH=1
+#   EXPLICIT_PUSH=1
+#
+# Tool-specific aliases (any one counts as EXPLICIT_PUSH=1):
 #   CODEX_EXPLICIT_PUSH=1
+#   ANTIGRAVITY_EXPLICIT_PUSH=1
 
-if [ "${ALLOW_PUSH}" != "1" ] || [ "${CODEX_EXPLICIT_PUSH}" != "1" ]; then
+explicit="${EXPLICIT_PUSH}"
+if [ "${explicit}" != "1" ] && [ "${CODEX_EXPLICIT_PUSH}" = "1" ]; then explicit="1"; fi
+if [ "${explicit}" != "1" ] && [ "${ANTIGRAVITY_EXPLICIT_PUSH}" = "1" ]; then explicit="1"; fi
+
+if [ "${ALLOW_PUSH}" != "1" ] || [ "${explicit}" != "1" ]; then
   echo "[Blocked] git push is disabled by repo policy." 1>&2
-  echo "Set ALLOW_PUSH=1 and CODEX_EXPLICIT_PUSH=1 to allow pushing." 1>&2
+  echo "Set ALLOW_PUSH=1 and EXPLICIT_PUSH=1 to allow pushing." 1>&2
+  echo "Aliases: CODEX_EXPLICIT_PUSH=1 or ANTIGRAVITY_EXPLICIT_PUSH=1 (either implies EXPLICIT_PUSH=1)." 1>&2
   exit 1
 fi
 

@@ -5,6 +5,7 @@
 更新日: 2026-02-07
 更新日: 2026-02-08（ユーザー依頼なしのgit push禁止を追記）
 更新日: 2026-02-08（Vibe Coding Full Timeline Logger 運用を追加）
+更新日: 2026-02-08（Push Policy を Codex/Antigravity 共通化）
 
 ## 基本方針
 - 回答は日本語で、丁寧な文体にします。
@@ -17,6 +18,11 @@
 - 原文・差分・コマンド出力等の保存先は `logs/vibe/artifacts/` とし、ログの `DiffRef:` で参照します。
 - `logs/vibe/` はgit管理、`logs/vibe/artifacts/` は原則ローカル運用（`.gitignore` で除外）とします。
 - ルール原文は `logs/vibe/README.md` に保存します（改変しない）。
+
+## Push Policy（Codex/Antigravity共通）
+- push は `.githooks/pre-push` でブロックされます。
+- ユーザーの明示依頼があった場合のみ、`ALLOW_PUSH=1` と `EXPLICIT_PUSH=1`（またはエイリアス）を一時的に設定して push します。
+- 詳細は `docs/agent/PUSH_POLICY.md` を参照。
 
 ## Proposed Plan（作業計画）の必須要件
 Proposed Plan を提示する場合、各工程に **推定作業時間（CODEX high でのざっくり推定）** を必ず併記します。
