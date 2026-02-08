@@ -79,10 +79,6 @@ export function KYSessionPage() {
         updateCurrentWorkItem({ countermeasures: next })
     }
 
-    const handleSendSuggestion = async (text: string) => {
-        await sendMessage(text)
-    }
-
     const handleComplete = () => {
         if (!session) return
         completeSession({
@@ -197,14 +193,13 @@ export function KYSessionPage() {
                     </div>
                 )}
 
-                {/* 確認済み情報カード（対策カテゴリ進捗/不足誘導） */}
-                <div className="bg-gray-50 border-b px-4 py-2">
+                {/* 確認済み情報カード（対策カテゴリ進捗） */}
+                <div className="bg-gray-50 border-b px-4 py-1">
                     <div className="max-w-4xl mx-auto w-full">
                         <ConfirmedInfoCard
                             currentWorkItem={currentWorkItem}
                             disabled={isLoading}
                             onChangeCountermeasureCategory={handleChangeCountermeasureCategory}
-                            onSendSuggestion={handleSendSuggestion}
                         />
                     </div>
                 </div>
