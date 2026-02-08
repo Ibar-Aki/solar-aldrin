@@ -93,7 +93,7 @@ export function KYSessionPage() {
 
     const processPhaseLabel = (session.processPhase ?? 'フリー').trim() || 'フリー'
     const meta2Line = (
-        <div className="text-sm text-gray-500 leading-snug">
+        <div className="text-xs sm:text-sm text-gray-500 leading-snug">
             <div className="flex min-w-0 items-center justify-end gap-1">
                 <span className="min-w-0 truncate">{session.siteName}</span>
                 <span className="shrink-0">、{session.weather}</span>
