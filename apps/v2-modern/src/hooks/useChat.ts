@@ -271,7 +271,7 @@ export function useChat() {
 
             if (requireAuth && !hasToken) {
                 const errorMsg = '認証エラーです。管理者にAPIトークン設定を確認してください。'
-                setError(errorMsg)
+                setError(errorMsg, 'chat')
                 addMessage('assistant', errorMsg)
                 return
             }
@@ -462,7 +462,7 @@ export function useChat() {
                     ? (e as NormalizedChatError)
                     : normalizeChatError(e)
             console.error('Chat error:', normalizedError)
-            setError(normalizedError.message)
+            setError(normalizedError.message, 'chat')
             setCanRetry(Boolean(lastUserMessageRef.current) && normalizedError.canRetry)
 
             if (retrySource !== 'none') {

@@ -32,7 +32,10 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
 
         // 必須フィールド + カテゴリ2種類以上のチェック
         if (!isWorkItemComplete(currentWorkItem)) {
-            set({ error: '作業項目が不完全です（対策は2カテゴリ以上が必要です）' })
+            set({
+                error: '作業項目が不完全です（対策は2カテゴリ以上が必要です）',
+                errorSource: 'validation',
+            })
             return
         }
 
@@ -52,6 +55,7 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
             },
             currentWorkItem: createEmptyWorkItem(),
             error: null,
+            errorSource: null,
         })
     },
 

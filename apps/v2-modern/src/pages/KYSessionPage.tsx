@@ -28,6 +28,7 @@ export function KYSessionPage() {
         status,
         isLoading,
         error,
+        errorSource,
         updateCurrentWorkItem,
         completeSession,
     } = useKYStore()
@@ -228,7 +229,7 @@ export function KYSessionPage() {
                     <div className="px-4 py-2 border-b border-red-100 bg-red-50">
                         <div className="max-w-2xl mx-auto text-red-600 text-sm flex items-center justify-between gap-2">
                             <span>{error}</span>
-                            {canRetry && (
+                            {errorSource === 'chat' && canRetry && (
                                 <Button
                                     type="button"
                                     variant="outline"

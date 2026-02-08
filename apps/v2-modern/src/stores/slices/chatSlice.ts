@@ -7,11 +7,12 @@ export interface ChatSlice {
     messages: ChatMessage[]
     isLoading: boolean
     error: string | null
+    errorSource: 'chat' | 'validation' | null
 
     addMessage: (role: 'user' | 'assistant', content: string, extractedData?: ExtractedData) => void
     clearMessages: () => void
     setLoading: (loading: boolean) => void
-    setError: (error: string | null) => void
+    setError: (error: string | null, source?: 'chat' | 'validation') => void
 }
 
 const now = () => new Date().toISOString()
@@ -20,6 +21,7 @@ export const createChatSlice: StateCreator<KYStore, [], [], ChatSlice> = (set) =
     messages: [],
     isLoading: false,
     error: null,
+    errorSource: null,
 
     addMessage: (role, content, extractedData) => {
         const message: ChatMessage = {
@@ -36,5 +38,9 @@ export const createChatSlice: StateCreator<KYStore, [], [], ChatSlice> = (set) =
 
     clearMessages: () => set({ messages: [] }),
     setLoading: (isLoading) => set({ isLoading }),
-    setError: (error) => set({ error }),
+    setError: (error, source) => set({
+        error,
+        // Clear source when error is cleared. Default to 'chat' for backwards-compat.
+        errorSource: error ? (source ?? 'chat') : null,
+    }),
 })

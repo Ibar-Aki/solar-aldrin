@@ -231,7 +231,23 @@ function fallbackClassifyCountermeasure(text: string): CountermeasureCategory {
         return 'ppe'
     }
     // equipment / preparation
-    if (t.includes('足場') || t.includes('手すり') || t.includes('親綱') || t.includes('点検') || t.includes('養生') || t.includes('区画') || t.includes('立入') || t.includes('台車') || t.includes('工具') || t.includes('設備') || t.includes('準備')) {
+    if (
+        t.includes('足場') ||
+        t.includes('手すり') ||
+        t.includes('親綱') ||
+        t.includes('点検') ||
+        t.includes('養生') ||
+        t.includes('区画') ||
+        t.includes('立入') ||
+        t.includes('台車') ||
+        t.includes('工具') ||
+        t.includes('設備') ||
+        t.includes('準備') ||
+        t.includes('消火器') ||
+        t.includes('スパッタ') ||
+        t.includes('防火') ||
+        t.includes('消火')
+    ) {
         return 'equipment'
     }
     // default behavior
