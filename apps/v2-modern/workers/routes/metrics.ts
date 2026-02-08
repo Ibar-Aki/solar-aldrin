@@ -25,6 +25,7 @@ const MetricEventSchema = z.object({
         'web_vital',
         'chat_error',
         'retry_clicked',
+        'retry_waiting',
         'retry_succeeded',
         'retry_failed',
     ]),
