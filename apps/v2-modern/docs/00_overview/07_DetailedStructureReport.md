@@ -1,6 +1,6 @@
 # v2フォルダ詳細レポート
 
-**最終更新日**: 2026-02-08
+**最終更新日**: 2026-02-09
 
 ---
 
@@ -12,7 +12,10 @@
 4. [バックエンド詳細](#バックエンドworkersの詳細)
 5. [テスト体制](#テストtestsの詳細)
 6. [データフロー](#主要なデータフロー)
-7. [運用情報](#セキュリティと運用)
+7. [KYデータモデル](#kyデータモデルドメイン定義)
+8. [エラーハンドリング](#エラーハンドリング)
+9. [運用情報](#セキュリティと運用)
+10. [監視と統計](#永続化と監視)
 
 ---
 
@@ -270,6 +273,123 @@ graph LR
 | **feedback.ts** | 13KB | KY結果フィードバック生成 |
 | **metrics.ts** | 2KB | イベント記録 |
 
+### API契約（詳細）
+
+#### Chat API (`POST /api/chat`)
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+|:--|:--|:--:|:--|
+| `messages` | `{ role: "user" \| "assistant", content: string }[]` | 必須 | 会話履歴。`user` の `content` は最大1000文字、履歴合計は約1万文字まで。 |
+| `sessionContext` | object | 任意 | `userName` / `siteName` / `weather` / `workItemCount` / `processPhase` / `healthCondition` を含む。 |
+| `contextInjection` | string | 任意 | 追加文脈（最大1200文字）。 |
+| `conversationSummary` | string | 任意 | 会話サマリ（最大1200文字）。 |
+
+**レスポンス（成功）**
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `reply` | string | 画面に表示する返答文。 |
+| `extracted` | object | 抽出データ（任意、空の可能性あり）。 |
+| `usage.totalTokens` | number | OpenAI利用トークン数（参考）。 |
+| `meta` | object | OpenAI呼び出し回数や再試行情報（運用観測用）。 |
+
+**レスポンス（エラー）**
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `error` | string | エラーメッセージ。 |
+| `code` | string | エラーコード。 |
+| `requestId` | string | 追跡用ID。 |
+| `retriable` | boolean | 再試行可能か。 |
+| `details` | object | バリデーション失敗などの詳細（任意）。 |
+
+**例（成功）**
+
+```json
+{
+  "reply": "作業内容を教えてください。",
+  "extracted": {
+    "nextAction": "ask_work"
+  },
+  "usage": {
+    "totalTokens": 321
+  },
+  "meta": {
+    "openai": {
+      "requestCount": 1,
+      "httpAttempts": 1,
+      "durationMs": 850
+    },
+    "parseRetry": {
+      "attempted": false,
+      "succeeded": false
+    }
+  }
+}
+```
+
+**例（エラー）**
+
+```json
+{
+  "error": "AIからの応答が不正な形式です。再試行してください。",
+  "code": "AI_RESPONSE_INVALID_JSON",
+  "requestId": "xxx",
+  "retriable": true
+}
+```
+
+#### Feedback API (`POST /api/feedback`)
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+|:--|:--|:--:|:--|
+| `sessionId` | string | 必須 | セッションID（8〜128文字）。 |
+| `clientId` | string | 必須 | クライアントID（8〜128文字）。 |
+| `context` | object | 任意 | `work` / `location` / `weather` / `processPhase` / `healthCondition` を含む。 |
+| `extracted` | object | 任意 | `risks` / `measures` / `actionGoal` を含む。 |
+| `chatDigest` | string | 任意 | 会話要約（最大1200文字）。 |
+
+**レスポンス（成功）**
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `praise` | string | 良かった点。 |
+| `tip` | string | 改善のヒント。 |
+| `supplements` | `{ risk: string, measure: string }[]` | 補足リスク（最大2件）。 |
+| `polishedGoal` | `{ original: string, polished: string } \| null` | 行動目標の添削提案。 |
+| `meta` | object | `requestId` / `cached` / `validationFallback` 等。 |
+
+**レスポンス（エラー）**
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `error.code` | string | エラーコード。 |
+| `error.message` | string | エラーメッセージ。 |
+| `error.retriable` | boolean | 再試行可能か。 |
+| `error.requestId` | string | 追跡用ID。 |
+
+#### Metrics API (`POST /api/metrics`)
+
+**リクエスト**
+
+| フィールド | 型 | 必須 | 説明 |
+|:--|:--|:--:|:--|
+| `event` | string | 必須 | `session_start` / `session_complete` / `input_length` / `web_vital` / `chat_error` / `retry_clicked` / `retry_waiting` / `retry_succeeded` / `retry_failed` |
+| `timestamp` | string | 任意 | ISO 8601。未指定ならサーバー側で付与。 |
+| `sessionId` | string | 任意 | セッションID。 |
+| `value` | number | 任意 | 数値指標。 |
+| `data` | object | 任意 | 追加情報（文字列/数値/真偽/nullのみ）。 |
+
+**レスポンス**
+
+```json
+{ "ok": true }
+```
+
 ### AIプロンプト
 
 | プロンプト | サイズ | 用途 |
@@ -286,6 +406,13 @@ graph LR
 | `AI_RESPONSE_INVALID_JSON` | 502 | JSONパース失敗 |
 | `AI_RESPONSE_INVALID_SCHEMA` | 502 | スキーマ検証失敗 |
 | `AI_UPSTREAM_ERROR` | 502/503 | OpenAI側エラー |
+| `AI_TIMEOUT` | 504 | OpenAI応答タイムアウト |
+| `BANNED_WORD` | 400 | 禁止語が含まれる |
+| `INPUT_TOO_LARGE` | 400 | メッセージ総量が上限超過 |
+| `VALIDATION_ERROR` | 400 | リクエストスキーマ不一致 |
+| `AUTH_REQUIRED` | 401 | 認証トークン未指定 |
+| `AUTH_INVALID` | 401 | 認証トークン不一致 |
+| `AUTH_CONFIG_MISSING` | 503 | 認証設定不足（本番要件に未達） |
 
 ---
 
@@ -360,6 +487,53 @@ sequenceDiagram
 
 ---
 
+## KYデータモデル（ドメイン定義）
+
+### 抽出データ（AIが返す要素）
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `workDescription` | string | 作業内容。 |
+| `hazardDescription` | string | 危険内容。 |
+| `riskLevel` | 1〜5 | 危険度。 |
+| `whyDangerous` | string[] | 危険の理由。 |
+| `countermeasures` | `{ category: "ppe" \| "behavior" \| "equipment", text: string }[]` | 対策。 |
+| `actionGoal` | string | 行動目標。 |
+| `nextAction` | `"ask_work" \| "ask_hazard" \| "ask_why" \| "ask_countermeasure" \| "ask_risk_level" \| "ask_more_work" \| "ask_goal" \| "confirm" \| "completed"` | 次に尋ねる内容。 |
+
+### 作業項目（WorkItem）
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `id` | string (uuid) | 作業項目ID。 |
+| `workDescription` | string | 作業内容。 |
+| `hazardDescription` | string | 危険内容。 |
+| `riskLevel` | 1〜5 | 危険度。 |
+| `whyDangerous` | string[] | 危険の理由。 |
+| `countermeasures` | Countermeasure[] | 対策一覧。 |
+
+### セッション（SoloKYSession）
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `id` | string (uuid) | セッションID。 |
+| `userName` / `siteName` / `weather` | string | 基本情報。 |
+| `temperature` | number \| null | 気温。 |
+| `processPhase` | string \| null | 作業工程。 |
+| `healthCondition` | string \| null | 体調。 |
+| `workStartTime` / `workEndTime` | string (ISO 8601) | 作業開始/終了時刻。 |
+| `createdAt` | string (ISO 8601) | セッション作成日時。 |
+| `environmentRisk` | string \| null | 環境リスク。 |
+| `workItems` | WorkItem[] | 作業項目一覧。 |
+| `actionGoal` | string \| null | 行動目標。 |
+| `pointingConfirmed` | boolean \| null | 指差し確認。 |
+| `allMeasuresImplemented` | boolean \| null | 対策実施確認。 |
+| `hadNearMiss` | boolean \| null | ヒヤリハット。 |
+| `nearMissNote` | string \| null | ヒヤリハット備考。 |
+| `completedAt` | string (ISO 8601) \| null | 完了日時。 |
+
+---
+
 ## エラーハンドリング
 
 ### Chat APIエラー
@@ -386,6 +560,27 @@ graph TD
 | `audio-capture` | 音声取得失敗 | テキスト入力に誘導 |
 | `end timeout` | onend未発火 | フォールバックタイムアウト |
 
+### Chat APIの主な原因と対策（詳細）
+
+| 区分 | 主な原因 | 対策 |
+|:--|:--|:--|
+| 入力検証 | 禁止語、文字数超過、スキーマ不一致 | 入力内容の明示エラー表示、文字数制限ガイド、バリデーション修正。 |
+| 認証 | トークン未設定/不一致、設定不足 | `Authorization: Bearer <token>` を確認し、本番では `API_TOKEN` と `REQUIRE_API_TOKEN` を有効化。 |
+| レート制限 | 1分あたり30回を超過 | `Retry-After` に従い待機して再試行。 |
+| OpenAI応答 | JSON破損、スキーマ不一致 | JSON修復→再生成の順に再試行し、失敗時は再送案内。 |
+| 通信・タイムアウト | ネットワーク障害、上流タイムアウト | 通信状態を案内し、再試行（必要なら待機）を促す。 |
+| サーバー内部 | 予期しない例外 | 監視ログと `requestId` を用いて原因追跡、再現条件を特定。 |
+
+### Feedback APIの主な原因と対策（詳細）
+
+| 区分 | 主な原因 | 対策 |
+|:--|:--|:--|
+| 入力検証 | スキーマ不一致 | クライアントの送信データを確認し修正。 |
+| キャッシュ/保存 | KVのJSONパース失敗 | キャッシュを無効化し再作成、KVデータの破損有無を確認。 |
+| OpenAI応答 | JSONパース/スキーマ失敗 | フォールバック応答を返し、時間をおいて再試行。 |
+| タイムアウト | OpenAIの応答遅延 | タイムアウトを調整し、再試行の案内を追加。 |
+| サーバー内部 | 予期しない例外 | エラーログを確認し、`requestId` で追跡。 |
+
 ---
 
 ## セキュリティと運用
@@ -399,6 +594,17 @@ graph TD
 | `REQUIRE_API_TOKEN` | - | 1で常時必須化 |
 | `STRICT_CORS` | - | 1で厳格CORS |
 | `REQUIRE_RATE_LIMIT_KV` | - | 1でKV必須化 |
+
+### 認証・レート制限の運用詳細
+
+| 項目 | 内容 |
+|:--|:--|
+| 認証方式 | `Authorization: Bearer <token>`。サーバー側 `API_TOKEN` と一致させる。 |
+| 認証必須条件 | `REQUIRE_API_TOKEN=1` もしくは本番環境判定で必須化。 |
+| レート制限 | 1分あたり30回（全API）。 |
+| `Retry-After` | 429時に秒数を返却。クライアントは待機後に再試行。 |
+| 代替ストア | KVが無い場合はメモリフォールバック（開発用途）。 |
+| KV必須 | `REQUIRE_RATE_LIMIT_KV=1` もしくは本番環境判定で必須化。 |
 
 ### 運用コマンド一覧
 
@@ -451,6 +657,15 @@ graph LR
 |:--|--------|
 | **フロントエンド** | Sentry + Web Vitals + telemetry |
 | **バックエンド** | 構造化ログ + Sentry + Analytics Engine |
+
+### ログとメトリクスの設計詳細
+
+| 項目 | 内容 |
+|:--|:--|
+| 構造化ログ | `timestamp` / `level` / `service` / `message` / `reqId` / `status` / `latencyMs` を基本に出力。 |
+| 機密情報マスク | `authorization` / `api_key` / `password` などは `[redacted]` に置換。メール・電話番号・長い番号もマスク。 |
+| 代表的な計測 | API応答時間、再試行回数、`chat_error` や `retry_*` の件数。 |
+| 監視の対策 | 失敗率上昇時はレート制限/上流障害を疑い、`requestId` で追跡する。 |
 
 ---
 
