@@ -16,6 +16,11 @@
 8. [エラーハンドリング](#エラーハンドリング)
 9. [運用情報](#セキュリティと運用)
 10. [監視と統計](#永続化と監視)
+11. [設定値と上限](#設定値と上限)
+12. [性能と再試行ポリシー](#性能と再試行ポリシー)
+13. [対応環境と制約](#対応環境と制約)
+14. [運用手順書（障害対応）](#運用手順書障害対応)
+15. [テレメトリと計測イベント](#テレメトリと計測イベント)
 
 ---
 
@@ -210,6 +215,15 @@ graph TB
     style FS fill:#f3e5f5
 ```
 
+### チャット送信とリトライ制御（フロントエンド）
+
+- **APIベースURLの解決**: `VITE_API_BASE_URL` が未指定の場合は `/api` を使用し、絶対URLの場合は末尾に `/api` を補完する。相対パスは指定値をそのまま使用する。
+- **メッセージ送信の履歴制限**: クライアント側は最大12メッセージまでを送信対象とし、サーバー側では最大10往復分（20メッセージ）に制限される。
+- **コンテキスト注入**: `VITE_ENABLE_CONTEXT_INJECTION` が `0` でない場合に有効。初回送信時に `buildContextInjection` で生成し、セッション単位で再利用する。
+- **会話サマリ送信条件**: 直近の会話メッセージが6件以上の場合に `conversationSummary` を付与する（短い会話でのトークン増を避ける）。
+- **サイレントリトライ**: `VITE_ENABLE_RETRY_SILENT=1` または本番環境で有効。タイムアウト、レート制限、再試行可能なサーバーエラーで最大2回まで自動再試行する。
+- **手動リトライ**: 直前メッセージの再送を許可し、エラー種別ごとに再試行可否を判断する（認証エラーは再送不可）。
+
 ### ライブラリ (lib/)
 
 | ファイル | 機能 |
@@ -272,6 +286,15 @@ graph LR
 | **chat.ts** | 32KB | AI応答 + 抽出データ返却 |
 | **feedback.ts** | 13KB | KY結果フィードバック生成 |
 | **metrics.ts** | 2KB | イベント記録 |
+
+### APIガード（CORS・認証・レート制限）
+
+| 項目 | 仕様 | 備考 |
+|:--|:--|:--|
+| CORS | 許可オリジンは `ALLOWED_ORIGINS` に加え、開発/本番で固定の許可一覧を適用 | `STRICT_CORS=1` の場合は https の Pages 固定URL（`*.voice-ky-*.pages.dev`）のみ許可 |
+| 認証 | `Authorization: Bearer <token>` | `REQUIRE_API_TOKEN=1` か本番判定で必須化。未設定時は `AUTH_CONFIG_MISSING` を返す |
+| レート制限 | 1分あたり30回（全API） | KVが無い場合はメモリフォールバック。`REQUIRE_RATE_LIMIT_KV=1` でKV必須化 |
+| ヘルスチェック | `/api/health` | 認証・レート制限の必須設定不足がある場合は `degraded` を返す |
 
 ### API契約（詳細）
 
@@ -341,6 +364,22 @@ graph LR
 }
 ```
 
+**制限値と入力検証（Chat API）**
+
+| 項目 | 制限/ルール | 目的 |
+|:--|:--|:--|
+| 1メッセージの最大長 | user: 1000文字 / assistant: 3000文字 | 入力の肥大化防止 |
+| 会話履歴の上限 | サーバー側で最大20メッセージ（10往復） | 送信トークン抑制 |
+| 合計入力文字数 | 最大10,000文字（ユーザー入力合算） | 過大入力の抑制 |
+| 禁止語 | `殺す` / `死ね` / `爆弾` / `テロ` | 不適切入力の抑制 |
+| コンテキスト注入 | 1200文字まで | 指示文混入リスク低減 |
+| セッションコンテキスト | `userName` 80、`siteName` 120、`weather` 60 文字上限 | PII/過大入力抑制 |
+
+**会話参照の安全化**
+
+- 指示文に見える文字列（`system prompt` など）は `[instruction-like-text]` に置換し、参照情報として扱う。
+- `conversationSummary` / `contextInjection` は参照情報として明示し、命令にしない形式で送信する。
+
 #### Feedback API (`POST /api/feedback`)
 
 **リクエスト**
@@ -371,6 +410,24 @@ graph LR
 | `error.message` | string | エラーメッセージ。 |
 | `error.retriable` | boolean | 再試行可能か。 |
 | `error.requestId` | string | 追跡用ID。 |
+
+**制限値とキャッシュ（Feedback API）**
+
+| 項目 | 制限/ルール | 目的 |
+|:--|:--|:--|
+| `sessionId` / `clientId` | 8〜128文字 | IDの妥当性担保 |
+| `context.work` / `context.location` | 200文字まで | 過大入力抑制 |
+| `context.weather` | 100文字まで | 画面入力の過大化防止 |
+| `extracted.risks` / `measures` | 20件まで、各120文字 | リスト過大化防止 |
+| `extracted.actionGoal` | 120文字まで | 行動目標の短文化 |
+| キャッシュTTL | 5分 | 同一セッションの再利用 |
+| セッション保存TTL | 24時間 | 再送時の安全性確保 |
+
+**フィードバックの検証とフィルタ**
+
+- OpenAI応答が不正な場合はフォールバック文面を返し、セッションを維持する。
+- 補足リスクは既存の `risks` / `measures` と重複する内容を除外し、最大2件に制限する。
+- 行動目標の添削は「20文字以内」「ヨシを含む」「原文と異なる」場合のみ採用する。
 
 #### Metrics API (`POST /api/metrics`)
 
@@ -405,7 +462,7 @@ graph LR
 |:------|:----------:|------|
 | `AI_RESPONSE_INVALID_JSON` | 502 | JSONパース失敗 |
 | `AI_RESPONSE_INVALID_SCHEMA` | 502 | スキーマ検証失敗 |
-| `AI_UPSTREAM_ERROR` | 502/503 | OpenAI側エラー |
+| `AI_UPSTREAM_ERROR` | 429/5xx | OpenAI側エラー |
 | `AI_TIMEOUT` | 504 | OpenAI応答タイムアウト |
 | `BANNED_WORD` | 400 | 禁止語が含まれる |
 | `INPUT_TOO_LARGE` | 400 | メッセージ総量が上限超過 |
@@ -413,6 +470,14 @@ graph LR
 | `AUTH_REQUIRED` | 401 | 認証トークン未指定 |
 | `AUTH_INVALID` | 401 | 認証トークン不一致 |
 | `AUTH_CONFIG_MISSING` | 503 | 認証設定不足（本番要件に未達） |
+| `OPENAI_KEY_MISSING` | 500 | OpenAI APIキー未設定 |
+| `OPENAI_AUTH_ERROR` | 502 | OpenAI側の認証失敗 |
+| `OPENAI_BAD_REQUEST` | 502 | OpenAIへのリクエスト不正 |
+| `OPENAI_UPSTREAM_ERROR` | 502 | OpenAI上流エラー（非特定） |
+| `CHAT_PROCESSING_ERROR` | 500 | チャット処理中の予期しない例外 |
+| `INVALID_REQUEST` | 400 | フィードバックAPIの入力不正 |
+| `TIMEOUT` | 408 | フィードバックAPIのタイムアウト |
+| `INTERNAL_ERROR` | 500 | フィードバックAPIの内部エラー |
 
 ---
 
@@ -566,8 +631,10 @@ graph TD
 |:--|:--|:--|
 | 入力検証 | 禁止語、文字数超過、スキーマ不一致 | 入力内容の明示エラー表示、文字数制限ガイド、バリデーション修正。 |
 | 認証 | トークン未設定/不一致、設定不足 | `Authorization: Bearer <token>` を確認し、本番では `API_TOKEN` と `REQUIRE_API_TOKEN` を有効化。 |
+| CORS | オリジンが許可リスト外 | `ALLOWED_ORIGINS` を更新し、`STRICT_CORS` の設定を確認。 |
 | レート制限 | 1分あたり30回を超過 | `Retry-After` に従い待機して再試行。 |
 | OpenAI応答 | JSON破損、スキーマ不一致 | JSON修復→再生成の順に再試行し、失敗時は再送案内。 |
+| OpenAI設定 | APIキー未設定、認証失敗 | `OPENAI_API_KEY` の設定と権限を確認。 |
 | 通信・タイムアウト | ネットワーク障害、上流タイムアウト | 通信状態を案内し、再試行（必要なら待機）を促す。 |
 | サーバー内部 | 予期しない例外 | 監視ログと `requestId` を用いて原因追跡、再現条件を特定。 |
 
@@ -579,6 +646,7 @@ graph TD
 | キャッシュ/保存 | KVのJSONパース失敗 | キャッシュを無効化し再作成、KVデータの破損有無を確認。 |
 | OpenAI応答 | JSONパース/スキーマ失敗 | フォールバック応答を返し、時間をおいて再試行。 |
 | タイムアウト | OpenAIの応答遅延 | タイムアウトを調整し、再試行の案内を追加。 |
+| 機能停止 | `ENABLE_FEEDBACK=0` | 204が返るため、運用上の停止フラグを確認。 |
 | サーバー内部 | 予期しない例外 | エラーログを確認し、`requestId` で追跡。 |
 
 ---
@@ -594,6 +662,30 @@ graph TD
 | `REQUIRE_API_TOKEN` | - | 1で常時必須化 |
 | `STRICT_CORS` | - | 1で厳格CORS |
 | `REQUIRE_RATE_LIMIT_KV` | - | 1でKV必須化 |
+| `ALLOWED_ORIGINS` | - | 許可オリジンの追加（カンマ区切り） |
+| `OPENAI_TIMEOUT_MS` | - | Chat APIのタイムアウト（1,000〜120,000ms） |
+| `ENABLE_CONTEXT_INJECTION` | - | 0でコンテキスト注入を無効化 |
+| `ENABLE_FEEDBACK` | - | 0でFeedback APIを無効化（204を返す） |
+| `RATE_LIMIT_KV` | 本番 | レート制限用KVバインディング |
+| `FEEDBACK_KV` | 推奨 | フィードバックキャッシュ/保存用KV |
+| `ANALYTICS_DATASET` | 推奨 | Analytics Engine バインディング |
+| `SENTRY_DSN` | 推奨 | Sentry DSN |
+| `SENTRY_ENV` | 推奨 | Sentry環境名（production/prod 等） |
+| `SENTRY_RELEASE` | 推奨 | リリース識別子 |
+| `ENVIRONMENT` | 推奨 | 実行環境（production/prod 等） |
+
+### フロントエンド環境変数
+
+| 変数名 | 必須 | 説明 |
+|:------|:----:|------|
+| `VITE_API_BASE_URL` | - | APIベースURL（未指定時は `/api`） |
+| `VITE_API_TOKEN` | - | API認証トークン（必要時のみ） |
+| `VITE_REQUIRE_API_TOKEN` | - | 1でクライアント側も認証必須扱い |
+| `VITE_ENABLE_CONTEXT_INJECTION` | - | 0でコンテキスト注入を無効化 |
+| `VITE_ENABLE_RETRY_SILENT` | - | 1でサイレントリトライを有効化 |
+| `VITE_TELEMETRY_ENABLED` | - | 0でテレメトリ送信を停止 |
+| `VITE_TELEMETRY_SAMPLE_RATE` | - | 0〜1でサンプリング率を指定 |
+| `VITE_TELEMETRY_ENDPOINT` | - | 計測送信先を上書き |
 
 ### 認証・レート制限の運用詳細
 
@@ -664,8 +756,134 @@ graph LR
 |:--|:--|
 | 構造化ログ | `timestamp` / `level` / `service` / `message` / `reqId` / `status` / `latencyMs` を基本に出力。 |
 | 機密情報マスク | `authorization` / `api_key` / `password` などは `[redacted]` に置換。メール・電話番号・長い番号もマスク。 |
+| マスク対象の具体例 | `sk-` で始まるキー、`Bearer <token>`、メールアドレス、電話番号、7桁以上の連番を検出して置換。 |
+| 例外的に許可 | `tokenFingerprint` は短い非可逆ハッシュとしてログ出力を許可。 |
 | 代表的な計測 | API応答時間、再試行回数、`chat_error` や `retry_*` の件数。 |
 | 監視の対策 | 失敗率上昇時はレート制限/上流障害を疑い、`requestId` で追跡する。 |
+
+---
+
+## 設定値と上限
+
+### Chat API（サーバー側）
+
+| 項目 | 値 | 備考 |
+|:--|:--|:--|
+| 最大履歴 | 10往復（20メッセージ） | サーバー側で履歴を制限 |
+| 合計入力上限 | 10,000文字 | ユーザー入力の合算 |
+| 禁止語 | `殺す` / `死ね` / `爆弾` / `テロ` | 入力時に即時エラー |
+| OpenAIモデル | `gpt-4o-mini` | JSON出力指定 |
+| 最大トークン | 700 | Chat応答の上限 |
+| 温度 | 0.3 | 安定応答優先 |
+| タイムアウト | 25,000ms（未指定時） | `OPENAI_TIMEOUT_MS` で上書き可能 |
+| JSON修復タイムアウト | 10,000ms | 失敗時は再生成 |
+
+### Chat API（クライアント側）
+
+| 項目 | 値 | 備考 |
+|:--|:--|:--|
+| 送信履歴上限 | 12メッセージ | 直近のメッセージのみ送信 |
+| サマリ送信 | 6件以上で付与 | 会話が短いときは省略 |
+
+### Feedback API
+
+| 項目 | 値 | 備考 |
+|:--|:--|:--|
+| OpenAIモデル | `gpt-4o-mini` | JSON出力指定 |
+| 最大トークン | 400 | フィードバック出力上限 |
+| 温度 | 0.6 | 表現の揺れを許容 |
+| タイムアウト | 6,000ms | 固定 |
+| キャッシュTTL | 5分 | `feedback-cache:<sessionId>` |
+| セッション保存TTL | 24時間 | `feedback-session:<sessionId>` |
+| 行動目標添削 | 20文字以内 + 「ヨシ」含有 | 同一文は無効化 |
+
+### レート制限
+
+| 項目 | 値 | 備考 |
+|:--|:--|:--|
+| 制限 | 1分あたり30回 | 全API共通 |
+| 返却ヘッダ | `X-RateLimit-Limit` / `X-RateLimit-Remaining` | 利用状況を可視化 |
+
+---
+
+## 性能と再試行ポリシー
+
+### OpenAI呼び出しの再試行
+
+- **HTTP 5xx / 429**: 最大2回まで再試行（指数バックオフ + ジッター）。
+- **ネットワーク/タイムアウト**: 同様に最大2回まで再試行。
+- **Retry-After**: 上流が返す場合は尊重し、チャットAPIは `Retry-After` を付与する。
+
+### Chat APIのリカバリ戦略
+
+- **JSONパース失敗**: JSON修復 → 再生成の順に再試行。両方失敗時は `AI_RESPONSE_INVALID_JSON` を返す。
+- **スキーマ不一致**: `AI_RESPONSE_INVALID_SCHEMA` を返し、短い待機で再送を促す。
+- **タイムアウト**: `AI_TIMEOUT` を返し、`Retry-After: 2` を付与する。
+
+### フロントエンドのリトライ制御
+
+- **サイレントリトライ**: タイムアウト/レート制限/再試行可能なサーバーエラーで最大2回。
+- **待機時間**: `Retry-After` を優先し、上限10秒で待機。ジッターを加えて同時再送を抑制。
+- **手動リトライ**: 認証エラー以外では再送可能とし、失敗時はエラーを表示する。
+
+### Feedback APIの例外対応
+
+- **OpenAI上流エラー**: 失敗時はフォールバック文面を返す（UX優先）。
+- **タイムアウト**: `TIMEOUT` を返し、再送可能とする。
+
+---
+
+## 対応環境と制約
+
+| 項目 | 内容 | 補足 |
+|:--|:--|:--|
+| 音声入力 | Web Speech API が必要 | 非対応環境ではテキスト入力へ誘導 |
+| PDF出力 | `@react-pdf/renderer` に依存 | 印刷用途ではプレビュー確認が必要 |
+| iOS互換性 | E2Eで検証対象 | `ios_compatibility` テストで確認 |
+| オリジン制限 | CORSで拒否される場合がある | `ALLOWED_ORIGINS` と `STRICT_CORS` に依存 |
+| 認証必須化 | 本番または `REQUIRE_API_TOKEN=1` で有効 | 未設定時は `AUTH_CONFIG_MISSING` |
+
+---
+
+## 運用手順書（障害対応）
+
+1. **ヘルスチェック**
+   - `/api/health` を確認し、`degraded` の場合は `issues` を確認する。
+2. **認証エラー**
+   - `AUTH_REQUIRED` / `AUTH_INVALID` が出る場合は `API_TOKEN` と `Authorization` を一致させる。
+   - `AUTH_CONFIG_MISSING` の場合は `REQUIRE_API_TOKEN` と `API_TOKEN` の整合性を確認する。
+3. **オリジン拒否（CORS）**
+   - 403 が出る場合は `ALLOWED_ORIGINS` と `STRICT_CORS` を確認し、想定URLを許可する。
+4. **レート制限**
+   - 429 が多発する場合は `Retry-After` に従い待機し、必要なら上限値と送信頻度を見直す。
+   - `RATE_LIMIT_KV_REQUIRED` の場合は KV バインディング設定を確認する。
+5. **OpenAI設定**
+   - `OPENAI_KEY_MISSING` は `OPENAI_API_KEY` の未設定が原因。環境変数を補う。
+   - `OPENAI_AUTH_ERROR` / `OPENAI_BAD_REQUEST` はキーやモデル設定、入力内容を確認する。
+6. **ログと追跡**
+   - `x-request-id` をキーにログや Sentry を追跡し、再現条件と失敗点を特定する。
+7. **フィードバックの異常**
+   - `ENABLE_FEEDBACK=0` の場合は 204 が返るため、機能停止状態を確認する。
+   - 連続失敗時はフォールバック応答が返るため、上流障害を疑う。
+
+---
+
+## テレメトリと計測イベント
+
+### 送信イベント一覧
+
+- `session_start` / `session_complete`
+- `input_length`
+- `web_vital`
+- `chat_error`
+- `retry_clicked` / `retry_waiting` / `retry_succeeded` / `retry_failed`
+
+### 送信方式
+
+- **認証トークンが無い場合**: `sendBeacon` を使用して非同期送信する。
+- **認証トークンがある場合**: `fetch` で `Authorization: Bearer` を付与して送信する。
+- **送信先**: `VITE_TELEMETRY_ENDPOINT` を優先し、未指定時は `/api/metrics` に送信する。
+- **サンプリング**: `VITE_TELEMETRY_SAMPLE_RATE` で 0〜1 の範囲で制御する。
 
 ---
 
