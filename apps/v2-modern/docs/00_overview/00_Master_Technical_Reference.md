@@ -272,9 +272,9 @@ graph LR
         end
         
         subgraph "ルート"
-            CHAT[/api/chat]
-            FB[/api/feedback]
-            MET[/api/metrics]
+            CHAT["/api/chat"]
+            FB["/api/feedback"]
+            MET["/api/metrics"]
         end
     end
     
