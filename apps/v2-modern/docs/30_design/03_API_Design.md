@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> このドキュメントは**初期設計フェーズ**の記録です。
+> 最新の実装詳細、現在のAPI仕様、およびアーキテクチャについては、**[マスター技術リファレンス](../00_overview/00_Master_Technical_Reference.md)**を参照してください。
+
 # API設計（v2-modern）
 
 **目的**: APIの入力/出力/認証/エラー仕様を現状コードに合わせて定義する  
@@ -14,6 +18,7 @@
 - 認証: 本番は Bearer 必須（`API_TOKEN` 必須）。`REQUIRE_API_TOKEN` で強制可否を明示指定可能
 
 **認証の例**
+
 ```
 Authorization: Bearer <API_TOKEN>
 ```
@@ -27,6 +32,7 @@ Authorization: Bearer <API_TOKEN>
 **用途**: ヘルスチェック
 
 **Response**
+
 ```json
 {
   "status": "ok",
@@ -35,6 +41,7 @@ Authorization: Bearer <API_TOKEN>
 ```
 
 **curl例**
+
 ```bash
 curl -i "<BASE_URL>/api/health" \
   -H "Origin: https://your-allowed-origin.example"
@@ -47,6 +54,7 @@ curl -i "<BASE_URL>/api/health" \
 **用途**: 対話の進行（非ストリーミング）
 
 **Request**
+
 ```json
 {
   "messages": [
@@ -66,6 +74,7 @@ curl -i "<BASE_URL>/api/health" \
 ```
 
 **Response（成功）**
+
 ```json
 {
   "reply": "それは危険ですね。どのような状況で起きますか？",
@@ -79,6 +88,7 @@ curl -i "<BASE_URL>/api/health" \
 ```
 
 **3.8 レスポンス簡素化ルール（2026-02-06反映）**
+
 - `reply` は必須
 - `extracted.nextAction` は必須
 - `workDescription` / `hazardDescription` / `whyDangerous` / `countermeasures` / `riskLevel` / `actionGoal` は判明時のみ返却
@@ -86,6 +96,7 @@ curl -i "<BASE_URL>/api/health" \
 - 互換性維持のため、`extracted` と `usage.totalTokens` はレスポンスに残す
 
 **curl例**
+
 ```bash
 curl -X POST "<BASE_URL>/api/chat" \
   -H "Content-Type: application/json" \
@@ -105,6 +116,7 @@ curl -X POST "<BASE_URL>/api/chat" \
 ```
 
 **Response（エラー例）**
+
 ```json
 {
   "error": "AI応答の取得に失敗しました"
@@ -118,6 +130,7 @@ curl -X POST "<BASE_URL>/api/chat" \
 **用途**: 完了後のフィードバック生成
 
 **Request**
+
 ```json
 {
   "sessionId": "uuid",
@@ -139,6 +152,7 @@ curl -X POST "<BASE_URL>/api/chat" \
 ```
 
 **curl例**
+
 ```bash
 curl -X POST "<BASE_URL>/api/feedback" \
   -H "Content-Type: application/json" \
@@ -161,6 +175,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```
 
 **Response（成功）**
+
 ```json
 {
   "praise": "要点が押さえられています",
@@ -180,6 +195,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```
 
 **Response（キャッシュヒット例）**
+
 ```json
 {
   "praise": "要点が押さえられています",
@@ -194,9 +210,11 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```
 
 **Response（無効化時）**
+
 - `ENABLE_FEEDBACK=0` の場合は `204 No Content`
 
 **Response（エラー例）**
+
 ```json
 {
   "error": {
@@ -216,6 +234,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 **認証**: Bearer 必須（他APIと同等）
 
 **Request**
+
 ```json
 {
   "event": "session_start",
@@ -230,6 +249,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```
 
 **Response**
+
 ```json
 {
   "ok": true
@@ -237,6 +257,7 @@ curl -X POST "<BASE_URL>/api/feedback" \
 ```
 
 **curl例**
+
 ```bash
 curl -X POST "<BASE_URL>/api/metrics" \
   -H "Content-Type: application/json" \
@@ -279,6 +300,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
 ## 5. 代表的なエラー例
 
 **401 認証エラー（API_TOKEN不一致）**
+
 ```json
 {
   "error": "Unauthorized"
@@ -286,6 +308,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
 ```
 
 **403 Origin拒否**
+
 ```json
 {
   "error": "Origin is not allowed"
@@ -293,6 +316,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
 ```
 
 **429 レート制限**
+
 ```json
 {
   "error": "Too many requests"
@@ -300,6 +324,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
 ```
 
 **408 フィードバックタイムアウト**
+
 ```json
 {
   "error": {
@@ -312,6 +337,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
 ```
 
 **504 チャットタイムアウト（retriable）**
+
 ```json
 {
   "error": "AI応答がタイムアウトしました",
@@ -326,9 +352,11 @@ curl -X POST "<BASE_URL>/api/metrics" \
 **ステータス**: 設計完了（実装は次フェーズ）
 
 ### 6.1 目的
+
 - `feedback` 系の複数書き込みを `DB.batch(...)` へ集約し、保存処理の整合性と負荷効率を高める
 
 ### 6.2 想定テーブル
+
 - `feedback_sessions`
   - `session_id` (PK), `client_id`, `payload_json`, `created_at`
 - `feedback_cache`
@@ -337,6 +365,7 @@ curl -X POST "<BASE_URL>/api/metrics" \
   - `id` (PK), `session_id`, `event_type`, `event_payload_json`, `created_at`
 
 ### 6.3 書き込み方針
+
 - `POST /api/feedback` で保存が必要な場合、以下を1回の `batch` で実行
   - セッション初回保存（upsert）
   - キャッシュ保存（upsert）
@@ -344,10 +373,12 @@ curl -X POST "<BASE_URL>/api/metrics" \
 - 途中失敗時は全体失敗として扱い、部分更新を残さない
 
 ### 6.4 エラー方針（予定）
+
 - D1書き込み失敗: `500` + `DB_WRITE_FAILED`
 - D1タイムアウト: `503` + `DB_TIMEOUT`（`retriable: true`）
 
 ### 6.5 移行手順（予定）
+
 1. D1スキーマ作成とマイグレーション適用
 2. 読み取り互換層（既存KV + D1）を追加
 3. 書き込みをD1バッチへ段階切替

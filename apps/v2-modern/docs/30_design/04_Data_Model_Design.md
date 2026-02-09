@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> このドキュメントは**初期設計フェーズ**の記録です。
+> 最新の実装詳細、現在のAPI仕様、およびアーキテクチャについては、**[マスター技術リファレンス](../00_overview/00_Master_Technical_Reference.md)**を参照してください。
+
 # データモデル設計（v2-modern）
 
 **目的**: セッション/作業項目/抽出データの構造と整合性を定義する  
@@ -97,6 +101,7 @@ interface ExtractedData {
 | IndexedDB | 完了セッション履歴 | Dexie |
 
 **IndexedDB スキーマ**
+
 ```typescript
 class KYDatabase extends Dexie {
   sessions!: Table<SoloKYSession, string>

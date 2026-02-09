@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> このドキュメントは**初期設計フェーズ**の記録です。
+> 最新の実装詳細、現在のAPI仕様、およびアーキテクチャについては、**[マスター技術リファレンス](../00_overview/00_Master_Technical_Reference.md)**を参照してください。
+
 # システムアーキテクチャ設計書（Phase 2.1-2.8）
 
 **対象**: Voice KY Assistant v2-modern（Phase 2.1-2.8）  
@@ -186,4 +190,3 @@ flowchart LR
 - `../10_design/03_API_Design.md`
 - `../10_design/04_Data_Model_Design.md`
 - `../10_design/05_Conversation_UX_Design.md`
-
