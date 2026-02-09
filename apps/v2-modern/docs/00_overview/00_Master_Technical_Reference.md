@@ -4,8 +4,37 @@
 
 ---
 
+## クイックスタート / 開発早見表
+
+### 5分でわかる v2-modern
+
+- **何を作るもの？**: 建設現場向け「音声対話型KY（危険予知）活動」アプリ
+- **主な機能**:
+  - **音声対話**: ハンズフリーで危険予知活動が可能
+  - **自動記録**: 会話から作業内容・危険・対策をAIが抽出
+  - **PDF出力**: 捺印可能な帳票を即座に生成
+- **技術スタック**:
+  - **Front**: React + Vite + Zustand (状態管理)
+  - **Back**: Cloudflare Workers + Hono + OpenAI API
+  - **Data**: IndexedDB (クライアント保存) + KV (サーバー設定)
+
+### 開発コマンド早見表
+
+| 目的 | コマンド | 備考 |
+|:---|:---|:---|
+| **開発開始** | `npm run dev:all` | フロント・バック同時起動 |
+| **テスト(全)** | `npm test` | Unit + E2E |
+| **型チェック** | `npm run type-check` | tscによる検査 |
+| **Lint修正** | `npm run lint:fix` | ESLint自動修正 |
+| **デプロイ(Front)** | `npm run deploy:pages` | Cloudflare Pagesへ |
+| **デプロイ(Back)** | `npm run deploy:workers` | Cloudflare Workersへ |
+| **実費テスト** | `npm run test:cost:ops` | 本番APIで課金テスト |
+
+---
+
 ## 目次
 
+0. [クイックスタート / 開発早見表](#クイックスタート--開発早見表)
 1. [概要と技術スタック](#概要と技術スタック)
 2. [アーキテクチャ図](#アーキテクチャ図)
 3. [フロントエンド詳細](#フロントエンドsrcの詳細)
