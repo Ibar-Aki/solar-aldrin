@@ -29,11 +29,10 @@ export function KYSessionPage() {
         isLoading,
         error,
         errorSource,
-        updateCurrentWorkItem,
         completeSession,
     } = useKYStore()
 
-    const { sendMessage, initializeChat, retryLastMessage, canRetry } = useChat()
+    const { sendMessage, applyRiskLevelSelection, initializeChat, retryLastMessage, canRetry } = useChat()
 
     // セッションがない場合はホームに戻る
     useEffect(() => {
@@ -66,8 +65,7 @@ export function KYSessionPage() {
     }
 
     const handleRiskLevelChange = (level: 1 | 2 | 3 | 4 | 5) => {
-        updateCurrentWorkItem({ riskLevel: level })
-        sendMessage(`危険度は${level}です`)
+        applyRiskLevelSelection(level)
     }
 
     const handleComplete = () => {

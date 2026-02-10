@@ -1,5 +1,6 @@
 import type { Countermeasure, ExtractedData, WorkItem } from '@/types/ky'
 import { isWorkItemComplete } from '@/lib/validation'
+import { isNonAnswerText } from '@/lib/nonAnswer'
 
 type MergeResult = {
     workItemPatch: Partial<WorkItem>
@@ -16,8 +17,23 @@ const SHOULD_COMMIT_ACTIONS = new Set([
 
 function mergeUniqueList(base: string[] | undefined, incoming: string[] | undefined): string[] | null {
     if (!incoming || incoming.length === 0) return null
-    const merged = [...(base ?? []), ...incoming].filter((value, index, self) => self.indexOf(value) === index)
-    return merged
+    const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim()
+
+    const merged = [...(base ?? []), ...incoming]
+        .map((v) => (typeof v === 'string' ? normalize(v) : ''))
+        .filter((v) => v.length > 0 && !isNonAnswerText(v))
+
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const v of merged) {
+        const key = v.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(v)
+        if (out.length >= 3) break // 仕様: whyDangerous は最大3件
+    }
+
+    return out.length > 0 ? out : null
 }
 
 function normalizeMeasureText(value: string): string {
@@ -31,7 +47,7 @@ function mergeUniqueCountermeasures(
     if (!incoming || incoming.length === 0) return null
     const merged = [...(base ?? []), ...incoming]
         .map((cm) => ({ ...cm, text: normalizeMeasureText(cm.text) }))
-        .filter((cm) => cm.text.length > 0)
+        .filter((cm) => cm.text.length > 0 && !isNonAnswerText(cm.text))
 
     const seen = new Set<string>()
     const out: Countermeasure[] = []

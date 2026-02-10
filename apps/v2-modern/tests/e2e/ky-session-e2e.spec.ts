@@ -66,9 +66,15 @@ test.describe('KYセッション統合E2E', () => {
         // 危険度選択（モックによりnextAction: ask_risk_levelになっているはず）
         await expect(riskSelector).toBeVisible({ timeout: 10000 })
 
+        // 危険度ボタンはチャット送信（API呼び出し）を発生させるため、レスポンスを待ってから次に進む。
+        await expect(riskSelector.getByRole('button', { name: '3' })).toBeEnabled()
         const thirdResponse = page.waitForResponse('**/api/chat')
         await riskSelector.getByRole('button', { name: '3' }).click()
         await thirdResponse
+
+        const fourthResponse = page.waitForResponse('**/api/chat')
+        await sendUserMessage(page, '対策は、足場の点検を実施し、安全帯を二丁掛けで使用します')
+        await fourthResponse
 
         // 3. 完了フロー
         const finishButton = page.getByRole('button', { name: '行動目標を決めて終了する' })
@@ -125,6 +131,7 @@ test.describe('KYセッション統合E2E', () => {
 // Helpers
 async function sendUserMessage(page: Page, message: string) {
     const input = page.getByPlaceholder('メッセージを入力...')
+    await expect(input).toBeEnabled()
     await input.fill(message)
     await input.press('Enter')
 }

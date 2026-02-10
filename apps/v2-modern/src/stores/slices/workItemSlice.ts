@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { WorkItem } from '@/types/ky'
 import type { KYStore } from '../kyStore'
 import { isWorkItemComplete } from '@/lib/validation'
+import { isNonAnswerText } from '@/lib/nonAnswer'
 
 export interface WorkItemSlice {
     currentWorkItem: Partial<WorkItem>
@@ -30,6 +31,15 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
         const { session, currentWorkItem } = get()
         if (!session) return
 
+        // 仕様: 危険は最大2件まで（3件目以降は保存しない）
+        if (session.workItems.length >= 2) {
+            set({
+                error: '危険の登録は2件までです',
+                errorSource: 'validation',
+            })
+            return
+        }
+
         // 必須フィールド + 対策2件以上のチェック
         if (!isWorkItemComplete(currentWorkItem)) {
             set({
@@ -44,16 +54,25 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
             workDescription: currentWorkItem.workDescription ?? '',
             hazardDescription: currentWorkItem.hazardDescription ?? '',
             riskLevel: currentWorkItem.riskLevel as 1 | 2 | 3 | 4 | 5,
-            whyDangerous: currentWorkItem.whyDangerous ?? [],
-            countermeasures: currentWorkItem.countermeasures ?? [],
+            // 念のため、保存時にも非回答/空値を除去しておく（AI/手入力の揺れ対策）
+            whyDangerous: (currentWorkItem.whyDangerous ?? [])
+                .map((v) => (typeof v === 'string' ? v.trim() : ''))
+                .filter((v) => v.length > 0 && !isNonAnswerText(v))
+                .slice(0, 3),
+            countermeasures: (currentWorkItem.countermeasures ?? [])
+                .map((cm) => ({ ...cm, text: typeof cm.text === 'string' ? cm.text.trim() : '' }))
+                .filter((cm) => cm.text.length > 0 && !isNonAnswerText(cm.text)),
         }
 
+        const nextWorkItems = [...session.workItems, completeItem]
         set({
             session: {
                 ...session,
-                workItems: [...session.workItems, completeItem],
+                workItems: nextWorkItems,
             },
             currentWorkItem: createEmptyWorkItem(),
+            // AIが誤って ask_more_work を返しても、2件固定なら行動目標へ寄せる。
+            ...(nextWorkItems.length >= 2 ? { status: 'action_goal' as const } : {}),
             error: null,
             errorSource: null,
         })

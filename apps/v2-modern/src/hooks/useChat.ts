@@ -267,12 +267,41 @@ export function useChat() {
     }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus])
 
     const isKYCompleteCommand = (text: string): boolean => {
-        const trimmed = text.trim()
-        if (!trimmed) return false
-        if (trimmed === 'KY完了') return true
-        if (trimmed === 'ＫＹ完了') return true
-        return false
+        const normalized = text
+            .trim()
+            .replace(/[\s\u3000]+/g, '') // 空白（全角含む）除去
+            .replace(/[。．.!！?？]+$/g, '') // 末尾の句読点除去（誤爆防止: 中間は残す）
+            .replace(/Ｋ/g, 'K')
+            .replace(/Ｙ/g, 'Y')
+            .toUpperCase()
+        return normalized === 'KY完了'
     }
+
+    const applyRiskLevelSelection = useCallback((level: 1 | 2 | 3 | 4 | 5) => {
+        if (!session) return
+        if (inFlightRef.current) return
+        if (status !== 'work_items') return
+
+        updateCurrentWorkItem({ riskLevel: level })
+
+        const userText = `危険度は${level}です`
+        addMessage('user', userText)
+        void sendTelemetry({
+            event: 'input_length',
+            sessionId: session.id,
+            value: userText.length,
+            data: {
+                source: 'risk_level_button',
+            },
+        })
+
+        setError(null)
+        addMessage(
+            'assistant',
+            'その危険を防ぐための対策を教えてください。（設備・環境 / 人配置・行動 / 保護具 のどれでもOK。合計2件以上あると安心です）',
+            { nextAction: 'ask_countermeasure' }
+        )
+    }, [session, status, updateCurrentWorkItem, addMessage, setError])
 
     /**
      * メッセージを送信してAI応答を取得
@@ -585,6 +614,7 @@ export function useChat() {
     return {
         initializeChat,
         sendMessage,
+        applyRiskLevelSelection,
         retryLastMessage,
         canRetry,
     }

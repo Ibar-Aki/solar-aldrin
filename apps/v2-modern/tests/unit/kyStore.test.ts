@@ -101,4 +101,35 @@ describe('kyStore', () => {
         updateActionGoal('Zero Accidents')
         expect(useKYStore.getState().session?.actionGoal).toBe('Zero Accidents')
     })
+
+    it('limits work items to 2 and forces action_goal after the second commit', () => {
+        const { startSession, updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        startSession('User', 'Site', 'Rain', 'フリー', 'good')
+
+        const fillAndCommit = (suffix: string) => {
+            updateCurrentWorkItem({
+                workDescription: `Work ${suffix}`,
+                hazardDescription: `Hazard ${suffix}`,
+                riskLevel: 4,
+                whyDangerous: [`Why ${suffix}`],
+                countermeasures: [
+                    { category: 'equipment', text: `Measure A ${suffix}` },
+                    { category: 'equipment', text: `Measure B ${suffix}` },
+                ],
+            })
+            commitWorkItem()
+        }
+
+        fillAndCommit('1')
+        expect(useKYStore.getState().session?.workItems).toHaveLength(1)
+        expect(useKYStore.getState().status).toBe('work_items')
+
+        fillAndCommit('2')
+        expect(useKYStore.getState().session?.workItems).toHaveLength(2)
+        expect(useKYStore.getState().status).toBe('action_goal')
+
+        fillAndCommit('3')
+        expect(useKYStore.getState().session?.workItems).toHaveLength(2)
+        expect(useKYStore.getState().error).toBe('危険の登録は2件までです')
+    })
 })

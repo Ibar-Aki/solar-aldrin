@@ -9,6 +9,7 @@ import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH, 
 import type { Countermeasure, CountermeasureCategory, ExtractedData } from '../../src/types/ky'
 import { logError, logWarn } from '../observability/logger'
 import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
+import { isNonAnswerText } from '../../src/lib/nonAnswer'
 
 type Bindings = {
     OPENAI_API_KEY: string
@@ -213,9 +214,9 @@ function normalizeStringList(values: string[] | undefined): string[] | undefined
     if (!values || values.length === 0) return undefined
     const compacted = values
         .map(value => value.trim())
-        .filter(value => value.length > 0)
+        .filter(value => value.length > 0 && !isNonAnswerText(value))
     if (compacted.length === 0) return undefined
-    return [...new Set(compacted)]
+    return [...new Set(compacted)].slice(0, 3) // 仕様: whyDangerous は最大3件
 }
 
 const COUNTERMEASURE_CATEGORIES: CountermeasureCategory[] = ['ppe', 'behavior', 'equipment']
@@ -265,6 +266,7 @@ function coerceCountermeasures(value: unknown): Countermeasure[] | undefined {
         if (typeof text !== 'string') return
         const normalizedText = normalizeCountermeasureText(text)
         if (!normalizedText) return
+        if (isNonAnswerText(normalizedText)) return
 
         const cat = typeof category === 'string' && isCountermeasureCategory(category.trim())
             ? (category.trim() as CountermeasureCategory)
@@ -302,7 +304,7 @@ function normalizeCountermeasures(values: Countermeasure[] | undefined): Counter
             category: isCountermeasureCategory(String(cm.category)) ? cm.category : fallbackClassifyCountermeasure(cm.text),
             text: normalizeCountermeasureText(cm.text),
         }))
-        .filter((cm) => cm.text.length > 0)
+        .filter((cm) => cm.text.length > 0 && !isNonAnswerText(cm.text))
 
     const seen = new Set<string>()
     const out: Countermeasure[] = []
@@ -320,13 +322,26 @@ function coerceStringArray(value: unknown): string[] | undefined {
         const normalized = value
             .filter((item): item is string => typeof item === 'string')
             .map(item => item.trim())
-            .filter(item => item.length > 0)
-        return normalized.length > 0 ? normalized : undefined
+            .filter(item => item.length > 0 && !isNonAnswerText(item))
+
+        if (normalized.length === 0) return undefined
+        // 仕様: 最大3件 + できるだけ順序維持でユニーク化
+        const uniq: string[] = []
+        const seen = new Set<string>()
+        for (const item of normalized) {
+            if (seen.has(item)) continue
+            seen.add(item)
+            uniq.push(item)
+            if (uniq.length >= 3) break
+        }
+        return uniq
     }
 
     if (typeof value === 'string') {
         const trimmed = value.trim()
-        return trimmed ? [trimmed] : undefined
+        if (!trimmed) return undefined
+        if (isNonAnswerText(trimmed)) return undefined
+        return [trimmed]
     }
 
     return undefined

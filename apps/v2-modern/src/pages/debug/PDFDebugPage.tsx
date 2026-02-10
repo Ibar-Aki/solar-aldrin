@@ -15,6 +15,41 @@ type PdfJsWorkerModule = { default?: string } | string
 
 let pdfjsReady: Promise<{ pdfjs: PdfJsModule; workerSrc: string }> | null = null
 
+// react-pdf は内部でグローバルな FontStore / renderer を共有するため、
+// ブラウザ上で複数PDFを同時レンダリングするとレイアウトが不安定になり得る（E2Eがflaky化）。
+// Debugページではレンダリングを直列化して安定性を優先する。
+let pdfRenderQueue: Promise<unknown> = Promise.resolve()
+
+function enqueuePdfRender<T>(task: () => Promise<T>): Promise<T> {
+    const next = pdfRenderQueue.then(task, task)
+    pdfRenderQueue = next.then(() => undefined, () => undefined)
+    return next
+}
+
+let pdfFontsReady: Promise<void> | null = null
+async function preloadPdfFonts() {
+    if (!pdfFontsReady) {
+        const urls = [
+            '/fonts/Noto_Sans_JP/static/NotoSansJP-Regular.ttf',
+            '/fonts/Noto_Sans_JP/static/NotoSansJP-Bold.ttf',
+        ]
+        pdfFontsReady = Promise.all(
+            urls.map(async (url) => {
+                try {
+                    const res = await fetch(url)
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    // Warm cache and surface potential fetch issues early.
+                    await res.arrayBuffer()
+                } catch (error) {
+                    // Best-effort: if fonts fail to preload, rendering may fallback but the page should still work.
+                    console.warn('PDF font preload failed:', url, error)
+                }
+            })
+        ).then(() => undefined)
+    }
+    return pdfFontsReady
+}
+
 async function loadPdfJs() {
     if (!pdfjsReady) {
         pdfjsReady = Promise.all([
@@ -30,7 +65,8 @@ async function loadPdfJs() {
     return pdfjsReady
 }
 
-async function renderPdfPages(container: HTMLDivElement, session: SoloKYSession) {
+async function renderPdfPagesInternal(container: HTMLDivElement, session: SoloKYSession) {
+    await preloadPdfFonts()
     const doc = <KYSheetPDF session={session} />
     const blob = await pdf(doc).toBlob()
     const bytes = new Uint8Array(await blob.arrayBuffer())
@@ -56,6 +92,10 @@ async function renderPdfPages(container: HTMLDivElement, session: SoloKYSession)
         await page.render({ canvasContext: context, viewport, canvas }).promise
         container.appendChild(canvas)
     }
+}
+
+async function renderPdfPages(container: HTMLDivElement, session: SoloKYSession) {
+    return enqueuePdfRender(() => renderPdfPagesInternal(container, session))
 }
 
 function PDFPreviewSection({
