@@ -96,11 +96,11 @@ export function KYSessionPage() {
         <div className="text-xs sm:text-sm text-gray-500 leading-snug">
             <div className="flex min-w-0 items-center justify-end gap-1">
                 <span className="min-w-0 truncate">{session.siteName}</span>
-                <span className="shrink-0">、{session.weather}</span>
+                <span className="shrink-0">｜{session.weather}</span>
             </div>
             <div className="flex min-w-0 items-center justify-end gap-1">
                 <span className="min-w-0 truncate">{processPhaseLabel}</span>
-                <span className="shrink-0">、{session.userName}</span>
+                <span className="shrink-0">｜{session.userName}</span>
             </div>
         </div>
     )
