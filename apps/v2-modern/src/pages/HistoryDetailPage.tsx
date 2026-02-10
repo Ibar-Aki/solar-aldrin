@@ -178,7 +178,7 @@ export function HistoryDetailPage() {
                                     <p className="text-xs text-gray-500">
                                         対策カテゴリ: 保護具{item.countermeasures.filter((cm) => cm.category === 'ppe').length}
                                         {' / '}行動{item.countermeasures.filter((cm) => cm.category === 'behavior').length}
-                                        {' / '}設備・準備{item.countermeasures.filter((cm) => cm.category === 'equipment').length}
+                                        {' / '}設備・環境{item.countermeasures.filter((cm) => cm.category === 'equipment').length}
                                     </p>
                                 </div>
                             ))}

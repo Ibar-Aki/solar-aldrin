@@ -1,10 +1,9 @@
 export const basicFlowResponses = [
     {
-        reply: '想定される危険は分かりました。どのような状況で危険になりますか？',
+        reply: '了解です。どんな危険が想定されますか？「何をするとき／何が原因で／どうなる」が分かると助かります。',
         extracted: {
-            workDescription: '高所作業',
-            hazardDescription: '足場からの転落',
-            nextAction: 'ask_why',
+            workDescription: '高所で資材を運ぶとき',
+            nextAction: 'ask_hazard',
         },
         usage: {
             totalTokens: 120,
@@ -14,13 +13,9 @@ export const basicFlowResponses = [
         reply: 'ありがとうございます。危険度は1〜5のどれですか？',
         extracted: {
             whyDangerous: [
-                '安全帯が外れる可能性がある',
-                '足元が不安定になりやすい',
+                '足元が不安定でバランスを崩しやすい',
             ],
-            countermeasures: [
-                { category: 'ppe', text: '安全帯を二丁掛けする' },
-                { category: 'equipment', text: '作業前に足場の点検を行う' },
-            ],
+            hazardDescription: '足場から転落する',
             nextAction: 'ask_risk_level',
         },
         usage: {
@@ -28,10 +23,14 @@ export const basicFlowResponses = [
         },
     },
     {
-        reply: '他に作業があれば教えてください。',
+        reply: '対策はOKです。行動目標を短く1つ決めて、画面の「完了」ボタンで終了してください。',
         extracted: {
-            riskLevel: 3,
-            nextAction: 'ask_more_work',
+            countermeasures: [
+                { category: 'equipment', text: '足場の点検を実施する' },
+                { category: 'ppe', text: '安全帯を二丁掛けで使用する' },
+            ],
+            actionGoal: '高所作業は足元確認と二丁掛けを徹底する',
+            nextAction: 'completed',
         },
         usage: {
             totalTokens: 80,

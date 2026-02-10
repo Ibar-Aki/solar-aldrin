@@ -5,7 +5,7 @@ const CATEGORY_ORDER: CountermeasureCategory[] = ['ppe', 'behavior', 'equipment'
 const CATEGORY_LABELS: Record<CountermeasureCategory, string> = {
     ppe: '保護具',
     behavior: '行動',
-    equipment: '設備・準備',
+    equipment: '設備・環境',
 }
 
 function getPresentCategories(countermeasures: WorkItem['countermeasures'] | undefined): Set<CountermeasureCategory> {
@@ -61,7 +61,7 @@ export function ConfirmedInfoCard(props: {
                         <div className="font-medium text-slate-700">対策カテゴリ進捗</div>
                         <div>{progressText}</div>
                         <div className="mt-0.5 text-slate-500">
-                            この作業は対策が2カテゴリ以上そろうと保存されます。
+                            この危険は対策が2件以上そろうと保存されます（同じカテゴリ内で2件でもOK）。
                         </div>
                     </div>
                 )}

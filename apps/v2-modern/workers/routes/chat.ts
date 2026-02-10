@@ -446,7 +446,7 @@ function normalizeModelResponse(
                 case 'ask_risk_level':
                     return 'この作業の危険度は1〜5でいくつですか？'
                 case 'ask_countermeasure':
-                    return 'その危険を防ぐための対策を教えてください。（保護具/行動/設備・準備のうち2カテゴリ以上あると安心です）'
+                    return 'その危険を防ぐための対策を教えてください。（設備・環境 / 人配置・行動 / 保護具 のどれでもOK。合計2件以上あると安心です）'
                 case 'ask_more_work':
                     return '他に今日行う作業はありますか？'
                 case 'ask_goal':

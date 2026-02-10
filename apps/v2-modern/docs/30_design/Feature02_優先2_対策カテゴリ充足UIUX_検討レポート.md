@@ -2,9 +2,12 @@
 
 - 作成日時: 2026-02-06 23:31:11 +09:00
 - 作成者: Codex＋GPT-5
+- 更新日: 2026-02-11
 - 対象: 「保護具」「行動」「設備・準備」の3分類中2分類以上を確実に充足
 - 検討前提: 現行の `countermeasures: string[]` を拡張
 - 本レポート作成見積: 2.0時間
+
+※追記: 2026-02-11 時点の実装では、要件更新により「2カテゴリ以上」ではなく「対策は合計2件以上（同カテゴリ2件OK）」を採用しています。詳細は `docs/30_design/Feature06_KYボード_UIUX_会話フェーズ分離_実装レポート.md` を参照してください。
 
 ## 1. 背景と現状
 
@@ -110,3 +113,9 @@
 
 - Latest model guidance: https://platform.openai.com/docs/guides/latest-model
 - Realtime conversations（将来の音声誘導連携の参考）: https://platform.openai.com/docs/guides/realtime-conversations
+
+## 11. 追記（2026-02-11）
+
+- 実装は「カテゴリ2つ以上」ではなく「対策合計2件以上（同カテゴリ2件OK）」を採用（業務要件の更新に追従）。
+- UIはカテゴリ表示（設備・環境 / 人配置・行動 / 保護具）を維持し、会話側でカテゴリ観点の聞き取りを行う。
+- 実装レポート: `docs/30_design/Feature06_KYボード_UIUX_会話フェーズ分離_実装レポート.md`

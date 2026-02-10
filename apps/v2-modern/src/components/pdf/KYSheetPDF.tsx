@@ -296,7 +296,7 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
                     {session.workItems.map((item, index) => (
                         <View key={item.id} style={styles.workItemContainer}>
                             <View style={styles.workItemHeader}>
-                                <Text style={styles.workItemNumber}>作業{index + 1}</Text>
+                                <Text style={styles.workItemNumber}>危険{index + 1}</Text>
                                 <Text style={[styles.riskBadge, getRiskStyle(item.riskLevel)]}>
                                     危険度: {item.riskLevel}/5
                                 </Text>
@@ -304,19 +304,19 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
                             <View style={styles.workItemBody}>
                                 {/* 作業内容 */}
                                 <View style={styles.subSection}>
-                                    <Text style={styles.subTitle}>【作業内容】</Text>
+                                    <Text style={styles.subTitle}>【何をするとき】</Text>
                                     <Text>{item.workDescription}</Text>
                                 </View>
 
                                 {/* 危険内容 */}
                                 <View style={styles.subSection}>
-                                    <Text style={styles.subTitle}>【危険内容】</Text>
+                                    <Text style={styles.subTitle}>【どうなる】</Text>
                                     <Text>{item.hazardDescription}</Text>
                                 </View>
 
                                 {/* なぜ危険か */}
                                 <View style={styles.subSection}>
-                                    <Text style={styles.subTitle}>【危険の要因】</Text>
+                                    <Text style={styles.subTitle}>【何が原因で】</Text>
                                     {item.whyDangerous.map((why, i) => (
                                         <View key={i} style={styles.listItem}>
                                             <Text style={styles.bullet}>•</Text>
@@ -341,7 +341,7 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
                                         const labels: Record<keyof typeof groups, string> = {
                                             ppe: '保護具',
                                             behavior: '行動',
-                                            equipment: '設備・準備',
+                                            equipment: '設備・環境',
                                         }
                                         const order: Array<keyof typeof groups> = ['ppe', 'behavior', 'equipment']
                                         return (

@@ -384,29 +384,29 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     extracted: { workDescription: "配管の溶接作業" }
                 },
                 {
-                    reply: "火花による引火の危険ですね。それはなぜ起こると思いますか？",
+                    reply: "火花による引火の危険ですね。「何が原因で」起こると思いますか？",
                     extracted: { hazardDescription: "火花が飛散して周囲の可燃物に引火する恐れ" }
                 },
                 {
-                    reply: "養生不足が原因で、危険度は5ですね。対策はどうしますか？",
+                    reply: "なるほど。危険度は5ですね。まず設備・環境での対策を1つ教えてください。",
                     extracted: {
                         whyDangerous: ["周囲に養生が不十分なため"],
                         riskLevel: 5
                     }
                 },
                  {
-                     reply: "消火器とスパッタシートですね。他にはありますか？",
+                     reply: "対策ありがとうございます。これで【1件目】はOKです。次に【2件目】の想定される危険を教えてください。",
                      extracted: {
                         countermeasures: [
                             { category: 'equipment', text: "消火器をすぐに使える位置に配置" },
                             { category: 'equipment', text: "スパッタシートで隙間なく養生" },
                             { category: 'ppe', text: "防炎手袋を着用する" },
                         ],
-                         nextAction: 'ask_goal' // Commit trigger
+                         nextAction: 'ask_more_work' // Commit trigger (危険1件目)
                      }
                  },
                 {
-                    reply: "了解しました。行動目標を設定して終了してください。",
+                    reply: "了解しました。行動目標を記録しました。画面の完了ボタンを押して終了してください。",
                     extracted: {
                         actionGoal: "火気使用時の完全養生よし！",
                         nextAction: 'completed'
@@ -591,7 +591,20 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 }
 
                 if (expectedResponsePart) {
-                    await expect(page.locator(`text=${expectedResponsePart}`)).toBeVisible({ timeout: CHAT_WAIT_TIMEOUT_MS })
+                    // Note: 画面上の固定ラベル（例: KYボードの見出し）とAIメッセージ内の文言が一致して
+                    // text= が複数要素にマッチすることがあるため、厳格一致（strict mode）を避けて
+                    // 「どれか1つが可視」になったことを確認する。
+                    const candidate = page.locator(`text=${expectedResponsePart}`)
+                    await expect
+                        .poll(async () => {
+                            const count = await candidate.count().catch(() => 0)
+                            for (let i = 0; i < count; i++) {
+                                const visible = await candidate.nth(i).isVisible().catch(() => false)
+                                if (visible) return true
+                            }
+                            return false
+                        })
+                        .toBe(true, { timeout: CHAT_WAIT_TIMEOUT_MS })
                     await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
                 }
 
@@ -611,13 +624,21 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         if (DRY_RUN) {
             await sendUserMessage('配管の溶接作業を行います', '溶接作業ですね')
             await sendUserMessage('火花が飛散して周囲の可燃物に引火する危険があります', '火花による引火')
-            await sendUserMessage('周囲に養生が不十分なためです。危険度は一番高い5です', '養生不足が原因で、危険度は5ですね')
-            await sendUserMessage('消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します', '消火器とスパッタシート')
-            await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '行動目標を設定して終了')
+            await sendUserMessage('周囲に養生が不十分なためです。危険度は一番高い5です', '設備・環境')
+            await sendUserMessage(
+                '設備・環境: 消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します。人配置・行動: 火気監視を1人つけます。',
+                '2件目'
+            )
+
+            // 1件目が保存されていること（作業・危険の件数）が増えることで検証
+            await expect(page.locator('text=/作業・危険 \\(1件\\)/').first()).toBeVisible({ timeout: 15000 })
+
+            // 2件目の途中でも「KY完了」で行動目標へスキップできる（APIは呼ばれない）
+            await sendUserMessage('KY完了', '今日の行動目標')
+            await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '完了ボタン')
         } else {
-            await sendUserMessage('配管の溶接作業を行います')
-            await sendUserMessage('火花が飛散して周囲の可燃物に引火する危険があります')
-            await sendUserMessage('周囲の養生が不十分で、火花が可燃物に届くためです')
+            // --- 1件目: 危険内容（何をするとき / 何が原因で / どうなる） ---
+            await sendUserMessage('配管の溶接作業をするとき、周囲の養生が不十分で火花が飛散し、可燃物に引火する恐れがあります')
 
             // 危険度選択UIが出る場合はそれを使い、出ない場合はテキストで送る
             let selectedRisk = false
@@ -649,7 +670,8 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await sendUserMessage('危険度は5です')
             }
 
-            await sendUserMessage('対策は、消火器を作業地点から2m以内の通路側に設置し、スパッタシートで周囲の可燃物を隙間なく覆って養生します。火花の飛散範囲を確認します。')
+            // --- 対策（合計2件以上） ---
+            await sendUserMessage('対策は、設備・環境: 消火器を作業地点のすぐそばに設置し、スパッタシートで周囲の可燃物を隙間なく覆って養生します。人配置・行動: 火気監視を1人つけます。')
 
             // 追加深掘りが来た場合の1回だけ補足
             const afterMeasures = await assistantBubbles.last().textContent().catch(() => '') || ''
@@ -657,7 +679,15 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await sendUserMessage('消火器はすぐ手が届く位置に置き、スパッタシートは火花が飛ぶ範囲を床と周囲の可燃物に固定して隙間が出ないようにします。')
             }
 
-            await sendUserMessage('他にありません。')
+            // 完了確認（AIが「これでOK？」を聞く想定）
+            await sendUserMessage('これでOKです。他にありません。')
+
+            // 1件目が保存されたことを確認してから、KY完了ショートカットを使う
+            await expect(page.locator('text=/作業・危険 \\(1件\\)/').first()).toBeVisible({ timeout: 45000 })
+
+            // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）
+            await sendUserMessage('KY完了', '今日の行動目標')
+            await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
         }
 
         // 4. 完了画面への遷移待ち

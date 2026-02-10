@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ChatInput } from '@/components/ChatInput'
 import { ChatBubble } from '@/components/ChatBubble'
 import { RiskLevelSelector } from '@/components/RiskLevelSelector'
-import { ConfirmedInfoCard } from '@/components/ConfirmedInfoCard'
+import { KYBoardCard } from '@/components/KYBoardCard'
 import { useKYStore } from '@/stores/kyStore'
 import { useChat } from '@/hooks/useChat'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
@@ -70,13 +70,6 @@ export function KYSessionPage() {
         sendMessage(`危険度は${level}です`)
     }
 
-    const handleChangeCountermeasureCategory = (index: number, category: 'ppe' | 'behavior' | 'equipment') => {
-        const list = currentWorkItem.countermeasures ?? []
-        if (index < 0 || index >= list.length) return
-        const next = list.map((cm, i) => (i === index ? { ...cm, category } : cm))
-        updateCurrentWorkItem({ countermeasures: next })
-    }
-
     const handleComplete = () => {
         if (!session) return
         completeSession({
@@ -107,7 +100,13 @@ export function KYSessionPage() {
 
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
-    const hasCurrentWork = !!(currentWorkItem.workDescription || currentWorkItem.hazardDescription)
+    const hasCurrentWork = Boolean(
+        currentWorkItem.workDescription ||
+        currentWorkItem.hazardDescription ||
+        currentWorkItem.riskLevel ||
+        (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) ||
+        (currentWorkItem.countermeasures && currentWorkItem.countermeasures.length > 0)
+    )
     const lastAssistantNextAction = (() => {
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const message = messages[i]
@@ -121,6 +120,7 @@ export function KYSessionPage() {
         lastAssistantNextAction,
         currentRiskLevel: currentWorkItem.riskLevel,
     })
+    const kyBoardIndex = Math.min(2, workItemCount + 1)
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -167,16 +167,14 @@ export function KYSessionPage() {
                     </div>
                 )}
 
-                {/* 確認済み情報カード（対策カテゴリ進捗） */}
-                <div className="bg-gray-50 border-b px-4 py-1">
-                    <div className="max-w-4xl mx-auto w-full">
-                        <ConfirmedInfoCard
-                            currentWorkItem={currentWorkItem}
-                            disabled={isLoading}
-                            onChangeCountermeasureCategory={handleChangeCountermeasureCategory}
-                        />
+                {/* KYボード（作業・危険フェーズ中） */}
+                {status === 'work_items' && (
+                    <div className="bg-gray-50 border-b px-4 py-1">
+                        <div className="max-w-4xl mx-auto w-full">
+                            <KYBoardCard currentWorkItem={currentWorkItem} workItemIndex={kyBoardIndex} />
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* チャットエリア */}
@@ -224,8 +222,8 @@ export function KYSessionPage() {
                     </div>
                 )}
 
-                {/* 完了ボタン（すべての作業が終わったら表示） */}
-                {workItemCount > 0 && status === 'work_items' && !hasCurrentWork && (
+                {/* 完了ボタン（AIが完了を促した時のみ表示） */}
+                {workItemCount > 0 && lastAssistantNextAction === 'completed' && !hasCurrentWork && (
                     <div className="px-4 py-2 border-b">
                         <div className="max-w-4xl mx-auto">
                             <Button onClick={handleComplete} className="w-full" data-testid="button-complete-session">

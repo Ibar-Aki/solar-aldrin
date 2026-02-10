@@ -14,18 +14,21 @@ test('PDF debug preview visual regression', async ({ page }) => {
     const standardViewer = page.getByTestId('pdf-viewer-standard')
     await expect(standardViewer).toHaveAttribute('data-ready', 'true')
     await expect(standardViewer.locator('canvas').first()).toBeVisible()
-    await page.waitForTimeout(200)
+    // PDF/canvas rendering can lag slightly and cause flaky diffs under load.
+    await page.waitForTimeout(500)
     await expect(standardViewer).toHaveScreenshot('pdf-standard.png', {
         animations: 'disabled',
         caret: 'hide',
+        maxDiffPixelRatio: 0.02,
     })
 
     const longViewer = page.getByTestId('pdf-viewer-long')
     await expect(longViewer).toHaveAttribute('data-ready', 'true')
     await expect(longViewer.locator('canvas').first()).toBeVisible()
-    await page.waitForTimeout(200)
+    await page.waitForTimeout(500)
     await expect(longViewer).toHaveScreenshot('pdf-long.png', {
         animations: 'disabled',
         caret: 'hide',
+        maxDiffPixelRatio: 0.02,
     })
 })

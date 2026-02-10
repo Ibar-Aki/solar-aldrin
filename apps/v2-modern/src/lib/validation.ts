@@ -5,10 +5,9 @@
 import type { ExtractedData, WorkItem } from '@/types/ky'
 import { OptionalExtractedDataSchema } from '@/lib/kySchemas'
 
-function countCountermeasureCategories(countermeasures: WorkItem['countermeasures'] | undefined): number {
+function countCountermeasures(countermeasures: WorkItem['countermeasures'] | undefined): number {
     if (!countermeasures || countermeasures.length === 0) return 0
-    const set = new Set(countermeasures.map(cm => cm.category))
-    return set.size
+    return countermeasures.filter((cm) => Boolean(cm.text?.trim())).length
 }
 
 /** AI応答のJSONをパースして検証 */
@@ -29,13 +28,13 @@ export function parseExtractedData(jsonString: string): ExtractedData | null {
 
 /** 作業アイテムが完成しているかチェック */
 export function isWorkItemComplete(item: Partial<WorkItem>): boolean {
-    const categoryCount = countCountermeasureCategories(item.countermeasures)
+    const measureCount = countCountermeasures(item.countermeasures)
+    const whyCount = (item.whyDangerous ?? []).filter((v) => Boolean(v?.trim())).length
     return !!(
-        item.workDescription &&
-        item.hazardDescription &&
+        item.workDescription && item.workDescription.trim().length > 0 &&
+        item.hazardDescription && item.hazardDescription.trim().length > 0 &&
         item.riskLevel &&
-        item.whyDangerous && item.whyDangerous.length > 0 &&
-        item.countermeasures && item.countermeasures.length > 0 &&
-        categoryCount >= 2
+        whyCount >= 1 &&
+        measureCount >= 2
     )
 }

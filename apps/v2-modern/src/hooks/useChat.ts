@@ -176,7 +176,9 @@ export function useChat() {
         addMessage,
         updateCurrentWorkItem,
         commitWorkItem,
+        startNewWorkItem,
         updateActionGoal,
+        setStatus,
         setLoading,
         setError,
         setEnvironmentRisk,
@@ -216,7 +218,13 @@ export function useChat() {
         const processPhase = (session.processPhase ?? 'フリー').trim() || 'フリー'
         addMessage(
             'assistant',
-            `${greeting}\n本日は${processPhase}ですね。今日もこれから安全に作業をしましょう。\n本日の作業の中に、どんな危険があるか教えてください。`
+            [
+                `${greeting}`,
+                `本日は${processPhase}ですね。今日もこれから安全に作業をしましょう。`,
+                '',
+                'まず【1件目】の想定される危険を教えてください。',
+                '「何をするとき」「何が原因で」「どうなる」が分かるように、短くでOKです。',
+            ].join('\n')
         )
     }, [session, addMessage, setEnvironmentRisk])
 
@@ -224,7 +232,26 @@ export function useChat() {
      * サーバーから返却された抽出データを元にストアを更新
      */
     const handleExtractedData = useCallback((data?: ExtractedData | null) => {
-        const { workItemPatch, actionGoal, shouldCommitWorkItem } = mergeExtractedData(currentWorkItem, data)
+        if (data?.nextAction) {
+            switch (data.nextAction) {
+                case 'ask_goal':
+                    setStatus('action_goal')
+                    break
+                case 'confirm':
+                case 'completed':
+                    setStatus('confirmation')
+                    break
+                default:
+                    setStatus('work_items')
+                    break
+            }
+        }
+
+        // Note: sendMessageInternal は UI 操作（危険度ボタン等）と同フレームで呼ばれることがあり、
+        // hook のクロージャが最新の currentWorkItem を保持していない場合がある。
+        // ここでは常に最新の state を参照して判定する。
+        const latestWorkItem = useKYStore.getState().currentWorkItem
+        const { workItemPatch, actionGoal, shouldCommitWorkItem } = mergeExtractedData(latestWorkItem, data)
 
         if (actionGoal) {
             updateActionGoal(actionGoal)
@@ -237,7 +264,15 @@ export function useChat() {
         if (shouldCommitWorkItem) {
             commitWorkItem()
         }
-    }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, currentWorkItem])
+    }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus])
+
+    const isKYCompleteCommand = (text: string): boolean => {
+        const trimmed = text.trim()
+        if (!trimmed) return false
+        if (trimmed === 'KY完了') return true
+        if (trimmed === 'ＫＹ完了') return true
+        return false
+    }
 
     /**
      * メッセージを送信してAI応答を取得
@@ -490,8 +525,35 @@ export function useChat() {
     }, [session, messages, addMessage, setLoading, setError, handleExtractedData, currentWorkItem, status])
 
     const sendMessage = useCallback(async (text: string) => {
+        // 仕様: 2件目の途中でも「KY完了」で本日のKYを打ち切れる（未完成の2件目は破棄）
+        if (session && status === 'work_items' && session.workItems.length >= 1 && isKYCompleteCommand(text)) {
+            const normalized = text.trim()
+            addMessage('user', normalized)
+            void sendTelemetry({
+                event: 'input_length',
+                sessionId: session.id,
+                value: normalized.length,
+                data: {
+                    source: 'chat',
+                },
+            })
+
+            setError(null)
+            startNewWorkItem()
+            setStatus('action_goal')
+            addMessage(
+                'assistant',
+                [
+                    '了解です。2件目はここで打ち切って、本日のKYを完了に進めます。',
+                    '今日の行動目標を、短く1つだけ教えてください。',
+                ].join('\n'),
+                { nextAction: 'ask_goal' }
+            )
+            return
+        }
+
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [sendMessageInternal])
+    }, [session, status, addMessage, setError, startNewWorkItem, setStatus, sendMessageInternal])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return
