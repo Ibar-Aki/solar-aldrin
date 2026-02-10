@@ -66,11 +66,14 @@ test.describe('KYセッション統合E2E', () => {
         // 危険度選択（モックによりnextAction: ask_risk_levelになっているはず）
         await expect(riskSelector).toBeVisible({ timeout: 10000 })
 
-        // 危険度ボタンはチャット送信（API呼び出し）を発生させるため、レスポンスを待ってから次に進む。
+        // 危険度ボタンはAPIを呼ばず、ローカルで「危険度はXです」+ 次の質問を挿入して対策フェーズへ進む。
         await expect(riskSelector.getByRole('button', { name: '3' })).toBeEnabled()
-        const thirdResponse = page.waitForResponse('**/api/chat')
         await riskSelector.getByRole('button', { name: '3' }).click()
-        await thirdResponse
+
+        // UIが対策フェーズに進んだことを確認（危険度セレクタが消え、ローカル挿入メッセージが見える）
+        await expect(riskSelector).toHaveCount(0)
+        await expect(page.getByText('危険度は3です')).toBeVisible()
+        await expect(page.getByText('対策を教えてください')).toBeVisible()
 
         const fourthResponse = page.waitForResponse('**/api/chat')
         await sendUserMessage(page, '対策は、足場の点検を実施し、安全帯を二丁掛けで使用します')

@@ -1,6 +1,7 @@
 # Voice KY Assistant v2
 
 更新日: 2026-02-07（実費テスト運用、/api/chat のJSONパース失敗時の扱いと観測情報を追記／ファイル整理：ドキュメント移動/リネーム）
+更新日: 2026-02-11（E2E: 危険度ボタンはAPIなし、PDF visualスナップショット更新手順を追記）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -84,6 +85,19 @@ npm run dev:workers
 
 ```bash
 npm run build
+```
+
+### E2Eテスト（Playwright）
+
+```bash
+npm run test:e2e
+```
+
+- 危険度（1〜5）ボタンは **APIを呼ばずに** ローカルで対策フェーズへ進むため、E2Eは `**/api/chat` の `waitForResponse` を前提にしないでください。
+- PDF visual（`tests/e2e/pdf-visual.spec.ts`）は、PDFビューア/描画方式の変更で差分が出やすいです。ベースライン更新は以下で行います:
+
+```bash
+npx playwright test tests/e2e/pdf-visual.spec.ts --update-snapshots
 ```
 
 ### デプロイ（Workers）

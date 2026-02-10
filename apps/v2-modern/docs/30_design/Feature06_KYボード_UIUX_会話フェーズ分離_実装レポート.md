@@ -4,6 +4,7 @@
 作成者: Codex (GPT-5)  
 更新日: 2026-02-11
 更新日: 2026-02-11（危険度ボタンのローカル即遷移、KY完了の表記ゆれ許容、非回答「なし」の除外強化、危険2件上限のコード側強制）
+更新日: 2026-02-11（E2E: 危険度ボタンはAPI待ち不要、PDF visualのスナップショット更新手順を追記）
 
 ## 目的
 
@@ -92,6 +93,8 @@
 
 - `apps/v2-modern` unit/integration: `npm test`（75/75 PASS）
 - E2E: `npm run test:e2e`（PASS。PDF visualは環境差でflakyになり得る）
+- E2E注意点（危険度ボタン）: 危険度（1〜5）ボタンは **APIを呼ばない** ため、E2Eは `**/api/chat` の `waitForResponse` を置かず、UI変化（危険度セレクタ消失/ローカル挿入メッセージ表示）を待つ
+- E2E注意点（PDF visual）: PDFビューア/描画方式の変更で差分が出やすい。ベースライン更新は `npx playwright test tests/e2e/pdf-visual.spec.ts --update-snapshots`（生成先: `apps/v2-modern/tests/e2e/pdf-visual.spec.ts-snapshots/`）
 - 実費テスト（最大10回許容の範囲で実施）:
   - DRY_RUN: `DRY_RUN=1 npm run test:cost`（PASS）
   - LIVE: `npm run test:cost:preflight`（PASS）→ `npm run test:cost:live`（PASS、**1回** 実行）
