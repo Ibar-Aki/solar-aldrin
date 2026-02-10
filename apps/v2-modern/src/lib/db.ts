@@ -4,20 +4,14 @@
  */
 import Dexie, { type Table } from 'dexie'
 import type { SoloKYSession } from '@/types/ky'
+import { normalizeCountermeasuresInput } from '@/lib/kySchemas'
 
 function normalizeSession(session: SoloKYSession): SoloKYSession {
-    // Backward compatibility: old records may store countermeasures as string[].
-    const workItems = session.workItems.map((item) => {
-        const raw = (item as unknown as { countermeasures?: unknown }).countermeasures
-        if (Array.isArray(raw) && raw.every((v) => typeof v === 'string')) {
-            const normalized = (raw as string[])
-                .map((text) => String(text).trim())
-                .filter(Boolean)
-                .map((text) => ({ category: 'behavior' as const, text }))
-            return { ...item, countermeasures: normalized } as unknown as typeof item
-        }
-        return item
-    })
+    // Backward compatibility: old records may store countermeasures as string[] or drifted shapes.
+    const workItems = session.workItems.map((item) => ({
+        ...item,
+        countermeasures: normalizeCountermeasuresInput((item as unknown as { countermeasures?: unknown }).countermeasures),
+    })) as unknown as SoloKYSession['workItems']
     return { ...session, workItems }
 }
 

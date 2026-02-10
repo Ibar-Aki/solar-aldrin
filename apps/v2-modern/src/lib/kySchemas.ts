@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isNonAnswerText } from '@/lib/nonAnswer'
 
 /**
  * 共通スキーマ定義
@@ -145,6 +146,61 @@ export const CountermeasureSchema = z.object({
 })
 export type CountermeasureFromZod = z.infer<typeof CountermeasureSchema>
 
+/**
+ * 旧データ/ドリフトしたデータを Countermeasure[] に正規化する。
+ * - v1 互換: string[] を { category: "behavior", text }[] に変換
+ * - category 不正/欠落時は behavior にフォールバック（保存互換のため推定分類はしない）
+ */
+export function normalizeCountermeasuresInput(value: unknown): CountermeasureFromZod[] {
+    const out: CountermeasureFromZod[] = []
+
+    const push = (category: unknown, text: unknown) => {
+        if (typeof text !== 'string') return
+        const normalizedText = normalizeLine(text)
+        if (!normalizedText) return
+        if (isNonAnswerText(normalizedText)) return
+
+        const cat =
+            typeof category === 'string' && isCountermeasureCategory(category.trim())
+                ? (category.trim() as CountermeasureCategoryFromZod)
+                : ('behavior' as const)
+
+        out.push({ category: cat, text: normalizedText })
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            if (typeof item === 'string') {
+                push(undefined, item)
+                continue
+            }
+            if (item && typeof item === 'object') {
+                const obj = item as { category?: unknown; text?: unknown; value?: unknown }
+                push(obj.category, obj.text ?? obj.value)
+            }
+        }
+    } else if (typeof value === 'string') {
+        push(undefined, value)
+    } else if (value && typeof value === 'object') {
+        const obj = value as { category?: unknown; text?: unknown; value?: unknown }
+        push(obj.category, obj.text ?? obj.value)
+    }
+
+    if (out.length === 0) return []
+
+    // Preserve order; remove case-insensitive duplicates.
+    const seen = new Set<string>()
+    const deduped: CountermeasureFromZod[] = []
+    for (const cm of out) {
+        const key = cm.text.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        deduped.push(cm)
+    }
+    return deduped
+}
+
+const RiskLevelValueSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)])
 const RiskLevelSchema = z.preprocess((value) => {
     if (value === null || value === undefined) return value
     if (typeof value === 'string') {
@@ -152,7 +208,7 @@ const RiskLevelSchema = z.preprocess((value) => {
         return Number.isFinite(parsed) ? parsed : value
     }
     return value
-}, z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).nullable())
+}, RiskLevelValueSchema.nullable())
 
 /** AI抽出データのスキーマ */
 export const ExtractedDataSchema = z.object({
@@ -182,9 +238,9 @@ export const WorkItemSchema = z.object({
     id: z.string().uuid(),
     workDescription: z.string().min(1),
     hazardDescription: z.string().min(1),
-    riskLevel: z.number().min(1).max(5),
-    whyDangerous: z.array(z.string()).min(1),
-    countermeasures: z.array(CountermeasureSchema).min(1),
+    riskLevel: RiskLevelValueSchema,
+    whyDangerous: z.array(z.string()).min(1).max(3),
+    countermeasures: z.array(CountermeasureSchema).min(2),
 })
 
 /** ISO 8601 日付文字列のスキーマ（ミリ秒対応） */
