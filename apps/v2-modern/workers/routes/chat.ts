@@ -7,14 +7,15 @@ import { zValidator } from '@hono/zod-validator'
 import { SOLO_KY_SYSTEM_PROMPT } from '../prompts/soloKY'
 import { ChatRequestSchema, ChatSuccessResponseSchema, USER_CONTENT_MAX_LENGTH, type ChatRequest } from '../../src/lib/schema'
 import type { Countermeasure, CountermeasureCategory, ExtractedData } from '../../src/types/ky'
-import { logError, logWarn } from '../observability/logger'
-import { cleanJsonMarkdown, fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
+import { logError } from '../observability/logger'
+import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import { isNonAnswerText } from '../../src/lib/nonAnswer'
 
 type Bindings = {
     OPENAI_API_KEY: string
     ENABLE_CONTEXT_INJECTION?: string
     OPENAI_TIMEOUT_MS?: string
+    OPENAI_RETRY_COUNT?: string
 }
 
 const chat = new Hono<{
@@ -41,6 +42,62 @@ const INSTRUCTION_LIKE_PATTERNS = [
     /jailbreak/gi,
     /do\s+not\s+follow/gi,
 ]
+const COUNTERMEASURE_CATEGORY_ENUM = ['ppe', 'behavior', 'equipment'] as const
+const NEXT_ACTION_ENUM = [
+    'ask_work',
+    'ask_hazard',
+    'ask_why',
+    'ask_countermeasure',
+    'ask_risk_level',
+    'ask_more_work',
+    'ask_goal',
+    'confirm',
+    'completed',
+] as const
+const CHAT_RESPONSE_JSON_SCHEMA = {
+    name: 'ky_chat_response',
+    strict: true,
+    schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['reply', 'extracted'],
+        properties: {
+            reply: { type: 'string' },
+            extracted: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['nextAction'],
+                properties: {
+                    nextAction: { type: 'string', enum: NEXT_ACTION_ENUM },
+                    workDescription: { type: 'string' },
+                    hazardDescription: { type: 'string' },
+                    whyDangerous: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        maxItems: 3,
+                    },
+                    countermeasures: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            required: ['category', 'text'],
+                            properties: {
+                                category: { type: 'string', enum: COUNTERMEASURE_CATEGORY_ENUM },
+                                text: { type: 'string' },
+                            },
+                        },
+                    },
+                    riskLevel: {
+                        type: 'integer',
+                        enum: [1, 2, 3, 4, 5],
+                    },
+                    actionGoal: { type: 'string' },
+                },
+            },
+        },
+    },
+} as const
 
 function hasBannedWord(text: string): boolean {
     return BANNED_WORDS.some(word => text.includes(word))
@@ -51,6 +108,13 @@ function resolveOpenAITimeoutMs(raw: string | undefined): number {
     // LIVEでは10sだと普通に超えるため、デフォルトは25sに上げる（E2E側は90s待てる設計）
     if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 120000) return parsed
     return 25000
+}
+
+function resolveOpenAIRetryCount(raw: string | undefined): number {
+    const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
+    // 応答時間短縮のため既定は1回。環境変数で0〜2の範囲のみ許可する。
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 2) return parsed
+    return 1
 }
 
 function getErrorStatus(error: unknown): number | undefined {
@@ -219,7 +283,7 @@ function normalizeStringList(values: string[] | undefined): string[] | undefined
     return [...new Set(compacted)].slice(0, 3) // 仕様: whyDangerous は最大3件
 }
 
-const COUNTERMEASURE_CATEGORIES: CountermeasureCategory[] = ['ppe', 'behavior', 'equipment']
+const COUNTERMEASURE_CATEGORIES: CountermeasureCategory[] = [...COUNTERMEASURE_CATEGORY_ENUM]
 
 function isCountermeasureCategory(value: string): value is CountermeasureCategory {
     return (COUNTERMEASURE_CATEGORIES as string[]).includes(value)
@@ -367,15 +431,7 @@ function coerceNextAction(value: unknown): ExtractedData['nextAction'] | undefin
     if (typeof value !== 'string') return undefined
     const normalized = value.trim()
     const allowed: Array<NonNullable<ExtractedData['nextAction']>> = [
-        'ask_work',
-        'ask_hazard',
-        'ask_why',
-        'ask_countermeasure',
-        'ask_risk_level',
-        'ask_more_work',
-        'ask_goal',
-        'confirm',
-        'completed',
+        ...NEXT_ACTION_ENUM,
     ]
     return allowed.includes(normalized as NonNullable<ExtractedData['nextAction']>)
         ? (normalized as NonNullable<ExtractedData['nextAction']>)
@@ -603,6 +659,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     try {
         const reqId = c.get('reqId')
         const openaiTimeoutMs = resolveOpenAITimeoutMs(c.env.OPENAI_TIMEOUT_MS)
+        const openaiRetryCount = resolveOpenAIRetryCount(c.env.OPENAI_RETRY_COUNT)
 
         const requestBodyBase = {
             model: 'gpt-4o-mini',
@@ -612,23 +669,33 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 ...limitedHistory,
             ],
             max_tokens: MAX_TOKENS,
-            response_format: { type: 'json_object' as const },
+            response_format: {
+                type: 'json_schema' as const,
+                json_schema: CHAT_RESPONSE_JSON_SCHEMA,
+            },
         }
 
         let openaiRequestCount = 0
         let openaiHttpAttempts = 0
         let openaiDurationMs = 0
         let totalTokens = 0
-        let parseRetryAttempted = false
-        let parseRetrySucceeded = false
+        const parseRetryAttempted = false
+        const parseRetrySucceeded = false
+        const serverPolicyMeta = {
+            policyVersion: '2026-02-11-a-b-observability-1',
+            responseFormat: 'json_schema_strict',
+            parseRecoveryEnabled: false,
+            openaiRetryCount,
+        }
 
-        const callOpenAI = async (body: Record<string, unknown>, opts?: { timeoutMs?: number }) => {
+        const callOpenAI = async (body: Record<string, unknown>, opts?: { timeoutMs?: number; retryCount?: number }) => {
             openaiRequestCount += 1
             const responseData = await fetchOpenAICompletion({
                 apiKey,
                 body,
                 reqId,
                 timeoutMs: opts?.timeoutMs ?? openaiTimeoutMs,
+                retryCount: opts?.retryCount ?? openaiRetryCount,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
@@ -647,71 +714,26 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         try {
             parsedContent = safeParseJSON(responseData.content)
         } catch {
-            parseRetryAttempted = true
-            logWarn('json_parse_failed', { reqId })
-
-            // Step 1: Try to "repair" the broken JSON with a minimal prompt (usually cheaper than full regeneration).
-            const broken = cleanJsonMarkdown(responseData.content)
-            const repairPrompt = [
-                'あなたはJSON修復ツールです。',
-                '入力はJSON形式にしたいテキストです。',
-                '次の条件を必ず守って、JSONオブジェクトのみを出力してください。',
-                '- Markdownや説明文を一切含めない',
-                '- スキーマ: { reply: string, extracted: { nextAction: string, workDescription?: string, hazardDescription?: string, whyDangerous?: string[], countermeasures?: {category: "ppe"|"behavior"|"equipment", text: string}[], riskLevel?: 1|2|3|4|5, actionGoal?: string } }',
-                '- extracted.nextAction は必須',
-                '- 未特定フィールドはキー自体を省略（null/空配列で埋めない）',
-                '',
-                `入力:\n${JSON.stringify(broken).slice(0, 8000)}`,
-            ].join('\n')
-
-            const repairData = await callOpenAI({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: 'You repair invalid JSON into a valid JSON object only.' },
-                    { role: 'user', content: repairPrompt },
-                ],
-                max_tokens: MAX_TOKENS,
-                temperature: 0,
-                response_format: { type: 'json_object' },
-            }, { timeoutMs: 10000 })
-
-            try {
-                parsedContent = safeParseJSON(repairData.content)
-                parseRetrySucceeded = true
-            } catch {
-                logWarn('json_repair_failed', { reqId })
-
-                // Step 2: Full regeneration once with a more deterministic setting.
-                const retryData = await callOpenAI({
-                    ...requestBodyBase,
-                    temperature: 0,
-                })
-                try {
-                    parsedContent = safeParseJSON(retryData.content)
-                    parseRetrySucceeded = true
-                } catch {
-                    logError('json_parse_retry_failed', { reqId })
-                    // UX: 再送で回復する可能性があるため、短い待機を推奨する
-                    c.header('Retry-After', '1')
-                    return c.json({
-                        error: 'AIからの応答が不正な形式です。再試行してください。',
-                        code: 'AI_RESPONSE_INVALID_JSON',
-                        requestId: reqId,
-                        retriable: true,
-                        meta: {
-                            openai: {
-                                requestCount: openaiRequestCount,
-                                httpAttempts: openaiHttpAttempts,
-                                durationMs: openaiDurationMs,
-                            },
-                            parseRetry: {
-                                attempted: parseRetryAttempted,
-                                succeeded: parseRetrySucceeded,
-                            },
-                        },
-                    }, 502)
-                }
-            }
+            logError('json_parse_failed_strict_schema', { reqId })
+            c.header('Retry-After', '1')
+            return c.json({
+                error: 'AIからの応答が不正な形式です。再試行してください。',
+                code: 'AI_RESPONSE_INVALID_JSON',
+                requestId: reqId,
+                retriable: true,
+                meta: {
+                    openai: {
+                        requestCount: openaiRequestCount,
+                        httpAttempts: openaiHttpAttempts,
+                        durationMs: openaiDurationMs,
+                    },
+                    parseRetry: {
+                        attempted: parseRetryAttempted,
+                        succeeded: parseRetrySucceeded,
+                    },
+                    server: serverPolicyMeta,
+                },
+            }, 502)
         }
 
         // --- Zodによる構造検証 ---
@@ -739,6 +761,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                         attempted: parseRetryAttempted,
                         succeeded: parseRetrySucceeded,
                     },
+                    server: serverPolicyMeta,
                 },
             }, 502)
         }
@@ -762,6 +785,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     attempted: parseRetryAttempted,
                     succeeded: parseRetrySucceeded,
                 },
+                server: serverPolicyMeta,
             },
         })
 

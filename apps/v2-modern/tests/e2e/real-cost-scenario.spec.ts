@@ -34,6 +34,15 @@ const LIVE_API_TOKEN = (() => {
 
 // LIVEは上流混雑・リトライ等で 30s を超えることがあるため、待ち時間を長めに取る。
 const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
+const EXPECTED_SERVER_POLICY_VERSION = process.env.LIVE_EXPECTED_POLICY_VERSION?.trim() || '2026-02-11-a-b-observability-1'
+const EXPECTED_SERVER_RESPONSE_FORMAT = process.env.LIVE_EXPECTED_RESPONSE_FORMAT?.trim() || 'json_schema_strict'
+const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = process.env.LIVE_EXPECTED_PARSE_RECOVERY_ENABLED === '1'
+const EXPECTED_SERVER_OPENAI_RETRY_COUNT = (() => {
+    const raw = process.env.LIVE_EXPECTED_OPENAI_RETRY_COUNT?.trim()
+    if (!raw) return 1
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) ? parsed : 1
+})()
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
 test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
@@ -94,6 +103,11 @@ interface ApiTraceEntry {
     openaiDurationMs?: number
     parseRetryAttempted?: boolean
     parseRetrySucceeded?: boolean
+    serverPolicyVersion?: string
+    serverResponseFormat?: string
+    serverParseRecoveryEnabled?: boolean
+    serverOpenaiRetryCount?: number
+    serverPolicyViolation?: boolean
 }
 
 // Initialize the log array properly
@@ -209,6 +223,12 @@ async function recordApiTrace(response: Response) {
             meta?: {
                 openai?: { requestCount?: number; httpAttempts?: number; durationMs?: number }
                 parseRetry?: { attempted?: boolean; succeeded?: boolean }
+                server?: {
+                    policyVersion?: string
+                    responseFormat?: string
+                    parseRecoveryEnabled?: boolean
+                    openaiRetryCount?: number
+                }
             }
         }
         entry.code = payload.code
@@ -228,6 +248,44 @@ async function recordApiTrace(response: Response) {
         entry.openaiDurationMs = typeof payload.meta?.openai?.durationMs === 'number' ? payload.meta.openai.durationMs : undefined
         entry.parseRetryAttempted = typeof payload.meta?.parseRetry?.attempted === 'boolean' ? payload.meta.parseRetry.attempted : undefined
         entry.parseRetrySucceeded = typeof payload.meta?.parseRetry?.succeeded === 'boolean' ? payload.meta.parseRetry.succeeded : undefined
+        entry.serverPolicyVersion = typeof payload.meta?.server?.policyVersion === 'string' ? payload.meta.server.policyVersion : undefined
+        entry.serverResponseFormat = typeof payload.meta?.server?.responseFormat === 'string' ? payload.meta.server.responseFormat : undefined
+        entry.serverParseRecoveryEnabled = typeof payload.meta?.server?.parseRecoveryEnabled === 'boolean'
+            ? payload.meta.server.parseRecoveryEnabled
+            : undefined
+        entry.serverOpenaiRetryCount = typeof payload.meta?.server?.openaiRetryCount === 'number'
+            ? payload.meta.server.openaiRetryCount
+            : undefined
+
+        const shouldValidateServerPolicy =
+            RUN_LIVE &&
+            (entry.status === 200 || entry.code === 'AI_RESPONSE_INVALID_JSON' || entry.code === 'AI_RESPONSE_INVALID_SCHEMA')
+
+        if (shouldValidateServerPolicy) {
+            const mismatchReasons: string[] = []
+            if (entry.serverPolicyVersion !== EXPECTED_SERVER_POLICY_VERSION) {
+                mismatchReasons.push(`policyVersion expected=${EXPECTED_SERVER_POLICY_VERSION} actual=${entry.serverPolicyVersion ?? 'missing'}`)
+            }
+            if (entry.serverResponseFormat !== EXPECTED_SERVER_RESPONSE_FORMAT) {
+                mismatchReasons.push(`responseFormat expected=${EXPECTED_SERVER_RESPONSE_FORMAT} actual=${entry.serverResponseFormat ?? 'missing'}`)
+            }
+            if (entry.serverParseRecoveryEnabled !== EXPECTED_SERVER_PARSE_RECOVERY_ENABLED) {
+                mismatchReasons.push(`parseRecoveryEnabled expected=${EXPECTED_SERVER_PARSE_RECOVERY_ENABLED} actual=${entry.serverParseRecoveryEnabled ?? 'missing'}`)
+            }
+            if (entry.serverOpenaiRetryCount !== EXPECTED_SERVER_OPENAI_RETRY_COUNT) {
+                mismatchReasons.push(`openaiRetryCount expected=${EXPECTED_SERVER_OPENAI_RETRY_COUNT} actual=${entry.serverOpenaiRetryCount ?? 'missing'}`)
+            }
+
+            if (mismatchReasons.length > 0) {
+                entry.serverPolicyViolation = true
+                setFatalInfraError(
+                    `chat meta.server mismatch (requestId=${entry.requestId ?? '-'}): ${mismatchReasons.join(', ')}`
+                )
+            } else {
+                entry.serverPolicyViolation = false
+            }
+        }
+
         if (payload.details) {
             try {
                 entry.details = JSON.stringify(payload.details).slice(0, 500)
@@ -284,6 +342,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const openaiHttpAttempts = apiTrace.reduce((sum, entry) => sum + (entry.openaiHttpAttempts ?? 0), 0)
     const parseRetryUsed = apiTrace.reduce((sum, entry) => sum + (entry.parseRetryAttempted ? 1 : 0), 0)
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
+    const serverPolicyViolations = apiTrace.reduce((sum, entry) => sum + (entry.serverPolicyViolation ? 1 : 0), 0)
     const waitOver15sTurns = METRICS.aiResponseTimes.filter(ms => ms >= 15_000).length
 
     // 評価スコア算出 (簡易ロジック)
@@ -304,9 +363,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
             const parseRetryLabel = entry.parseRetryAttempted
                 ? (entry.parseRetrySucceeded ? 'attempted:yes (ok)' : 'attempted:yes (failed)')
                 : '-'
-            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(note, 140))} |`
+            const serverMetaLabel = entry.serverPolicyVersion
+                ? `policy=${entry.serverPolicyVersion} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverOpenaiRetryCount ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
+                : (entry.serverPolicyViolation ? 'missing mismatch' : '-')
+            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
         }).join('\n')
-        : '| - | - | - | - | - | - | - | - | - | - | - |'
+        : '| - | - | - | - | - | - | - | - | - | - | - | - |'
 
     const failureRows = failureDiagnostics.length > 0
         ? failureDiagnostics.map(item => `- ${item}`).join('\n')
@@ -337,6 +399,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **OpenAI HTTP Attempts** | ${openaiHttpAttempts} | - | ℹ️ |
 | **Parse Retry Used** | ${parseRetryUsed} | 0 | ${parseRetryUsed === 0 ? '🟢' : '🟡'} |
 | **Parse Retry Succeeded** | ${parseRetrySucceeded} | - | ℹ️ |
+| **Server Policy Violations** | ${serverPolicyViolations} | 0 | ${serverPolicyViolations === 0 ? '🟢' : '🔴'} |
 | **Retry Button Clicks** | ${METRICS.retryButtonClicks} | 0 | ${METRICS.retryButtonClicks === 0 ? '🟢' : '🟡'} |
 | **Wait > 15s Turns** | ${waitOver15sTurns} | 0 | ${waitOver15sTurns === 0 ? '🟢' : '🟡'} |
 
@@ -346,8 +409,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 ${conversationLog.map(log => `| ${log.time} | **${log.speaker}** | ${log.message.replace(/\n/g, '<br>').slice(0, 100)}${log.message.length > 100 ? '...' : ''} |`).join('\n')}
 
 ## API Trace (/api/chat)
-| Time | Method | Status | Code | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | Note |
-|---|---|---|---|---|---|---|---|---|---|---|
+| Time | Method | Status | Code | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | ServerMeta | Note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
 ${apiTraceRows}
 
 ## Failure Diagnostics

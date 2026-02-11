@@ -57,6 +57,9 @@ describe('Chat API Integration Flow', () => {
         expect(body).toHaveProperty('extracted')
         expect(body.extracted).toHaveProperty('workDescription', '足場組立')
         expect(body.extracted).toHaveProperty('nextAction', 'ask_hazard')
+        expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
+        expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
     })
 
     it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
@@ -199,14 +202,25 @@ describe('Chat API Integration Flow', () => {
             error: string
             code?: string
             retriable?: boolean
+            meta?: {
+                server?: {
+                    policyVersion?: string
+                    responseFormat?: string
+                    parseRecoveryEnabled?: boolean
+                    openaiRetryCount?: number
+                }
+            }
         }
 
         expect(body.code).toBe('AI_RESPONSE_INVALID_JSON')
         expect(body.retriable).toBe(true)
         expect(body.error).toContain('再試行')
+        expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
+        expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
     })
 
-    it('should retry once on malformed JSON and succeed if retry response is valid JSON', async () => {
+    it('should return invalid json error without additional OpenAI recovery calls', async () => {
         const mockBad = {
             choices: [{
                 message: {
@@ -216,29 +230,11 @@ describe('Chat API Integration Flow', () => {
             usage: { total_tokens: 10 }
         }
 
-        const mockGood = {
-            choices: [{
-                message: {
-                    content: JSON.stringify({
-                        reply: 'リトライ成功',
-                        extracted: { nextAction: 'ask_hazard' },
-                    })
-                }
-            }],
-            usage: { total_tokens: 20 }
-        }
-
-        vi.mocked(fetch)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: async () => mockBad,
-                text: async () => '',
-            } as Response)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: async () => mockGood,
-                text: async () => '',
-            } as Response)
+        vi.mocked(fetch).mockResolvedValueOnce({
+            ok: true,
+            json: async () => mockBad,
+            text: async () => '',
+        } as Response)
 
         const req = new Request('http://localhost/', {
             method: 'POST',
@@ -249,18 +245,29 @@ describe('Chat API Integration Flow', () => {
         })
 
         const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
-        expect(res.status).toBe(200)
+        expect(res.status).toBe(502)
         const body = await res.json() as {
-            reply: string
-            extracted?: Record<string, unknown>
-            usage?: { totalTokens: number }
-            meta?: { parseRetry?: { attempted?: boolean; succeeded?: boolean } }
+            code?: string
+            retriable?: boolean
+            meta?: {
+                parseRetry?: { attempted?: boolean; succeeded?: boolean }
+                server?: {
+                    policyVersion?: string
+                    responseFormat?: string
+                    parseRecoveryEnabled?: boolean
+                    openaiRetryCount?: number
+                }
+            }
         }
 
-        expect(body.reply).toBe('リトライ成功')
-        expect(body.usage?.totalTokens).toBe(30)
-        expect(body.meta?.parseRetry?.attempted).toBe(true)
-        expect(body.meta?.parseRetry?.succeeded).toBe(true)
+        expect(body.code).toBe('AI_RESPONSE_INVALID_JSON')
+        expect(body.retriable).toBe(true)
+        expect(body.meta?.parseRetry?.attempted).toBe(false)
+        expect(body.meta?.parseRetry?.succeeded).toBe(false)
+        expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
+        expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     })
 
     it('should keep system prompt fixed and move external context into a user reference message', async () => {
@@ -304,6 +311,10 @@ describe('Chat API Integration Flow', () => {
         const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit
         const requestBody = JSON.parse(String(init.body)) as {
             messages: Array<{ role: string; content: string }>
+            response_format?: {
+                type?: string
+                json_schema?: { strict?: boolean; name?: string }
+            }
         }
 
         const systemMessage = requestBody.messages[0]
@@ -319,6 +330,9 @@ describe('Chat API Integration Flow', () => {
         expect(referenceMessage?.content).toContain('session_context_json')
         expect(referenceMessage?.content).toContain('conversation_summary_text')
         expect(referenceMessage?.content).toContain('足場組立')
+        expect(requestBody.response_format?.type).toBe('json_schema')
+        expect(requestBody.response_format?.json_schema?.strict).toBe(true)
+        expect(requestBody.response_format?.json_schema?.name).toBe('ky_chat_response')
     })
 
     it('should compact extracted fields by removing null/empty values', async () => {

@@ -2,6 +2,7 @@
 
 **最終更新日**: 2026-02-11
 **更新日**: 2026-02-11
+**更新日**: 2026-02-11（`meta.server` 可観測化、`whyDangerous` 補完ロジック追加）
 
 ---
 
@@ -265,7 +266,7 @@ graph TB
 - **メッセージ送信の履歴制限**: クライアント側は最大12メッセージまでを送信対象とし、サーバー側では最大10往復分（20メッセージ）に制限される。
 - **コンテキスト注入**: `VITE_ENABLE_CONTEXT_INJECTION` が `0` でない場合に有効。初回送信時に `buildContextInjection` で生成し、セッション単位で再利用する。
 - **会話サマリ送信条件**: 直近の会話メッセージが6件以上の場合に `conversationSummary` を付与する（短い会話でのトークン増を避ける）。
-- **サイレントリトライ**: `VITE_ENABLE_RETRY_SILENT=1` または本番環境で有効。タイムアウト、レート制限、再試行可能なサーバーエラーで最大2回まで自動再試行する。
+- **サイレントリトライ**: `VITE_ENABLE_RETRY_SILENT=1` のときのみ有効。タイムアウト、レート制限、再試行可能なサーバーエラーで最大1回まで自動再試行する。
 - **手動リトライ**: 直前メッセージの再送を許可し、エラー種別ごとに再試行可否を判断する（認証エラーは再送不可）。
 - **危険度ボタンのAPI呼び出し**: 危険度（1〜5）選択時は `/api/chat` を呼ばず、ローカルで `riskLevel` と次の質問（対策入力）を反映する。
 
@@ -657,7 +658,7 @@ graph TD
     A -->|auth| A1[管理者に確認依頼]
     A -->|rate_limit| A2[待機後リトライ]
     A -->|timeout| A3[サイレントリトライ]
-    A -->|server| A4[JSON修復で再試行]
+    A -->|server| A4[サーバー側で再試行]
     
     style A1 fill:#ffcdd2
     style A2 fill:#fff9c4
@@ -681,7 +682,7 @@ graph TD
 | 認証 | トークン未設定/不一致、設定不足 | `Authorization: Bearer <token>` を確認し、本番では `API_TOKEN` と `REQUIRE_API_TOKEN` を有効化。 |
 | CORS | オリジンが許可リスト外 | `ALLOWED_ORIGINS` を更新し、`STRICT_CORS` の設定を確認。 |
 | レート制限 | 1分あたり30回を超過 | `Retry-After` に従い待機して再試行。 |
-| OpenAI応答 | JSON破損、スキーマ不一致 | JSON修復→再生成の順に再試行し、失敗時は再送案内。 |
+| OpenAI応答 | JSON破損、スキーマ不一致 | `json_schema(strict)` で構造を固定し、失敗時は `AI_RESPONSE_INVALID_JSON` / `AI_RESPONSE_INVALID_SCHEMA` を返して再送案内。 |
 | OpenAI設定 | APIキー未設定、認証失敗 | `OPENAI_API_KEY` の設定と権限を確認。 |
 | 通信・タイムアウト | ネットワーク障害、上流タイムアウト | 通信状態を案内し、再試行（必要なら待機）を促す。 |
 | サーバー内部 | 予期しない例外 | 監視ログと `requestId` を用いて原因追跡、再現条件を特定。 |
@@ -712,6 +713,7 @@ graph TD
 | `REQUIRE_RATE_LIMIT_KV` | - | 1でKV必須化 |
 | `ALLOWED_ORIGINS` | - | 許可オリジンの追加（カンマ区切り） |
 | `OPENAI_TIMEOUT_MS` | - | Chat APIのタイムアウト（1,000〜120,000ms） |
+| `OPENAI_RETRY_COUNT` | - | OpenAI HTTP再試行回数（0〜2、既定1） |
 | `ENABLE_CONTEXT_INJECTION` | - | 0でコンテキスト注入を無効化 |
 | `ENABLE_FEEDBACK` | - | 0でFeedback APIを無効化（204を返す） |
 | `RATE_LIMIT_KV` | 本番 | レート制限用KVバインディング |
@@ -730,7 +732,7 @@ graph TD
 | `VITE_API_TOKEN` | - | 実費テスト/事前チェック用途（ブラウザ常用は非推奨） |
 | `VITE_REQUIRE_API_TOKEN` | - | 1でクライアント側も認証必須扱い |
 | `VITE_ENABLE_CONTEXT_INJECTION` | - | 0でコンテキスト注入を無効化 |
-| `VITE_ENABLE_RETRY_SILENT` | - | 1でサイレントリトライを有効化（未指定時は本番で有効） |
+| `VITE_ENABLE_RETRY_SILENT` | - | 1でサイレントリトライを有効化（未指定時は無効） |
 | `VITE_TELEMETRY_ENABLED` | - | 0でテレメトリ送信を停止 |
 | `VITE_TELEMETRY_SAMPLE_RATE` | - | 0〜1でサンプリング率を指定 |
 | `VITE_TELEMETRY_ENDPOINT` | - | 計測送信先を上書き |
@@ -821,11 +823,11 @@ graph LR
 | 最大履歴 | 10往復（20メッセージ） | サーバー側で履歴を制限 |
 | 合計入力上限 | 10,000文字 | ユーザー入力の合算 |
 | 禁止語 | `殺す` / `死ね` / `爆弾` / `テロ` | 入力時に即時エラー |
-| OpenAIモデル | `gpt-4o-mini` | JSON出力指定 |
+| OpenAIモデル | `gpt-4o-mini` | `json_schema(strict)` で構造化出力 |
 | 最大トークン | 700 | Chat応答の上限 |
 | 温度 | 0.3 | 安定応答優先 |
 | タイムアウト | 25,000ms（未指定時） | `OPENAI_TIMEOUT_MS` で上書き可能 |
-| JSON修復タイムアウト | 10,000ms | 失敗時は再生成 |
+| HTTP再試行回数 | 1回（既定） | `OPENAI_RETRY_COUNT`（0〜2）で上書き可能 |
 
 ### Chat API（クライアント側）
 
@@ -859,19 +861,24 @@ graph LR
 
 ### OpenAI呼び出しの再試行
 
-- **HTTP 5xx / 429**: 最大2回まで再試行（指数バックオフ + ジッター）。
-- **ネットワーク/タイムアウト**: 同様に最大2回まで再試行。
+- **HTTP 5xx / 429**: 既定1回まで再試行（指数バックオフ + ジッター、`OPENAI_RETRY_COUNT` で0〜2を指定）。
+- **ネットワーク/タイムアウト**: 同様に既定1回まで再試行。
 - **Retry-After**: 上流が返す場合は尊重し、チャットAPIは `Retry-After` を付与する。
 
 ### Chat APIのリカバリ戦略
 
-- **JSONパース失敗**: JSON修復 → 再生成の順に再試行。両方失敗時は `AI_RESPONSE_INVALID_JSON` を返す。
+- **JSONパース失敗**: 追加のJSON修復/再生成は行わず、`AI_RESPONSE_INVALID_JSON` を返す（`json_schema(strict)` 前提）。
 - **スキーマ不一致**: `AI_RESPONSE_INVALID_SCHEMA` を返し、短い待機で再送を促す。
 - **タイムアウト**: `AI_TIMEOUT` を返し、`Retry-After: 2` を付与する。
+- **実行ポリシー可観測化**: 成功/JSON不正/Schema不正レスポンスには `meta.server` を付与し、デプロイ反映を機械判定できるようにする。
+  - `policyVersion`: `2026-02-11-a-b-observability-1`
+  - `responseFormat`: `json_schema_strict`
+  - `parseRecoveryEnabled`: `false`
+  - `openaiRetryCount`: 実行時 `OPENAI_RETRY_COUNT` の解決値
 
 ### フロントエンドのリトライ制御
 
-- **サイレントリトライ**: タイムアウト/レート制限/再試行可能なサーバーエラーで最大2回。
+- **サイレントリトライ**: `VITE_ENABLE_RETRY_SILENT=1` のときのみ有効。タイムアウト/レート制限/再試行可能なサーバーエラーで最大1回。
 - **待機時間**: `Retry-After` を優先し、上限10秒で待機。ジッターを加えて同時再送を抑制。
 - **手動リトライ**: 認証エラー以外では再送可能とし、失敗時はエラーを表示する。
 
@@ -909,9 +916,12 @@ graph LR
 5. **OpenAI設定**
    - `OPENAI_KEY_MISSING` は `OPENAI_API_KEY` の未設定が原因。環境変数を補う。
    - `OPENAI_AUTH_ERROR` / `OPENAI_BAD_REQUEST` はキーやモデル設定、入力内容を確認する。
-6. **ログと追跡**
+6. **デプロイ反映確認（A/B）**
+   - `npm run test:cost:preflight` で `chat meta.server` 検証を通す（`policyVersion` / `responseFormat` / `parseRecoveryEnabled` / `openaiRetryCount`）。
+   - 不一致時は Pages の配信バンドルと Workers のデプロイ先不整合を優先確認する。
+7. **ログと追跡**
    - `x-request-id` をキーにログや Sentry を追跡し、再現条件と失敗点を特定する。
-7. **フィードバックの異常**
+8. **フィードバックの異常**
    - `ENABLE_FEEDBACK=0` の場合は 204 が返るため、機能停止状態を確認する。
    - 連続失敗時はフォールバック応答が返るため、上流障害を疑う。
 
@@ -974,56 +984,50 @@ v2は **フロントエンドのチャット体験・音声機能・PDF出力** 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> フェーズ1_現状把握: セッション開始
-    
-    state フェーズ1_現状把握 {
-        [*] --> ask_work: 作業内容を聞く
-        ask_work --> ask_hazard: 作業入力完了
-    }
-    
-    state フェーズ2_本質追究 {
-        ask_hazard --> ask_why: 危険を聞く
-        ask_why --> ask_risk_level: 要因確認完了
-        ask_why --> ask_why: 追加要因あり
-    }
-    
-    state フェーズ3_対策樹立 {
-        ask_risk_level --> ask_countermeasure: 危険度入力
-        ask_countermeasure --> ask_more_work: 対策確認完了
-    }
-    
-    state フェーズ4_行動目標 {
-        ask_more_work --> ask_work: 追加作業あり
-        ask_more_work --> ask_goal: 追加作業なし
-        ask_goal --> confirm: 目標設定
-        confirm --> completed: 最終確認
-    }
-    
-    フェーズ1_現状把握 --> フェーズ2_本質追究
-    フェーズ2_本質追究 --> フェーズ3_対策樹立
-    フェーズ3_対策樹立 --> フェーズ4_行動目標
-    フェーズ4_行動目標 --> [*]: セッション完了
+    [*] --> ask_work: initializeChat
+    ask_work --> ask_hazard: 危険の内容を具体化
+    ask_hazard --> ask_why: 要因を確認
+    ask_why --> ask_why: 要因追加
+    ask_why --> ask_risk_level: 要因が揃う
+
+    ask_risk_level --> ask_countermeasure: 危険度ボタン or AI抽出
+    ask_countermeasure --> ask_more_work: 対策2件以上で作業項目確定
+
+    ask_more_work --> ask_work: 追加作業あり（1件目）
+    ask_more_work --> ask_goal: 追加作業なし
+
+    ask_work --> ask_goal: 「KY完了」ショートカット（1件目登録後）
+    ask_more_work --> ask_goal: 2件目登録で強制遷移（最大2件）
+
+    ask_goal --> confirm: nextAction=confirm
+    ask_goal --> completed: nextAction=completed
+    confirm --> completed: 完了確認
+    completed --> [*]: セッション終了
 ```
 
 ### ストア状態遷移（kyStore）
 
 ```mermaid
 stateDiagram-v2
-    [*] --> idle: 初期状態
-    idle --> work_items: セッション開始
-    
+    [*] --> basic_info: 初期状態
+    basic_info --> work_items: startSession
+
     state work_items {
         [*] --> 入力待ち
-        入力待ち --> AI応答待ち: sendMessage
-        AI応答待ち --> データ更新: 応答受信
-        データ更新 --> 入力待ち: 完了
-        データ更新 --> 作業項目コミット: completed
+        入力待ち --> AI送信中: sendMessage / isLoading=true
+        AI送信中 --> 抽出反映: 応答受信
+        抽出反映 --> 入力待ち: nextAction=ask_*
+        抽出反映 --> action_goal: nextAction=ask_goal
+        抽出反映 --> confirmation: nextAction=confirm|completed
+
+        入力待ち --> action_goal: KY完了ショートカット
+        入力待ち --> action_goal: 2件目commit完了（上限2件）
     }
-    
-    work_items --> action_goal: 全作業完了
-    action_goal --> confirmation: 目標設定
-    confirmation --> completed: 最終確認
-    completed --> [*]: セッション保存
+
+    action_goal --> confirmation: AIがconfirm/completedを返す
+    confirmation --> completed: completeSession()
+    completed --> 保存中: CompletionPageでsaveSessionToDb()
+    保存中 --> [*]: 保存完了/遷移
 ```
 
 ---
@@ -1037,18 +1041,18 @@ flowchart TD
     START[エラー発生] --> CLASSIFY{エラー種別}
     
     CLASSIFY -->|auth| AUTH[認証エラー]
-    AUTH --> AUTH_CHECK{API_TOKEN設定確認}
-    AUTH_CHECK -->|未設定| AUTH_SET[環境変数にトークンを設定]
-    AUTH_CHECK -->|不一致| AUTH_MATCH[クライアントとサーバーのトークンを一致させる]
+    AUTH --> AUTH_CHECK{VITE_REQUIRE_API_TOKEN=1?}
+    AUTH_CHECK -->|Yes| AUTH_SET[ホーム画面のAPIトークン設定を確認]
+    AUTH_CHECK -->|No| AUTH_MATCH[クライアント/サーバーのトークン不一致を確認]
     AUTH_SET --> RETRY_MANUAL[手動リトライ]
     AUTH_MATCH --> RETRY_MANUAL
     
     CLASSIFY -->|rate_limit| RATE[レート制限]
     RATE --> RATE_WAIT[Retry-Afterに従い待機]
-    RATE_WAIT --> RETRY_AUTO[自動リトライ<br/>最大2回]
+    RATE_WAIT --> RETRY_AUTO[サイレントリトライ<br/>最大1回（有効時のみ）]
     
     CLASSIFY -->|timeout| TIMEOUT[タイムアウト]
-    TIMEOUT --> TIMEOUT_CHECK{サイレントリトライ有効?}
+    TIMEOUT --> TIMEOUT_CHECK{サイレントリトライ対象?}
     TIMEOUT_CHECK -->|Yes| RETRY_AUTO
     TIMEOUT_CHECK -->|No| RETRY_MANUAL
     
@@ -1066,7 +1070,9 @@ flowchart TD
     SUCCESS -->|No| RETRY_MANUAL
     
     RETRY_MANUAL --> USER_ACTION[ユーザーがリトライボタン押下]
-    USER_ACTION --> DONE
+    USER_ACTION --> MANUAL_RESULT{成功?}
+    MANUAL_RESULT -->|Yes| DONE
+    MANUAL_RESULT -->|No| START
     
     style AUTH fill:#ffcdd2
     style RATE fill:#fff9c4
@@ -1219,13 +1225,13 @@ export const FeedbackResponseSchema = z.object({
 | 原因 | 対処法 |
 |:--|:--|
 | 1分間に30回以上のリクエスト | `Retry-After` に従い待機後に再送 |
-| 連続送信 | 自動リトライ（最大2回）を待つ |
+| 連続送信 | 自動リトライ（最大1回・有効時のみ）を待つ |
 
 ### 3. AI応答が返ってこない（タイムアウト）
 
 | 原因 | 対処法 |
 |:--|:--|
-| OpenAI側の遅延 | サイレントリトライを待つ（本番では自動有効） |
+| OpenAI側の遅延 | サイレントリトライ有効時は1回だけ自動再送。既定は手動リトライ |
 | ネットワーク不安定 | 電波状況を確認し、手動リトライ |
 | `OPENAI_TIMEOUT_MS` が短すぎる | 25000ms以上に設定 |
 
@@ -1500,7 +1506,7 @@ ENABLE_FEEDBACK = "1"
 # .env.staging
 VITE_API_BASE_URL=https://staging-api.example.com/api
 VITE_REQUIRE_API_TOKEN=1
-VITE_ENABLE_RETRY_SILENT=1
+VITE_ENABLE_RETRY_SILENT=0
 VITE_TELEMETRY_ENABLED=1
 VITE_TELEMETRY_SAMPLE_RATE=1.0
 
@@ -1534,7 +1540,7 @@ FEEDBACK_KV = { binding = "FEEDBACK_KV", id = "..." }
 # .env.production
 VITE_API_BASE_URL=https://api.example.com/api
 VITE_REQUIRE_API_TOKEN=1
-VITE_ENABLE_RETRY_SILENT=1
+VITE_ENABLE_RETRY_SILENT=0
 VITE_TELEMETRY_ENABLED=1
 VITE_TELEMETRY_SAMPLE_RATE=0.1
 
@@ -1562,7 +1568,7 @@ dataset = "voice_ky_metrics"
 - 認証必須
 - CORS厳格（`*.voice-ky-*.pages.dev` のみ）
 - レート制限必須（KV必須）
-- サイレントリトライ有効（デフォルト）
+- サイレントリトライは既定で無効（必要時のみ `VITE_ENABLE_RETRY_SILENT=1`）
 - テレメトリ有効（10%サンプリング）
 - Sentry/Analytics Engine連携
 - ブラウザ実行時はホーム画面の「APIトークン設定」で `localStorage` に保存したトークンを使用
@@ -1575,7 +1581,7 @@ dataset = "voice_ky_metrics"
 |:--|:--:|:--:|:--:|:--|
 | `VITE_API_TOKEN` | - | 任意 | 任意 | 実費テスト/事前チェック用途（ブラウザ常用はlocalStorage設定を利用） |
 | `VITE_REQUIRE_API_TOKEN` | 0 | 1 | 1 | 認証必須フラグ |
-| `VITE_ENABLE_RETRY_SILENT` | 0 | 1 | 1 | サイレントリトライ |
+| `VITE_ENABLE_RETRY_SILENT` | 0 | 0 | 0 | サイレントリトライ（1で明示有効） |
 | `VITE_TELEMETRY_ENABLED` | 0 | 1 | 1 | テレメトリ送信 |
 | `API_TOKEN` | - | ✓ | ✓ | サーバー認証トークン |
 | `REQUIRE_API_TOKEN` | 0 | 1 | 1 | サーバー認証必須 |

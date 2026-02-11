@@ -3,6 +3,7 @@
 - 作成日時: 2026-02-11T13:41:39+09:00
 - 作成者: Codex＋GPT-5
 - 更新日: 2026-02-11
+- 更新日: 2026-02-11（A/B実装反映）
 
 ## 1. 目的
 
@@ -134,3 +135,12 @@ OpenAI公式ドキュメント:
   https://platform.openai.com/docs/guides/streaming-responses
 - Prompt caching（先頭に再利用コンテンツを寄せる）  
   https://platform.openai.com/docs/guides/prompt-engineering#save-on-cost-and-latency-with-prompt-caching
+
+## 8. 実装反映メモ（2026-02-11）
+
+- A（`json_object` → `json_schema strict`）を実装。
+  - 変更: `apps/v2-modern/workers/routes/chat.ts`
+  - 内容: `response_format` を `json_schema` + `strict: true` に移行し、JSON修復/再生成の追加呼び出しを廃止。
+- B（リトライ予算の一本化）を実装。
+  - 変更: `apps/v2-modern/workers/routes/chat.ts`, `apps/v2-modern/src/hooks/useChat.ts`
+  - 内容: サーバー側に `OPENAI_RETRY_COUNT`（既定1、0〜2）を導入。クライアント側サイレントリトライは `VITE_ENABLE_RETRY_SILENT=1` のときのみ有効、最大1回に縮小。

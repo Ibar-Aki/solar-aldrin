@@ -17,10 +17,10 @@ const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗し�
 const ENABLE_SILENT_RETRY = (() => {
     const raw = import.meta.env.VITE_ENABLE_RETRY_SILENT
     if (raw === '1') return true
-    if (raw === '0') return false
-    // UIUX優先: 本番ではデフォルトでサイレントリトライを有効化する
-    return Boolean(import.meta.env.PROD)
+    // B: リトライ予算をサーバー主導に寄せるため、既定は無効。
+    return false
 })()
+const MAX_SILENT_RETRIES = 1
 
 type RetrySource = 'none' | 'manual' | 'silent'
 const MAX_CLIENT_HISTORY_MESSAGES = 12
@@ -443,7 +443,6 @@ export function useChat() {
                     })
 
                     // Live APIs can be intermittently flaky. Retry a few times, respecting Retry-After when available.
-                    const MAX_SILENT_RETRIES = 2
                     let lastError = normalizedFirstError
 
                     for (let attempt = 1; attempt <= MAX_SILENT_RETRIES; attempt++) {

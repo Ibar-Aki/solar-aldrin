@@ -3,12 +3,40 @@ param(
     [string]$ApiBaseUrl = $env:LIVE_API_BASE_URL,
     [string]$ApiToken = $env:VITE_API_TOKEN,
     [string]$Prompt = 'safety check test',
-    [switch]$SkipChat
+    [switch]$SkipChat,
+    [string]$ExpectedPolicyVersion = $env:LIVE_EXPECTED_POLICY_VERSION,
+    [string]$ExpectedResponseFormat = $env:LIVE_EXPECTED_RESPONSE_FORMAT,
+    [string]$ExpectedParseRecoveryEnabled = $env:LIVE_EXPECTED_PARSE_RECOVERY_ENABLED,
+    [string]$ExpectedOpenAiRetryCount = $env:LIVE_EXPECTED_OPENAI_RETRY_COUNT
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
+
+if ([string]::IsNullOrWhiteSpace($ExpectedPolicyVersion)) {
+    $ExpectedPolicyVersion = '2026-02-11-a-b-observability-1'
+}
+if ([string]::IsNullOrWhiteSpace($ExpectedResponseFormat)) {
+    $ExpectedResponseFormat = 'json_schema_strict'
+}
+
+$expectedParseRecoveryEnabledValue = $false
+if (-not [string]::IsNullOrWhiteSpace($ExpectedParseRecoveryEnabled)) {
+    $parseRecoveryToken = $ExpectedParseRecoveryEnabled.Trim().ToLowerInvariant()
+    if ($parseRecoveryToken -in @('1', 'true')) {
+        $expectedParseRecoveryEnabledValue = $true
+    } elseif ($parseRecoveryToken -in @('0', 'false')) {
+        $expectedParseRecoveryEnabledValue = $false
+    } else {
+        throw "ExpectedParseRecoveryEnabled must be one of: 1, 0, true, false (actual=$ExpectedParseRecoveryEnabled)"
+    }
+}
+
+$expectedOpenAiRetryCountValue = 1
+if (-not [string]::IsNullOrWhiteSpace($ExpectedOpenAiRetryCount)) {
+    $expectedOpenAiRetryCountValue = [int]$ExpectedOpenAiRetryCount
+}
 
 function Get-EnvLikeValue {
     param(
@@ -98,6 +126,71 @@ function Assert-StatusCode {
         throw "$Label failed. expected=$Expected actual=$Actual body=$Body"
     }
     Write-Host ("[OK] {0}: {1}" -f $Label, $Actual)
+}
+
+function Assert-ChatServerPolicy {
+    param(
+        [object]$ChatBodyJson,
+        [string]$ExpectedPolicyVersionValue,
+        [string]$ExpectedResponseFormatValue,
+        [bool]$ExpectedParseRecoveryEnabledValue,
+        [int]$ExpectedOpenAiRetryCountValue,
+        [string]$RawBody
+    )
+
+    if (-not $ChatBodyJson) {
+        throw "chat authenticated response is not valid JSON. body=$RawBody"
+    }
+
+    $metaProperty = $ChatBodyJson.PSObject.Properties['meta']
+    $meta = if ($metaProperty) { $metaProperty.Value } else { $null }
+    if (-not $meta) {
+        throw "chat authenticated response missing meta. body=$RawBody"
+    }
+
+    $serverProperty = $meta.PSObject.Properties['server']
+    $server = if ($serverProperty) { $serverProperty.Value } else { $null }
+    if (-not $server) {
+        throw "chat authenticated response missing meta.server. body=$RawBody"
+    }
+
+    $policyVersionProperty = $server.PSObject.Properties['policyVersion']
+    $responseFormatProperty = $server.PSObject.Properties['responseFormat']
+    $parseRecoveryProperty = $server.PSObject.Properties['parseRecoveryEnabled']
+    $retryCountProperty = $server.PSObject.Properties['openaiRetryCount']
+
+    $actualPolicyVersion = if ($policyVersionProperty) { [string]$policyVersionProperty.Value } else { '' }
+    $actualResponseFormat = if ($responseFormatProperty) { [string]$responseFormatProperty.Value } else { '' }
+
+    if (-not $parseRecoveryProperty -or $null -eq $parseRecoveryProperty.Value) {
+        throw "chat authenticated response missing meta.server.parseRecoveryEnabled. body=$RawBody"
+    }
+    $actualParseRecoveryEnabled = [bool]$parseRecoveryProperty.Value
+
+    if (-not $retryCountProperty -or $null -eq $retryCountProperty.Value) {
+        throw "chat authenticated response missing meta.server.openaiRetryCount. body=$RawBody"
+    }
+    $actualOpenAiRetryCount = [int]$retryCountProperty.Value
+
+    $mismatches = @()
+    if ($actualPolicyVersion -ne $ExpectedPolicyVersionValue) {
+        $mismatches += "policyVersion expected=$ExpectedPolicyVersionValue actual=$actualPolicyVersion"
+    }
+    if ($actualResponseFormat -ne $ExpectedResponseFormatValue) {
+        $mismatches += "responseFormat expected=$ExpectedResponseFormatValue actual=$actualResponseFormat"
+    }
+    if ($actualParseRecoveryEnabled -ne $ExpectedParseRecoveryEnabledValue) {
+        $mismatches += "parseRecoveryEnabled expected=$ExpectedParseRecoveryEnabledValue actual=$actualParseRecoveryEnabled"
+    }
+    if ($actualOpenAiRetryCount -ne $ExpectedOpenAiRetryCountValue) {
+        $mismatches += "openaiRetryCount expected=$ExpectedOpenAiRetryCountValue actual=$actualOpenAiRetryCount"
+    }
+
+    if ($mismatches.Count -gt 0) {
+        throw "chat meta.server mismatch. $($mismatches -join ', ') body=$RawBody"
+    }
+
+    Write-Host "[OK] chat meta.server: policyVersion=$actualPolicyVersion responseFormat=$actualResponseFormat parseRecoveryEnabled=$actualParseRecoveryEnabled openaiRetryCount=$actualOpenAiRetryCount"
 }
 
 function Resolve-DefaultPagesUrl {
@@ -261,6 +354,15 @@ if (-not $SkipChat) {
         }
     }
     Assert-StatusCode -Label 'chat authenticated' -Expected 200 -Actual $chatAuth.StatusCode -Body $chatAuth.Body
+
+    $chatAuthJson = Try-ParseJsonBody -Body $chatAuth.Body
+    Assert-ChatServerPolicy `
+        -ChatBodyJson $chatAuthJson `
+        -ExpectedPolicyVersionValue $ExpectedPolicyVersion `
+        -ExpectedResponseFormatValue $ExpectedResponseFormat `
+        -ExpectedParseRecoveryEnabledValue $expectedParseRecoveryEnabledValue `
+        -ExpectedOpenAiRetryCountValue $expectedOpenAiRetryCountValue `
+        -RawBody $chatAuth.Body
 }
 
 Write-Host "=== Preflight passed ==="
