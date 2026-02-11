@@ -13,6 +13,7 @@ import { buildConversationSummary } from '@/lib/chat/conversationSummary'
 import { getTimeGreeting } from '@/lib/greeting'
 import { getApiToken } from '@/lib/apiToken'
 import { shouldEnableSilentRetryClient, shouldRequireApiTokenClient } from '@/lib/envFlags'
+import { isNonAnswerText } from '@/lib/nonAnswer'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = shouldEnableSilentRetryClient()
@@ -21,6 +22,7 @@ const MAX_SILENT_RETRIES = 1
 type RetrySource = 'none' | 'manual' | 'silent'
 const MAX_CLIENT_HISTORY_MESSAGES = 12
 const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
+const ACTION_GOAL_MAX_LENGTH = 120
 
 type NormalizedChatError = {
     message: string
@@ -165,6 +167,77 @@ function computeSilentRetryDelayMs(error: NormalizedChatError): number {
     if (error.errorType === 'timeout') return 1200 + jitter
     if (error.errorType === 'server') return 1200 + jitter
     return 0
+}
+
+function normalizeActionGoalText(value: string): string {
+    return value
+        .replace(/\s+/g, ' ')
+        .replace(/^[「『"\s]+/, '')
+        .replace(/[」』"\s]+$/, '')
+        .trim()
+        .slice(0, ACTION_GOAL_MAX_LENGTH)
+}
+
+function isLikelyActionGoalPhrase(value: string): boolean {
+    if (!value) return false
+    const normalized = normalizeActionGoalText(value)
+    if (!normalized) return false
+    if (isNonAnswerText(normalized)) return false
+    if (normalized.length > 40) return false
+    if (/^(はい|了解|ok|okay|お願いします|大丈夫です)$/i.test(normalized)) return false
+    return /(よし|ヨシ|確認|徹底|厳守|実施)/.test(normalized)
+}
+
+function extractActionGoalFromText(text: string): string | null {
+    const normalizedInput = text
+        .replace(/\r?\n/g, ' ')
+        .trim()
+
+    if (!normalizedInput) return null
+
+    const quotedMatches = [...normalizedInput.matchAll(/[「『"]([^「」『"\n]{2,120})[」』"]/g)]
+    for (const match of quotedMatches) {
+        const candidate = normalizeActionGoalText(match[1] ?? '')
+        if (candidate && !isNonAnswerText(candidate)) {
+            return candidate
+        }
+    }
+
+    const prefixed = normalizedInput.match(
+        /(?:行動目標|目標)\s*(?:は|を|:|：)?\s*([^。.!！?？\n]+?)(?:です|にします|とします|にする|とする)?(?:$|。|!|！|\?|？)/
+    )
+    if (prefixed?.[1]) {
+        const candidate = normalizeActionGoalText(
+            prefixed[1].replace(/(?:これで.*|内容を.*|終了.*|完了.*)$/u, '').trim()
+        )
+        if (candidate && !isNonAnswerText(candidate)) {
+            return candidate
+        }
+    }
+
+    if (isLikelyActionGoalPhrase(normalizedInput)) {
+        return normalizeActionGoalText(normalizedInput)
+    }
+
+    return null
+}
+
+function hasCompletionIntent(text: string): boolean {
+    const normalized = text
+        .normalize('NFKC')
+        .replace(/\s+/g, '')
+        .toLowerCase()
+    if (!normalized) return false
+    return (
+        normalized.includes('確定') ||
+        normalized.includes('終了') ||
+        normalized.includes('完了') ||
+        normalized.includes('終わり') ||
+        normalized.includes('これでok') ||
+        normalized.includes('これで大丈夫') ||
+        normalized.includes('finish') ||
+        normalized.includes('done')
+    )
 }
 
 export function useChat() {
@@ -514,11 +587,40 @@ export function useChat() {
             // TypeScript can't always prove the control-flow guarantees above.
             if (!data) throw new Error('Chat request completed without a response payload')
 
+            const normalizeActionGoalResponse = () => {
+                if (status !== 'action_goal' && status !== 'confirmation') {
+                    return data
+                }
+                const extracted = data.extracted ? { ...data.extracted } : {}
+                const userGoal = extractActionGoalFromText(text)
+                if (!userGoal) {
+                    return data
+                }
+
+                const asksGoalAgain = extracted.nextAction === 'ask_goal'
+                const hasActionGoal = typeof extracted.actionGoal === 'string' && extracted.actionGoal.trim().length > 0
+                if (!asksGoalAgain && hasActionGoal) {
+                    return data
+                }
+
+                return {
+                    ...data,
+                    reply: '行動目標を記録しました。内容を確認して、画面の「完了」ボタンを押してください。',
+                    extracted: {
+                        ...extracted,
+                        actionGoal: hasActionGoal ? extracted.actionGoal : userGoal,
+                        nextAction: 'confirm' as const,
+                    },
+                }
+            }
+
+            const normalizedData = normalizeActionGoalResponse()
+
             // AI応答を追加 (extractedDataも含めて保存)
-            addMessage('assistant', data.reply, data.extracted)
+            addMessage('assistant', normalizedData.reply, normalizedData.extracted)
 
             // ストアの更新
-            handleExtractedData(data.extracted)
+            handleExtractedData(normalizedData.extracted)
 
         } catch (e) {
             const normalizedError =
@@ -608,8 +710,42 @@ export function useChat() {
             return
         }
 
+        // 仕様: 行動目標フェーズでは、明確な目標入力はローカル確定して重複質問を抑止する（APIは呼ばない）
+        if (session && (status === 'action_goal' || status === 'confirmation')) {
+            const normalized = text.trim()
+            const inputGoal = extractActionGoalFromText(text)
+            const completionIntent = hasCompletionIntent(text)
+            const existingGoal = typeof session.actionGoal === 'string' ? normalizeActionGoalText(session.actionGoal) : ''
+            const finalGoal = inputGoal ?? (completionIntent && existingGoal ? existingGoal : null)
+
+            if (finalGoal) {
+                addMessage('user', normalized)
+                void sendTelemetry({
+                    event: 'input_length',
+                    sessionId: session.id,
+                    value: normalized.length,
+                    data: {
+                        source: 'chat',
+                    },
+                })
+
+                setError(null)
+                updateActionGoal(finalGoal)
+                setStatus('confirmation')
+                addMessage(
+                    'assistant',
+                    '行動目標を記録しました。内容を確認して、画面の「完了」ボタンを押してください。',
+                    {
+                        actionGoal: finalGoal,
+                        nextAction: 'confirm',
+                    }
+                )
+                return
+            }
+        }
+
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [session, status, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal])
+    }, [session, status, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return

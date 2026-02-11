@@ -32,6 +32,7 @@ const MAX_TOTAL_INPUT_LENGTH = USER_CONTENT_MAX_LENGTH * 10
 // 最大出力トークン数
 // Structured output が長文で切れると JSON 不正になりやすいため、少し余裕を持たせる。
 const MAX_TOKENS = 900
+const PARSE_RECOVERY_MAX_TOKENS = 1200
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
@@ -293,6 +294,61 @@ function normalizeString(value: string | null | undefined): string | undefined {
     return normalized.length > 0 ? normalized : undefined
 }
 
+function normalizeActionGoalCandidate(value: string): string {
+    return value
+        .replace(/\s+/g, ' ')
+        .replace(/^[「『"\s]+/, '')
+        .replace(/[」』"\s]+$/, '')
+        .trim()
+        .slice(0, 120)
+}
+
+function extractActionGoalFromUserText(value: string): string | undefined {
+    const normalizedInput = value
+        .replace(/\r?\n/g, ' ')
+        .trim()
+
+    if (!normalizedInput) return undefined
+
+    const quotedMatches = [...normalizedInput.matchAll(/[「『"]([^「」『"\n]{2,120})[」』"]/g)]
+    for (const match of quotedMatches) {
+        const candidate = normalizeActionGoalCandidate(match[1] ?? '')
+        if (candidate && !isNonAnswerText(candidate)) {
+            return candidate
+        }
+    }
+
+    const prefixed = normalizedInput.match(
+        /(?:行動目標|目標)\s*(?:は|を|:|：)?\s*([^。.!！?？\n]+?)(?:です|にします|とします|にする|とする)?(?:$|。|!|！|\?|？)/
+    )
+    if (prefixed?.[1]) {
+        const candidate = normalizeActionGoalCandidate(prefixed[1])
+        if (candidate && !isNonAnswerText(candidate)) {
+            return candidate
+        }
+    }
+
+    return undefined
+}
+
+function hasCompletionIntentFromUserText(value: string): boolean {
+    const normalized = value
+        .normalize('NFKC')
+        .replace(/\s+/g, '')
+        .toLowerCase()
+    if (!normalized) return false
+    return (
+        normalized.includes('確定') ||
+        normalized.includes('終了') ||
+        normalized.includes('完了') ||
+        normalized.includes('終わり') ||
+        normalized.includes('これでok') ||
+        normalized.includes('これで大丈夫') ||
+        normalized.includes('finish') ||
+        normalized.includes('done')
+    )
+}
+
 function normalizeStringList(values: string[] | undefined): string[] | undefined {
     if (!values || values.length === 0) return undefined
     const compacted = values
@@ -513,7 +569,7 @@ function normalizeModelResponse(
         ? obj.extracted
         : obj
 
-    const extracted = normalizeExtractedData(extractedCandidate)
+    const normalizedExtracted = normalizeExtractedData(extractedCandidate)
 
     const lastUserText = (() => {
         for (let i = requestMessages.length - 1; i >= 0; i -= 1) {
@@ -521,6 +577,27 @@ function normalizeModelResponse(
             if (msg.role === 'user') return msg.content ?? ''
         }
         return ''
+    })()
+
+    const actionGoalFromUser = extractActionGoalFromUserText(lastUserText)
+    const completionIntentFromUser = hasCompletionIntentFromUserText(lastUserText)
+    const extracted = (() => {
+        if (!actionGoalFromUser) return normalizedExtracted
+
+        const nextAction = normalizedExtracted?.nextAction
+        const hasActionGoal = Boolean(normalizedExtracted?.actionGoal?.trim())
+        const asksGoalAgain = nextAction === 'ask_goal'
+
+        // 目標入力が明確なのに ask_goal が返ってきた場合は、確認フェーズへ前進させる。
+        if (!asksGoalAgain && hasActionGoal && !completionIntentFromUser) {
+            return normalizedExtracted
+        }
+
+        return {
+            ...(normalizedExtracted ?? {}),
+            actionGoal: hasActionGoal ? normalizedExtracted?.actionGoal : actionGoalFromUser,
+            nextAction: completionIntentFromUser || asksGoalAgain ? 'confirm' : (nextAction ?? 'confirm'),
+        } satisfies ExtractedData
     })()
 
     const buildFallbackReply = (value: ExtractedData | undefined): string => {
@@ -699,8 +776,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let openaiDurationMs = 0
         let openaiLastFinishReason: string | null | undefined = null
         let totalTokens = 0
-        const parseRetryAttempted = false
-        const parseRetrySucceeded = false
+        let parseRetryAttempted = false
+        let parseRetrySucceeded = false
         const serverPolicyMeta = {
             policyVersion: '2026-02-11-a-b-observability-1',
             responseFormat: 'json_schema_strict',
@@ -724,18 +801,53 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             return responseData
         }
 
+        const responseSchema = ChatSuccessResponseSchema.omit({ usage: true })
+        const evaluateModelOutput = (content: string) => {
+            try {
+                const parsed = safeParseJSON<{ reply?: string; extracted?: ExtractedData }>(content)
+                const normalized = normalizeModelResponse(parsed, limitedHistory)
+                const validation = responseSchema.safeParse(normalized)
+                return {
+                    parsed,
+                    normalized,
+                    validation,
+                    preview: null as string | null,
+                }
+            } catch {
+                return {
+                    parsed: null,
+                    normalized: null,
+                    validation: null,
+                    preview: content.slice(0, 240),
+                }
+            }
+        }
+
+        const requestParseRecovery = async () => {
+            parseRetryAttempted = true
+            return callOpenAI({
+                ...requestBodyBase,
+                // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
+                max_tokens: PARSE_RECOVERY_MAX_TOKENS,
+                temperature: 0.2,
+            })
+        }
+
         // UIUX優先: 低温度でJSONの壊れ率を下げる（多少の表現多様性は捨てる）
-        const responseData = await callOpenAI({
+        let responseData = await callOpenAI({
             ...requestBodyBase,
             temperature: 0.3,
         })
+        let evaluation = evaluateModelOutput(responseData.content)
 
-        let parsedContent: { reply?: string; extracted?: ExtractedData } = {}
+        if (evaluation.preview && openaiLastFinishReason === 'length') {
+            responseData = await requestParseRecovery()
+            evaluation = evaluateModelOutput(responseData.content)
+            parseRetrySucceeded = !evaluation.preview && Boolean(evaluation.validation?.success)
+        }
 
-        try {
-            parsedContent = safeParseJSON(responseData.content)
-        } catch {
-            const preview = responseData.content.slice(0, 240)
+        if (evaluation.preview) {
+            const preview = evaluation.preview
             logError('json_parse_failed_strict_schema', {
                 reqId,
                 finishReason: openaiLastFinishReason ?? null,
@@ -767,12 +879,14 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             }, 502)
         }
 
-        // --- Zodによる構造検証 ---
-        // usageは後で付与するため除外して検証
-        const normalized = normalizeModelResponse(parsedContent, limitedHistory)
-        const validationResult = ChatSuccessResponseSchema.omit({ usage: true }).safeParse(normalized)
+        if (!evaluation.validation?.success && !parseRetryAttempted && openaiLastFinishReason === 'length') {
+            responseData = await requestParseRecovery()
+            evaluation = evaluateModelOutput(responseData.content)
+            parseRetrySucceeded = !evaluation.preview && Boolean(evaluation.validation?.success)
+        }
 
-        if (!validationResult.success) {
+        const finalValidation = evaluation.validation
+        if (!finalValidation || !finalValidation.success) {
             logError('response_schema_validation_error', { reqId: c.get('reqId') })
             // UX: 再送で回復する可能性があるため、短い待機を推奨する
             c.header('Retry-After', '1')
@@ -781,7 +895,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 code: 'AI_RESPONSE_INVALID_SCHEMA',
                 requestId: c.get('reqId'),
                 retriable: true,
-                details: validationResult.error,
+                details: finalValidation?.error ?? 'schema_validation_failed',
                 meta: {
                     openai: {
                         requestCount: openaiRequestCount,
@@ -798,7 +912,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             }, 502)
         }
 
-        const validContent = validationResult.data
+        const validContent = finalValidation.data
         const compactedExtracted = compactExtractedData(validContent.extracted)
 
         return c.json({

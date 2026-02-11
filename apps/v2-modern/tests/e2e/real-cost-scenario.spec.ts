@@ -25,12 +25,24 @@ function readEnvLikeValue(filePath: string, key: string): string | null {
     return null
 }
 
-const LIVE_API_TOKEN = (() => {
+const LIVE_API_TOKEN_INFO = (() => {
     const envToken = process.env.VITE_API_TOKEN?.trim()
-    if (envToken) return envToken
-    if (!RUN_LIVE) return ''
-    return readEnvLikeValue(path.join(process.cwd(), '.dev.vars'), 'API_TOKEN') ?? ''
+    if (envToken) {
+        return { token: envToken, source: 'env' as const }
+    }
+    if (!RUN_LIVE) {
+        return { token: '', source: 'none' as const }
+    }
+
+    const devVarsToken = readEnvLikeValue(path.join(process.cwd(), '.dev.vars'), 'API_TOKEN') ?? ''
+    if (devVarsToken) {
+        // 実費テストの開始前に環境変数へ昇格しておく（テスト中のフォールバック分岐をなくす）
+        process.env.VITE_API_TOKEN = devVarsToken
+        return { token: devVarsToken, source: 'devvars' as const }
+    }
+    return { token: '', source: 'none' as const }
 })()
+const LIVE_API_TOKEN = LIVE_API_TOKEN_INFO.token
 
 // LIVEは上流混雑・リトライ等で 30s を超えることがあるため、待ち時間を長めに取る。
 const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
@@ -457,7 +469,12 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     page.on('console', (msg) => {
         const type = msg.type()
         if (type === 'error' || type === 'warning') {
-            browserConsole.push(`[${type}] ${msg.text()}`)
+            const loc = msg.location()
+            const hasLocation = Boolean(loc.url)
+            const locationSuffix = hasLocation
+                ? ` @ ${loc.url}${typeof loc.lineNumber === 'number' ? `:${loc.lineNumber}` : ''}`
+                : ''
+            browserConsole.push(`[${type}] ${msg.text()}${locationSuffix}`)
         }
     })
 
@@ -492,6 +509,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
     page.on('response', async (response: Response) => {
         await recordApiTrace(response)
+        const status = response.status()
+        const url = response.url()
+        if (status >= 400 && url.includes('/api/metrics')) {
+            addFailureDiagnostic(`metrics API failure status=${status} url=${url}`)
+        }
     })
 
     console.log(`--- STARTING TEST (Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'}) ---`)
@@ -503,8 +525,8 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         if (!token) {
             addFailureDiagnostic('VITE_API_TOKEN is not set. Running without Authorization header (optional-auth mode expected).')
         } else {
-            if (!process.env.VITE_API_TOKEN?.trim()) {
-                addFailureDiagnostic('VITE_API_TOKEN is not set. Falling back to .dev.vars API_TOKEN for this run.')
+            if (LIVE_API_TOKEN_INFO.source === 'devvars') {
+                console.log('LIVE token source: .dev.vars(API_TOKEN) -> VITE_API_TOKEN')
             }
             await page.addInitScript(({ key, value }) => {
                 try {
@@ -818,7 +840,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
             // 2件目の途中でも「KY完了」で行動目標へスキップできる（APIは呼ばれない）
             await sendUserMessage('KY完了', '今日の行動目標')
-            await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '完了ボタン')
+            await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '行動目標を記録しました')
         } else {
             // --- 1件目: 危険内容（何をするとき / 何が原因で / どうなる） ---
             await sendUserMessage('配管の溶接作業をするとき、周囲の養生が不十分で火花が飛散し、可燃物に引火する恐れがあります')

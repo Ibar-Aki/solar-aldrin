@@ -7,9 +7,10 @@ interface MicButtonProps {
     onTranscript: (text: string) => void
     disabled?: boolean
     inputValue: string
+    onErrorChange?: (error: string | null) => void
 }
 
-export function MicButton({ onTranscript, disabled = false, inputValue }: MicButtonProps) {
+export function MicButton({ onTranscript, disabled = false, inputValue, onErrorChange }: MicButtonProps) {
     const isTTSSpeaking = useTTSStore((s) => s.isSpeaking)
 
     /** ユーザーが手動で停止したかどうか（強制停止と区別するため） */
@@ -39,6 +40,10 @@ export function MicButton({ onTranscript, disabled = false, inputValue }: MicBut
             clearError()
         }
     }, [error, inputValue, clearError])
+
+    useEffect(() => {
+        onErrorChange?.(error)
+    }, [error, onErrorChange])
 
     /** 強制停止が必要な条件 */
     const shouldForcePause = disabled || isTTSSpeaking
@@ -79,13 +84,13 @@ export function MicButton({ onTranscript, disabled = false, inputValue }: MicBut
     }
 
     return (
-        <div className="flex flex-col items-center gap-1">
+        <div className="shrink-0">
             <button
                 type="button"
                 onClick={handleClick}
                 disabled={shouldForcePause}
                 className={`
-          w-10 h-10 rounded-full flex items-center justify-center
+          w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shadow-sm
           transition-all duration-200
           ${isListening
                         ? 'bg-red-500 text-white animate-pulse'
@@ -96,20 +101,11 @@ export function MicButton({ onTranscript, disabled = false, inputValue }: MicBut
                 aria-label={isListening ? '音声認識を停止' : '音声認識を開始'}
             >
                 {isListening ? (
-                    <Square className="w-5 h-5" />
+                    <Square className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                    <Mic className="w-5 h-5" />
+                    <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
             </button>
-
-            <span
-                className={`text-[10px] leading-none text-red-500 max-w-[6.5rem] truncate ${error ? '' : 'invisible'}`}
-                aria-hidden={!error}
-                role={error ? 'status' : undefined}
-                aria-live={error ? 'polite' : undefined}
-            >
-                {error || 'error'}
-            </span>
         </div>
     )
 }

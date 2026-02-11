@@ -27,6 +27,7 @@ export function ChatInput({
     buttonClassName,
 }: ChatInputProps) {
     const [value, setValue] = useState('')
+    const [micError, setMicError] = useState<string | null>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const maxRows = 3
 
@@ -77,36 +78,57 @@ export function ChatInput({
     return (
         <div
             className={cn(
-                'flex gap-2 items-end',
+                'flex flex-col gap-1',
                 variant === 'default' && 'p-4 border-t bg-white',
                 containerClassName
             )}
         >
-            <MicButton onTranscript={handleTranscript} disabled={disabled} inputValue={value} />
-            <Textarea
-                ref={textareaRef}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                disabled={disabled}
-                rows={1}
-                className={cn(
-                    'flex-1 min-h-11 max-h-[5.5rem] resize-none rounded-2xl px-4 py-2 text-base leading-6 placeholder:text-muted-foreground/70',
-                    inputClassName
-                )}
-                maxLength={USER_CONTENT_MAX_LENGTH}
-                data-testid="input-chat-message"
-            />
-            <Button
-                onClick={handleSubmit}
-                disabled={disabled || !value.trim()}
-                className={cn('h-11 w-11 rounded-full p-0 bg-blue-500 text-white hover:bg-blue-600', buttonClassName)}
-                aria-label="送信"
-                data-testid="button-send-message"
-            >
-                <SendHorizontal className="h-5 w-5" />
-            </Button>
+            {micError && (
+                <div
+                    className="w-fit max-w-[80%] rounded-sm border border-amber-400 bg-amber-50 px-3 py-1 text-xs leading-5 text-slate-700"
+                    role="status"
+                    aria-live="polite"
+                    data-testid="mic-error-message"
+                >
+                    {micError}
+                </div>
+            )}
+
+            <div className="flex gap-2 items-center">
+                <MicButton
+                    onTranscript={handleTranscript}
+                    disabled={disabled}
+                    inputValue={value}
+                    onErrorChange={setMicError}
+                />
+                <Textarea
+                    ref={textareaRef}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    rows={1}
+                    className={cn(
+                        'flex-1 min-h-10 sm:min-h-11 max-h-[5.5rem] resize-none rounded-2xl px-4 py-2 text-base leading-6 placeholder:text-muted-foreground/70',
+                        inputClassName
+                    )}
+                    maxLength={USER_CONTENT_MAX_LENGTH}
+                    data-testid="input-chat-message"
+                />
+                <Button
+                    onClick={handleSubmit}
+                    disabled={disabled || !value.trim()}
+                    className={cn(
+                        'h-10 w-10 sm:h-11 sm:w-11 rounded-full p-0 bg-blue-400 text-white hover:bg-blue-500',
+                        buttonClassName
+                    )}
+                    aria-label="送信"
+                    data-testid="button-send-message"
+                >
+                    <SendHorizontal className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+            </div>
         </div>
     )
 }

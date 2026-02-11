@@ -11,7 +11,7 @@ function uniq<T>(values: T[]): T[] {
 function formatCategories(countermeasures: WorkItem['countermeasures'] | undefined): string {
     if (!countermeasures || countermeasures.length === 0) return '未確認'
     const categories = uniq(countermeasures.map((cm) => cm.category))
-    const labels: Record<string, string> = { ppe: '保護具', behavior: '人配置・行動', equipment: '設備・環境' }
+    const labels: Record<string, string> = { ppe: '保護具', behavior: '配置・行動', equipment: '設備・環境' }
     return categories.map((c) => labels[c] ?? String(c)).join(' / ')
 }
 
@@ -48,7 +48,7 @@ export function buildConversationSummary(options: {
             const cats = formatCategories(item.countermeasures)
             const measureCount = item.countermeasures.length
             lines.push(
-                `- 危険${idx + 1}: 何をするとき=${when} / どうなる=${outcome} / 原因=${cause} / 危険度=${item.riskLevel} / 対策=${measureCount}件（${cats}）`
+                `- 危険${idx + 1}: 何をする時=${when} / どうなる=${outcome} / 原因=${cause} / 危険度=${item.riskLevel} / 対策=${measureCount}件（${cats}）`
             )
         }
     }
@@ -63,7 +63,7 @@ export function buildConversationSummary(options: {
     if (hasAnyCurrent) {
         lines.push('')
         lines.push('【進行中の危険（入力途中）】')
-        if (currentWorkItem.workDescription) lines.push(`- 何をするとき: ${normalizeLine(currentWorkItem.workDescription)}`)
+        if (currentWorkItem.workDescription) lines.push(`- 何をする時: ${normalizeLine(currentWorkItem.workDescription)}`)
         if (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) {
             const why = currentWorkItem.whyDangerous.map((v) => normalizeLine(v)).filter(Boolean).slice(0, 5).join(' / ')
             if (why) lines.push(`- 何が原因で: ${why}`)

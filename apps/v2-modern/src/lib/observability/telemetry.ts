@@ -27,7 +27,37 @@ function resolveApiBase(): string {
 }
 
 const apiBase = resolveApiBase()
-const endpoint = import.meta.env.VITE_TELEMETRY_ENDPOINT || (apiBase ? `${apiBase}/metrics` : '/api/metrics')
+
+function isAbsoluteHttpUrl(value: string): boolean {
+    return /^https?:\/\//i.test(value)
+}
+
+function resolveTelemetryEndpoint(): string {
+    const configured = import.meta.env.VITE_TELEMETRY_ENDPOINT?.trim()
+
+    if (configured) {
+        if (isAbsoluteHttpUrl(configured)) return configured
+
+        // Pages配下からWorkers APIを使う構成では、相対パス(`/api/metrics`)だと
+        // Pages側に飛んで405になることがあるため、API_BASEが絶対URLなら優先して寄せる。
+        if (apiBase && isAbsoluteHttpUrl(apiBase)) {
+            try {
+                const origin = new URL(apiBase).origin
+                if (configured.startsWith('/')) {
+                    return `${origin}${configured}`
+                }
+            } catch {
+                // ignore and fallback
+            }
+        }
+
+        return configured
+    }
+
+    return apiBase ? `${apiBase}/metrics` : '/api/metrics'
+}
+
+const endpoint = resolveTelemetryEndpoint()
 const enabled = import.meta.env.VITE_TELEMETRY_ENABLED !== '0'
 const sampleRate = Number(import.meta.env.VITE_TELEMETRY_SAMPLE_RATE || '1')
 

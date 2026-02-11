@@ -170,6 +170,51 @@ describe('Chat API Integration Flow', () => {
         expect(body.reply).not.toContain('対策')
     })
 
+    it('actionGoal入力時に ask_goal が返っても、確認フェーズ向けに補正する', async () => {
+        const mockOpenAIResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '了解です。次に、今日の行動目標を短く1つだけ教えてください。',
+                        extracted: {
+                            nextAction: 'ask_goal',
+                        },
+                    }),
+                },
+            }],
+            usage: { total_tokens: 70 },
+        }
+
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => mockOpenAIResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{
+                    role: 'user',
+                    content: '行動目標は「火気使用時の完全養生よし！」です。これで確定して終了します。',
+                }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            extracted?: {
+                actionGoal?: string
+                nextAction?: string
+            }
+        }
+
+        expect(body.extracted?.actionGoal).toBe('火気使用時の完全養生よし！')
+        expect(body.extracted?.nextAction).toBe('confirm')
+    })
+
     it('should handle malformed JSON from OpenAI gracefully', async () => {
         // Mock OpenAI Response with Bad JSON
         const mockOpenAIResponse = {
@@ -218,6 +263,66 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
         expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
+    })
+
+    it('finish_reason=length でJSONが壊れた場合は1回だけ再生成して回復できる', async () => {
+        const firstBroken = {
+            choices: [{
+                message: {
+                    content: '{"reply":"途中で切れた',
+                },
+                finish_reason: 'length',
+            }],
+            usage: { total_tokens: 120 },
+        }
+        const secondRecovered = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '行動目標を教えてください。',
+                        extracted: { nextAction: 'ask_goal' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 98 },
+        }
+
+        vi.mocked(fetch)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => firstBroken,
+                text: async () => '',
+            } as Response)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => secondRecovered,
+                text: async () => '',
+            } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '次へ進めてください' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            reply: string
+            meta?: {
+                parseRetry?: { attempted?: boolean; succeeded?: boolean }
+                openai?: { requestCount?: number }
+            }
+        }
+
+        expect(body.reply).toContain('行動目標')
+        expect(body.meta?.parseRetry?.attempted).toBe(true)
+        expect(body.meta?.parseRetry?.succeeded).toBe(true)
+        expect(body.meta?.openai?.requestCount).toBe(2)
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
     })
 
     it('should return invalid json error without additional OpenAI recovery calls', async () => {

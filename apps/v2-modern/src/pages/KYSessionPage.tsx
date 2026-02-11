@@ -282,7 +282,7 @@ export function KYSessionPage() {
                 )}
 
                 {/* 入力エリア */}
-                <div className="px-4 py-2">
+                <div className="px-3 sm:px-4 py-1.5 sm:py-2">
                     <div className="max-w-4xl mx-auto w-full">
                         <ChatInput
                             onSend={handleSend}

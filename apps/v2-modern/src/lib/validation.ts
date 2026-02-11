@@ -30,18 +30,26 @@ export function parseExtractedData(jsonString: string): ExtractedData | null {
     }
 }
 
-/** 作業アイテムが完成しているかチェック */
-export function isWorkItemComplete(item: Partial<WorkItem>): boolean {
-    const measureCount = countCountermeasures(item.countermeasures)
+/** 想定される危険セクション（上段4項目）が完成しているかチェック */
+export function isHazardSectionComplete(item: Partial<WorkItem>): boolean {
     const whyCount = (item.whyDangerous ?? [])
         .map((v) => (typeof v === 'string' ? v.trim() : ''))
         .filter((v) => v.length > 0 && !isNonAnswerText(v))
         .length
+
     return !!(
         item.workDescription && item.workDescription.trim().length > 0 &&
         item.hazardDescription && item.hazardDescription.trim().length > 0 &&
         item.riskLevel &&
-        whyCount >= 1 &&
+        whyCount >= 1
+    )
+}
+
+/** 作業アイテムが完成しているかチェック */
+export function isWorkItemComplete(item: Partial<WorkItem>): boolean {
+    const measureCount = countCountermeasures(item.countermeasures)
+    return !!(
+        isHazardSectionComplete(item) &&
         measureCount >= 2
     )
 }

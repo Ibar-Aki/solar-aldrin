@@ -10,7 +10,10 @@
 更新日: 2026-02-11（HomePageの進行中セッション画面にもAPIトークン設定UIを表示）
 更新日: 2026-02-11（危険2件完了後の「KY完了」で自動完了し、完了画面へ自動遷移）
 更新日: 2026-02-11（危険2件到達時の完了導線を安定化し、完了ボタンを強制表示するガードを追加）
+更新日: 2026-02-11（添付準拠UI調整: KYボード見出し再配置、危険4項目完了後のみ対策表表示、マイクエラー表示位置を入力上段へ変更）
 更新日: 2026-02-11（完了ボタンの強制表示条件を再調整し、2件到達時でも終盤状態のみ表示するよう限定）
+更新日: 2026-02-11（Mobile Safari見た目合わせ: KYボード列比率/余白の微調整、入力エリアのボタン比率とエラーバッジ配置を調整）
+更新日: 2026-02-11（実費テスト再現性改善: length切れ自動再生成、行動目標の重複質問抑止、metrics 405対策、LIVEトークン解決の安定化）
 
 ## 目的
 
@@ -67,6 +70,27 @@
 - `apps/v2-modern/src/pages/HomePage.tsx`
   - APIトークン設定UIを共通化し、新規開始フォームだけでなく「進行中セッションあり」の分岐画面からも更新可能に改善
 
+### UI（2026-02-11 追加調整）
+
+- `apps/v2-modern/src/components/KYBoardCard.tsx`
+  - 見出し配置を添付準拠に更新（`KYボード` 右上へ `【n件目】`）
+  - 表ヘッダを「想定される危険」+ 右列「危険度」に再配置
+  - 文言を「何をする時」へ変更
+  - 対策カテゴリ表示を「配置・行動」に統一
+  - **危険4項目（何をする時 / 何が原因で / どうなる / 危険度）完了後のみ** 対策表を表示
+  - 「危険への対策」行は薄いクリーム色に変更し、注意書きをヘッダへ統合
+    - `危険への対策（対策は2件以上が必要です）`
+- `apps/v2-modern/src/components/ChatInput.tsx` / `apps/v2-modern/src/components/MicButton.tsx`
+  - マイクボタンを添付比率に合わせて調整
+  - マイクエラー表示をボタン直下から撤廃し、**入力欄の上段・左寄せ**で表示する構成へ変更
+  - Mobile Safari向けに、送信ボタン/マイクボタンのサイズ比率を再調整（モバイルで一段小さく、`sm` 以上は従来比率）
+  - マイクエラー表示を黄色系バッジ（枠あり）で表示し、添付見た目に寄せた
+- `apps/v2-modern/src/components/KYBoardCard.tsx`
+  - Mobile Safari向けに左列:右列を `5:7`（`sm`以上は `4:8`）へ変更
+  - 行内余白・フォントサイズをモバイルで微調整し、表全体の密度を添付比率に近づけた
+- `apps/v2-modern/src/pages/KYSessionPage.tsx`
+  - 入力エリアの左右/上下余白をモバイルでわずかに縮小し、下部固定バーの見た目を調整
+
 ### 会話・状態遷移
 
 - `apps/v2-modern/src/hooks/useChat.ts`
@@ -77,8 +101,22 @@
   - **危険度（1〜5）ボタンはローカル処理で即座に対策フェーズへ遷移**（APIコール無し）
   - **「KY完了」コマンドの表記ゆれ（`ky 完了` / `ＫＹ 完了` 等）を許容**
   - UI操作（危険度ボタン）とAPI応答が競合するケースに備え、抽出データ統合時に最新state参照へ修正
+  - 行動目標フェーズで目標入力が明確な場合、**API呼び出し無しでローカル確定**（`ask_goal` 重複質問の抑止）
+  - API応答が誤って `nextAction=ask_goal` を返した場合でも、ユーザー入力から行動目標を復元して `confirm` へ補正
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - `status === completed` を監視し、ストア側で完了になったケースでも `/complete` へ自動遷移するよう補強
+
+### 実費運用・再現性（2026-02-11 追加）
+
+- `apps/v2-modern/workers/routes/chat.ts`
+  - OpenAI応答の `finish_reason=length` かつ JSON破損時に、**1回だけ出力枠を拡張して再生成**する復旧処理を追加
+  - これにより `AI_RESPONSE_INVALID_JSON` の断続発生を低減（再生成に成功した場合は通常応答へ復帰）
+- `apps/v2-modern/src/lib/observability/telemetry.ts`
+  - `VITE_TELEMETRY_ENDPOINT` が相対指定でも、`VITE_API_BASE_URL` が絶対URLのときは同一API originへ正規化
+  - Pagesドメインへ誤送信していた `/api/metrics` の **405 ノイズ**を抑制
+- `apps/v2-modern/tests/e2e/real-cost-scenario.spec.ts`
+  - LIVE実行時に `.dev.vars` の `API_TOKEN` を事前に `VITE_API_TOKEN` へ昇格し、テスト内フォールバック分岐を削減
+  - Browser Console収集に location 情報を付与し、`405` 等の発生源追跡を容易化
 
 ### プロンプト
 

@@ -42,5 +42,17 @@ describe('MicButton error UX', () => {
             expect(clearErrorMock).toHaveBeenCalledTimes(1)
         })
     })
-})
 
+    it('音声エラーを親コンポーネントへ通知する', async () => {
+        const noop = () => {}
+        const onErrorChange = vi.fn()
+
+        render(
+            <MicButton onTranscript={noop} disabled={false} inputValue="" onErrorChange={onErrorChange} />
+        )
+
+        await waitFor(() => {
+            expect(onErrorChange).toHaveBeenCalledWith('音声認識エラー: test')
+        })
+    })
+})

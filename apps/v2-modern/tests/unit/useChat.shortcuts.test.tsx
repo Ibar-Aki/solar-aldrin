@@ -127,4 +127,37 @@ describe('useChat shortcuts', () => {
         expect(msgs.at(-1)?.role).toBe('assistant')
         expect(msgs.at(-1)?.extractedData?.nextAction).toBe('completed')
     })
+
+    it('行動目標入力フェーズでは、明確な目標入力をローカル確定してAPI呼び出しを抑止する', async () => {
+        useKYStore.getState().setStatus('action_goal')
+
+        const { result } = renderHook(() => useChat())
+
+        await act(async () => {
+            await result.current.sendMessage('行動目標は「火気使用時の完全養生よし！」です。これで確定して終了します。')
+        })
+
+        const state = useKYStore.getState()
+        expect(vi.mocked(postChat)).not.toHaveBeenCalled()
+        expect(state.session?.actionGoal).toBe('火気使用時の完全養生よし！')
+        expect(state.status).toBe('confirmation')
+        expect(state.messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+    })
+
+    it('行動目標が既にある場合は、完了意思のみの発話でもAPI無しで確認フェーズへ進める', async () => {
+        useKYStore.getState().updateActionGoal('火気使用時の完全養生よし！')
+        useKYStore.getState().setStatus('action_goal')
+
+        const { result } = renderHook(() => useChat())
+
+        await act(async () => {
+            await result.current.sendMessage('これで完了します。')
+        })
+
+        const state = useKYStore.getState()
+        expect(vi.mocked(postChat)).not.toHaveBeenCalled()
+        expect(state.session?.actionGoal).toBe('火気使用時の完全養生よし！')
+        expect(state.status).toBe('confirmation')
+        expect(state.messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+    })
 })
