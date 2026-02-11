@@ -16,6 +16,7 @@ type Bindings = {
     ENABLE_CONTEXT_INJECTION?: string
     OPENAI_TIMEOUT_MS?: string
     OPENAI_RETRY_COUNT?: string
+    OPENAI_MAX_TOKENS?: string
 }
 
 const chat = new Hono<{
@@ -137,10 +138,69 @@ function resolveOpenAIRetryCount(raw: string | undefined): number {
     return 1
 }
 
+function resolveOpenAIMaxTokens(raw: string | undefined): number {
+    const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
+    // Structured output の安定性と応答時間のバランスを取り、範囲を制限する。
+    if (Number.isFinite(parsed) && parsed >= 300 && parsed <= 4000) return parsed
+    return MAX_TOKENS
+}
+
 function getErrorStatus(error: unknown): number | undefined {
     if (!error || typeof error !== 'object') return undefined
     const status = (error as { status?: unknown }).status
     return typeof status === 'number' ? status : undefined
+}
+
+type SchemaIssueSummary = {
+    path: string
+    code: string
+    message: string
+}
+
+function summarizeSchemaValidationError(error: unknown, maxIssues: number = 5): { issueCount: number; issues: SchemaIssueSummary[] } | null {
+    if (!error || typeof error !== 'object') return null
+    const issuesRaw = (error as { issues?: unknown }).issues
+    if (!Array.isArray(issuesRaw)) return null
+
+    const issues = issuesRaw
+        .slice(0, maxIssues)
+        .map((issue): SchemaIssueSummary => {
+            if (!issue || typeof issue !== 'object') {
+                return {
+                    path: '(root)',
+                    code: 'unknown',
+                    message: 'invalid value',
+                }
+            }
+
+            const item = issue as {
+                path?: unknown
+                code?: unknown
+                message?: unknown
+            }
+
+            const pathSegments = Array.isArray(item.path) ? item.path : []
+            let path = '(root)'
+            for (const segment of pathSegments) {
+                if (typeof segment === 'number') {
+                    path = `${path}[${segment}]`
+                    continue
+                }
+                const key = String(segment)
+                path = path === '(root)' ? key : `${path}.${key}`
+            }
+
+            return {
+                path,
+                code: typeof item.code === 'string' ? item.code : 'unknown',
+                message: typeof item.message === 'string' ? item.message : 'invalid value',
+            }
+        })
+
+    return {
+        issueCount: issuesRaw.length,
+        issues,
+    }
 }
 
 function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { message: string; code: string; retriable: boolean; status: number } {
@@ -551,7 +611,7 @@ function normalizeExtractedData(value: unknown): ExtractedData | undefined {
 function normalizeModelResponse(
     rawParsed: unknown,
     requestMessages: Array<{ role: 'user' | 'assistant'; content: string }>
-): { reply: string; extracted?: ExtractedData } {
+): { reply: string; extracted?: unknown } {
     const obj = (rawParsed && typeof rawParsed === 'object')
         ? (rawParsed as Record<string, unknown>)
         : {}
@@ -568,6 +628,16 @@ function normalizeModelResponse(
     const extractedCandidate = (obj.extracted && typeof obj.extracted === 'object')
         ? obj.extracted
         : obj
+
+    const extractedRecord = extractedCandidate && typeof extractedCandidate === 'object'
+        ? (extractedCandidate as Record<string, unknown>)
+        : undefined
+    const rawNextAction = typeof extractedRecord?.nextAction === 'string'
+        ? extractedRecord.nextAction.trim()
+        : ''
+    const hasInvalidRawNextAction =
+        rawNextAction.length > 0 &&
+        !NEXT_ACTION_ENUM.includes(rawNextAction as (typeof NEXT_ACTION_ENUM)[number])
 
     const normalizedExtracted = normalizeExtractedData(extractedCandidate)
 
@@ -670,9 +740,20 @@ function normalizeModelResponse(
         normalizedReply === '' ||
         GENERIC_NON_FACILITATION_PREFIXES.some((p) => normalizedReply === p || normalizedReply.startsWith(p))
 
+    const extractedForResponse = (() => {
+        // モデルが明示した nextAction が不正値だった場合は握りつぶさず検知可能にする。
+        if (!actionGoalFromUser && hasInvalidRawNextAction) {
+            return {
+                ...(extracted ?? {}),
+                nextAction: rawNextAction,
+            }
+        }
+        return extracted
+    })()
+
     return {
         reply: looksLikeNonFacilitation ? buildFallbackReply(extracted) : reply,
-        ...(extracted ? { extracted } : {}),
+        ...(extractedForResponse ? { extracted: extractedForResponse } : {}),
     }
 }
 
@@ -756,6 +837,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const reqId = c.get('reqId')
         const openaiTimeoutMs = resolveOpenAITimeoutMs(c.env.OPENAI_TIMEOUT_MS)
         const openaiRetryCount = resolveOpenAIRetryCount(c.env.OPENAI_RETRY_COUNT)
+        const openaiMaxTokens = resolveOpenAIMaxTokens(c.env.OPENAI_MAX_TOKENS)
 
         const requestBodyBase = {
             model: 'gpt-4o-mini',
@@ -764,7 +846,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
                 ...limitedHistory,
             ],
-            max_tokens: MAX_TOKENS,
+            max_tokens: openaiMaxTokens,
             response_format: {
                 type: 'json_schema' as const,
                 json_schema: CHAT_RESPONSE_JSON_SCHEMA,
@@ -783,6 +865,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             responseFormat: 'json_schema_strict',
             parseRecoveryEnabled: true,
             openaiRetryCount,
+            maxTokens: openaiMaxTokens,
         }
 
         const callOpenAI = async (body: Record<string, unknown>, opts?: { timeoutMs?: number; retryCount?: number }) => {
@@ -811,14 +894,17 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     parsed,
                     normalized,
                     validation,
+                    parseFailed: false,
                     preview: null as string | null,
                 }
             } catch {
+                const preview = content.slice(0, 240)
                 return {
                     parsed: null,
                     normalized: null,
                     validation: null,
-                    preview: content.slice(0, 240),
+                    parseFailed: true,
+                    preview: preview.length > 0 ? preview : '[empty_response]',
                 }
             }
         }
@@ -840,14 +926,14 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         })
         let evaluation = evaluateModelOutput(responseData.content)
 
-        if (evaluation.preview && openaiLastFinishReason === 'length') {
+        if (evaluation.parseFailed && openaiLastFinishReason === 'length') {
             responseData = await requestParseRecovery()
             evaluation = evaluateModelOutput(responseData.content)
-            parseRetrySucceeded = !evaluation.preview && Boolean(evaluation.validation?.success)
+            parseRetrySucceeded = !evaluation.parseFailed && Boolean(evaluation.validation?.success)
         }
 
-        if (evaluation.preview) {
-            const preview = evaluation.preview
+        if (evaluation.parseFailed) {
+            const preview = evaluation.preview ?? '[missing_preview]'
             logError('json_parse_failed_strict_schema', {
                 reqId,
                 finishReason: openaiLastFinishReason ?? null,
@@ -882,12 +968,25 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         if (!evaluation.validation?.success && !parseRetryAttempted && openaiLastFinishReason === 'length') {
             responseData = await requestParseRecovery()
             evaluation = evaluateModelOutput(responseData.content)
-            parseRetrySucceeded = !evaluation.preview && Boolean(evaluation.validation?.success)
+            parseRetrySucceeded = !evaluation.parseFailed && Boolean(evaluation.validation?.success)
         }
 
         const finalValidation = evaluation.validation
         if (!finalValidation || !finalValidation.success) {
-            logError('response_schema_validation_error', { reqId: c.get('reqId') })
+            const schemaSummary = summarizeSchemaValidationError(finalValidation?.error)
+            const schemaDetails = {
+                reason: 'schema_validation_failed',
+                finishReason: openaiLastFinishReason ?? null,
+                issueCount: schemaSummary?.issueCount ?? 0,
+                issues: schemaSummary?.issues ?? [],
+            } as const
+
+            logError('response_schema_validation_error', {
+                reqId: c.get('reqId'),
+                finishReason: openaiLastFinishReason ?? null,
+                issueCount: schemaDetails.issueCount,
+                issues: schemaDetails.issues,
+            })
             // UX: 再送で回復する可能性があるため、短い待機を推奨する
             c.header('Retry-After', '1')
             return c.json({
@@ -895,7 +994,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 code: 'AI_RESPONSE_INVALID_SCHEMA',
                 requestId: c.get('reqId'),
                 retriable: true,
-                details: finalValidation?.error ?? 'schema_validation_failed',
+                details: schemaDetails,
                 meta: {
                     openai: {
                         requestCount: openaiRequestCount,

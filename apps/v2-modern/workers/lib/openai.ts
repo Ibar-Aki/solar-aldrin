@@ -216,7 +216,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
     }
 
     const firstChoice = data.choices[0]
-    const rawContent = normalizeMessageContent(firstChoice?.message?.content) || '{}'
+    const rawContent = normalizeMessageContent(firstChoice?.message?.content)
     const cleanContent = cleanJsonMarkdown(rawContent)
 
     return {

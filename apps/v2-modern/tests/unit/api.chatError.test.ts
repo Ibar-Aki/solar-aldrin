@@ -30,6 +30,7 @@ describe('postChat error classification', () => {
         const res = new Response(
             JSON.stringify({
                 error: 'AIサービスが混雑しています',
+                code: 'AI_UPSTREAM_ERROR',
                 retriable: true,
             }),
             {
@@ -46,6 +47,7 @@ describe('postChat error classification', () => {
         await expect(postChat(baseRequest)).rejects.toMatchObject({
             errorType: 'rate_limit',
             status: 429,
+            code: 'AI_UPSTREAM_ERROR',
             retriable: true,
             retryAfterSec: 12,
         })

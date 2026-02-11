@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 import { ApiError, postChat, type ChatErrorType } from '@/lib/api'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
-import type { ExtractedData } from '@/types/ky'
+import type { Countermeasure, ExtractedData, WorkItem } from '@/types/ky'
 import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
@@ -14,6 +14,7 @@ import { getTimeGreeting } from '@/lib/greeting'
 import { getApiToken } from '@/lib/apiToken'
 import { shouldEnableSilentRetryClient, shouldRequireApiTokenClient } from '@/lib/envFlags'
 import { isNonAnswerText } from '@/lib/nonAnswer'
+import { isWorkItemComplete } from '@/lib/validation'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = shouldEnableSilentRetryClient()
@@ -27,6 +28,7 @@ const ACTION_GOAL_MAX_LENGTH = 120
 type NormalizedChatError = {
     message: string
     errorType: ChatErrorType
+    code?: string
     status?: number
     retriable: boolean
     retryAfterSec?: number
@@ -47,6 +49,7 @@ function toApiError(error: unknown): ApiError {
             status?: number
             retriable?: boolean
             retryAfterSec?: number
+            code?: string
         }
         const lower = error.message.toLowerCase()
 
@@ -67,6 +70,7 @@ function toApiError(error: unknown): ApiError {
             retriable: Boolean(ext.retriable),
             retryAfterSec: ext.retryAfterSec,
             errorType: inferredType,
+            code: typeof ext.code === 'string' ? ext.code : undefined,
         })
     }
 
@@ -88,6 +92,7 @@ function normalizeChatError(error: unknown): NormalizedChatError {
                     ? '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。'
                     : '認証エラーです。サーバー側の認証設定を確認してください。',
                 errorType: 'auth',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
@@ -97,6 +102,7 @@ function normalizeChatError(error: unknown): NormalizedChatError {
             return {
                 message: '通信が不安定です。電波の良い場所で再送してください。',
                 errorType: 'network',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
@@ -107,6 +113,7 @@ function normalizeChatError(error: unknown): NormalizedChatError {
             return {
                 message: 'AI応答が遅れています。少し待ってから再送してください。',
                 errorType: 'timeout',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
@@ -118,17 +125,41 @@ function normalizeChatError(error: unknown): NormalizedChatError {
                     ? `混雑中です。${retryAfterSec}秒ほど待ってから再送してください。`
                     : '混雑中です。少し待ってから再送してください。',
                 errorType: 'rate_limit',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
                 canRetry: true,
             }
         case 'server':
+            if (apiError.code === 'AI_RESPONSE_INVALID_SCHEMA') {
+                return {
+                    message: 'AI応答の形式チェックに失敗しました。再送してください。',
+                    errorType: 'server',
+                    code: apiError.code,
+                    status: apiError.status,
+                    retriable: apiError.retriable,
+                    retryAfterSec,
+                    canRetry: apiError.retriable,
+                }
+            }
+            if (apiError.code === 'AI_RESPONSE_INVALID_JSON') {
+                return {
+                    message: 'AI応答のJSON復元に失敗しました。再送してください。',
+                    errorType: 'server',
+                    code: apiError.code,
+                    status: apiError.status,
+                    retriable: apiError.retriable,
+                    retryAfterSec,
+                    canRetry: apiError.retriable,
+                }
+            }
             return {
                 message: apiError.retriable
                     ? 'AIサービスが混雑しています。少し待ってから再送してください。'
                     : 'システムエラーが発生しました。時間をおいて再送してください。',
                 errorType: 'server',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
@@ -139,6 +170,7 @@ function normalizeChatError(error: unknown): NormalizedChatError {
             return {
                 message: apiError.message || '通信エラーが発生しました。再送してください。',
                 errorType: 'unknown',
+                code: apiError.code,
                 status: apiError.status,
                 retriable: apiError.retriable,
                 retryAfterSec,
@@ -240,6 +272,50 @@ function hasCompletionIntent(text: string): boolean {
     )
 }
 
+function countValidCountermeasures(countermeasures: Countermeasure[] | undefined): number {
+    if (!countermeasures || countermeasures.length === 0) return 0
+    return countermeasures
+        .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
+        .filter((text) => text.length > 0 && !isNonAnswerText(text))
+        .length
+}
+
+function limitCountermeasuresToThree(countermeasures: Countermeasure[] | undefined): Countermeasure[] {
+    if (!countermeasures || countermeasures.length === 0) return []
+    return countermeasures
+        .map((cm) => ({ ...cm, text: typeof cm.text === 'string' ? cm.text.trim() : '' }))
+        .filter((cm) => cm.text.length > 0 && !isNonAnswerText(cm.text))
+        .slice(0, 3)
+}
+
+function isFirstWorkItemCompletionPending(
+    status: string,
+    workItemCount: number,
+    currentWorkItem: Partial<WorkItem>
+): boolean {
+    return status === 'work_items' && workItemCount === 0 && isWorkItemComplete(currentWorkItem)
+}
+
+function isMoveToSecondKyIntent(text: string): boolean {
+    const normalized = text
+        .normalize('NFKC')
+        .trim()
+        .replace(/[\s\u3000]+/g, '')
+        .toLowerCase()
+
+    if (!normalized) return false
+
+    return (
+        (normalized.includes('2件目') && (normalized.includes('移') || normalized.includes('次'))) ||
+        normalized.includes('次へ') ||
+        normalized.includes('移ります') ||
+        normalized.includes('移動します') ||
+        normalized.includes('他にありません') ||
+        normalized.includes('これで十分') ||
+        normalized.includes('これで完了')
+    )
+}
+
 export function useChat() {
     const {
         session,
@@ -304,6 +380,17 @@ export function useChat() {
      * サーバーから返却された抽出データを元にストアを更新
      */
     const handleExtractedData = useCallback((data?: ExtractedData | null) => {
+        const stateBefore = useKYStore.getState()
+        const latestSession = stateBefore.session
+        const latestStatus = stateBefore.status
+        const latestWorkItem = stateBefore.currentWorkItem
+        const isFirstWorkItemContext = Boolean(
+            latestSession &&
+            latestStatus === 'work_items' &&
+            latestSession.workItems.length === 0
+        )
+        const beforeMeasureCount = countValidCountermeasures(latestWorkItem.countermeasures)
+
         if (data?.nextAction) {
             switch (data.nextAction) {
                 case 'ask_goal':
@@ -322,21 +409,65 @@ export function useChat() {
         // Note: sendMessageInternal は UI 操作（危険度ボタン等）と同フレームで呼ばれることがあり、
         // hook のクロージャが最新の currentWorkItem を保持していない場合がある。
         // ここでは常に最新の state を参照して判定する。
-        const latestWorkItem = useKYStore.getState().currentWorkItem
         const { workItemPatch, actionGoal, shouldCommitWorkItem } = mergeExtractedData(latestWorkItem, data)
 
         if (actionGoal) {
             updateActionGoal(actionGoal)
         }
 
-        if (Object.keys(workItemPatch).length > 0) {
-            updateCurrentWorkItem(workItemPatch)
+        let patchToApply = workItemPatch
+        const mergedWorkItem = { ...latestWorkItem, ...workItemPatch }
+        const mergedMeasureCount = countValidCountermeasures(mergedWorkItem.countermeasures)
+        if (isFirstWorkItemContext && mergedMeasureCount > 3) {
+            patchToApply = {
+                ...patchToApply,
+                countermeasures: limitCountermeasuresToThree(mergedWorkItem.countermeasures),
+            }
         }
 
-        if (shouldCommitWorkItem) {
+        if (Object.keys(patchToApply).length > 0) {
+            updateCurrentWorkItem(patchToApply)
+        }
+
+        // 1件目は「1件目完了」操作でのみ確定させる（AI nextAction ではコミットしない）
+        if (shouldCommitWorkItem && !isFirstWorkItemContext) {
             commitWorkItem()
         }
-    }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus])
+
+        const stateAfter = useKYStore.getState()
+        if (!stateAfter.session) return
+
+        let stateForPendingCheck = stateAfter
+        if (stateAfter.session.workItems.length === 0 && stateAfter.status !== 'work_items') {
+            setStatus('work_items')
+            stateForPendingCheck = useKYStore.getState()
+        }
+
+        const isFirstPendingAfterUpdate = isFirstWorkItemCompletionPending(
+            stateForPendingCheck.status,
+            stateForPendingCheck.session?.workItems.length ?? 0,
+            stateForPendingCheck.currentWorkItem
+        )
+        if (!isFirstPendingAfterUpdate) return
+
+        const afterMeasureCount = countValidCountermeasures(stateForPendingCheck.currentWorkItem.countermeasures)
+        if (beforeMeasureCount < 2 && afterMeasureCount >= 2) {
+            addMessage(
+                'assistant',
+                '他に何か対策はありますか？それとも、2件目のKYに移りますか？',
+                { nextAction: 'ask_countermeasure' }
+            )
+            return
+        }
+
+        if (beforeMeasureCount < 3 && afterMeasureCount >= 3) {
+            addMessage(
+                'assistant',
+                '3件目の対策を追記しました。続けるには「1件目完了」を押してください。',
+                { nextAction: 'ask_countermeasure' }
+            )
+        }
+    }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus, addMessage])
 
     const isKYCompleteCommand = (text: string): boolean => {
         const normalized = text
@@ -373,6 +504,32 @@ export function useChat() {
             { nextAction: 'ask_countermeasure' }
         )
     }, [session, status, updateCurrentWorkItem, addMessage, setError])
+
+    const completeFirstWorkItem = useCallback((): boolean => {
+        const latest = useKYStore.getState()
+        if (!latest.session) return false
+        if (latest.status !== 'work_items') return false
+        if (latest.session.workItems.length !== 0) return false
+        if (!isWorkItemComplete(latest.currentWorkItem)) {
+            latest.setError('作業項目が不完全です（対策は2件以上が必要です）', 'validation')
+            return false
+        }
+
+        latest.setError(null)
+        latest.commitWorkItem()
+
+        const afterCommit = useKYStore.getState()
+        if (!afterCommit.session) return false
+        if (afterCommit.session.workItems.length !== 1) return false
+
+        afterCommit.setStatus('work_items')
+        afterCommit.addMessage(
+            'assistant',
+            '次の、2件目の想定される危険を教えてください。',
+            { nextAction: 'ask_hazard' }
+        )
+        return true
+    }, [])
 
     /**
      * メッセージを送信してAI応答を取得
@@ -653,6 +810,44 @@ export function useChat() {
     }, [session, messages, addMessage, setLoading, setError, handleExtractedData, currentWorkItem, status])
 
     const sendMessage = useCallback(async (text: string) => {
+        // 1件目の対策が2件以上そろったら、完了操作（ボタン/移行テキスト）でのみ2件目へ進める
+        if (session && status === 'work_items' && session.workItems.length === 0) {
+            const normalized = text.trim()
+            const isFirstPending = isFirstWorkItemCompletionPending(status, session.workItems.length, currentWorkItem)
+            if (isFirstPending && normalized.length > 0) {
+                addMessage('user', normalized)
+                void sendTelemetry({
+                    event: 'input_length',
+                    sessionId: session.id,
+                    value: normalized.length,
+                    data: {
+                        source: 'chat',
+                    },
+                })
+
+                if (isMoveToSecondKyIntent(normalized)) {
+                    setError(null)
+                    completeFirstWorkItem()
+                    return
+                }
+
+                const measureCount = countValidCountermeasures(currentWorkItem.countermeasures)
+                if (measureCount >= 3) {
+                    setError(null)
+                    addMessage(
+                        'assistant',
+                        '対策は3件目まで追記済みです。「1件目完了」を押してください。',
+                        { nextAction: 'ask_countermeasure' }
+                    )
+                    return
+                }
+
+                // 3件目の抽出だけを行うため、既に追加済みの user メッセージを再利用する
+                await sendMessageInternal(normalized, { retrySource: 'none', skipUserMessage: true })
+                return
+            }
+        }
+
         // 仕様: 2件が完了済みなら「KY完了」で即時にセッション完了（APIは呼ばない）
         if (session && status !== 'completed' && session.workItems.length >= 2 && isKYCompleteCommand(text)) {
             const normalized = text.trim()
@@ -745,7 +940,7 @@ export function useChat() {
         }
 
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [session, status, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal])
+    }, [session, status, currentWorkItem, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal, completeFirstWorkItem])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return
@@ -777,6 +972,7 @@ export function useChat() {
     return {
         initializeChat,
         sendMessage,
+        completeFirstWorkItem,
         applyRiskLevelSelection,
         retryLastMessage,
         canRetry,

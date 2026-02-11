@@ -9,7 +9,6 @@ type MergeResult = {
 }
 
 const SHOULD_COMMIT_ACTIONS = new Set([
-    'ask_more_work',
     'ask_goal',
     'confirm',
     'completed',

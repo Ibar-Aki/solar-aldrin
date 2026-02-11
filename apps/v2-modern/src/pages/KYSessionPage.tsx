@@ -9,6 +9,8 @@ import { KYBoardCard } from '@/components/KYBoardCard'
 import { useKYStore } from '@/stores/kyStore'
 import { useChat } from '@/hooks/useChat'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
+import { isWorkItemComplete } from '@/lib/validation'
+import { isNonAnswerText } from '@/lib/nonAnswer'
 
 export function KYSessionPage() {
     const navigate = useNavigate()
@@ -32,7 +34,14 @@ export function KYSessionPage() {
         completeSession,
     } = useKYStore()
 
-    const { sendMessage, applyRiskLevelSelection, initializeChat, retryLastMessage, canRetry } = useChat()
+    const {
+        sendMessage,
+        completeFirstWorkItem,
+        applyRiskLevelSelection,
+        initializeChat,
+        retryLastMessage,
+        canRetry,
+    } = useChat()
 
     // セッションがない場合はホームに戻る
     useEffect(() => {
@@ -86,6 +95,10 @@ export function KYSessionPage() {
             nearMissNote: session.nearMissNote ?? null,
         })
         navigate('/complete')
+    }
+
+    const handleCompleteFirstWorkItem = () => {
+        completeFirstWorkItem()
     }
 
     if (!session) return null
@@ -147,6 +160,17 @@ export function KYSessionPage() {
                 (status === 'action_goal' && hasActionGoal)
             )
         )
+    const firstWorkItemMeasureCount = (currentWorkItem.countermeasures ?? [])
+        .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
+        .filter((text) => text.length > 0 && !isNonAnswerText(text))
+        .length
+    const canShowFirstWorkItemCompleteButton =
+        status === 'work_items' &&
+        workItemCount === 0 &&
+        isWorkItemComplete(currentWorkItem) &&
+        firstWorkItemMeasureCount >= 2
+    const shouldHideChatInputForFirstWorkItem =
+        canShowFirstWorkItemCompleteButton && firstWorkItemMeasureCount >= 3
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -259,6 +283,21 @@ export function KYSessionPage() {
                     </div>
                 )}
 
+                {canShowFirstWorkItemCompleteButton && (
+                    <div className="px-4 py-2 border-b">
+                        <div className="max-w-4xl mx-auto">
+                            <Button
+                                type="button"
+                                onClick={handleCompleteFirstWorkItem}
+                                className="w-full"
+                                data-testid="button-complete-first-work-item"
+                            >
+                                1件目完了
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 {/* エラー表示 */}
                 {error && (
                     <div className="px-4 py-2 border-b border-red-100 bg-red-50">
@@ -282,16 +321,18 @@ export function KYSessionPage() {
                 )}
 
                 {/* 入力エリア */}
-                <div className="px-3 sm:px-4 py-1.5 sm:py-2">
-                    <div className="max-w-4xl mx-auto w-full">
-                        <ChatInput
-                            onSend={handleSend}
-                            disabled={isLoading}
-                            placeholder="メッセージを入力..."
-                            variant="bare"
-                        />
+                {!shouldHideChatInputForFirstWorkItem && (
+                    <div className="px-3 sm:px-4 py-1.5 sm:py-2">
+                        <div className="max-w-4xl mx-auto w-full">
+                            <ChatInput
+                                onSend={handleSend}
+                                disabled={isLoading}
+                                placeholder="メッセージを入力..."
+                                variant="bare"
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     )

@@ -5,6 +5,7 @@
 **更新日**: 2026-02-11（`meta.server` 可観測化、`whyDangerous` 補完ロジック追加）
 **更新日**: 2026-02-11（iPhone/共有リンクでのAPIトークン設定不要化に同期）
 **更新日**: 2026-02-11（`finish_reason=length` 時のみJSON再生成を有効化し、再生成上限を1500へ調整）
+**更新日**: 2026-02-11（`AI_RESPONSE_INVALID_SCHEMA` の details 要約と、空文字length応答の再生成判定を厳密化）
 
 ---
 
@@ -870,7 +871,7 @@ graph LR
 ### Chat APIのリカバリ戦略
 
 - **JSONパース失敗**: `finish_reason=length` の場合のみ 1回だけ再生成を行う（`max_tokens=1500`）。それ以外は `AI_RESPONSE_INVALID_JSON` を返す（`json_schema(strict)` 前提）。
-- **スキーマ不一致**: `AI_RESPONSE_INVALID_SCHEMA` を返し、短い待機で再送を促す。
+- **スキーマ不一致**: `AI_RESPONSE_INVALID_SCHEMA` を返し、`details` には `reason / finishReason / issueCount / issues[]` を含める。
 - **タイムアウト**: `AI_TIMEOUT` を返し、`Retry-After: 2` を付与する。
 - **実行ポリシー可観測化**: 成功/JSON不正/Schema不正レスポンスには `meta.server` を付与し、デプロイ反映を機械判定できるようにする。
   - `policyVersion`: `2026-02-11-a-b-observability-1`

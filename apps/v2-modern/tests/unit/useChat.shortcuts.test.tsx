@@ -48,6 +48,103 @@ describe('useChat shortcuts', () => {
         expect(msgs.at(-1)?.extractedData?.nextAction).toBe('ask_countermeasure')
     })
 
+    it('1件目で2件目の対策が揃っても自動で2件目KYへ遷移せず、確認メッセージを表示する', async () => {
+        const { updateCurrentWorkItem } = useKYStore.getState()
+        updateCurrentWorkItem({
+            workDescription: '足場上で資材を運ぶ',
+            hazardDescription: '転落する',
+            riskLevel: 4,
+            whyDangerous: ['足元が滑りやすい'],
+            countermeasures: [
+                { category: 'equipment', text: '手すりを設置する' },
+            ],
+        })
+
+        vi.mocked(postChat).mockResolvedValueOnce({
+            reply: '監視員の配置も有効です。',
+            extracted: {
+                countermeasures: [{ category: 'behavior', text: '監視員を配置する' }],
+                nextAction: 'ask_more_work',
+            },
+        })
+
+        const { result } = renderHook(() => useChat())
+        await act(async () => {
+            await result.current.sendMessage('監視員を配置します')
+        })
+
+        const state = useKYStore.getState()
+        expect(vi.mocked(postChat)).toHaveBeenCalledTimes(1)
+        expect(state.session?.workItems).toHaveLength(0)
+        expect(state.status).toBe('work_items')
+        expect(state.currentWorkItem.countermeasures).toHaveLength(2)
+        expect(state.messages.at(-1)?.role).toBe('assistant')
+        expect(state.messages.at(-1)?.content).toContain('他に何か対策はありますか？それとも、2件目のKYに移りますか？')
+    })
+
+    it('1件目完了待ち中は「2件目に移る」発話でAPIなしに1件目を確定できる', async () => {
+        const { updateCurrentWorkItem } = useKYStore.getState()
+        updateCurrentWorkItem({
+            workDescription: '足場上で資材を運ぶ',
+            hazardDescription: '転落する',
+            riskLevel: 4,
+            whyDangerous: ['足元が滑りやすい'],
+            countermeasures: [
+                { category: 'equipment', text: '手すりを設置する' },
+                { category: 'behavior', text: '監視員を配置する' },
+            ],
+        })
+
+        const { result } = renderHook(() => useChat())
+        await act(async () => {
+            await result.current.sendMessage('2件目のKYに移ります')
+        })
+
+        const state = useKYStore.getState()
+        expect(vi.mocked(postChat)).not.toHaveBeenCalled()
+        expect(state.session?.workItems).toHaveLength(1)
+        expect(state.status).toBe('work_items')
+        expect(state.messages.at(-1)?.content).toBe('次の、2件目の想定される危険を教えてください。')
+        expect(state.messages.at(-1)?.extractedData?.nextAction).toBe('ask_hazard')
+    })
+
+    it('1件目で3件目の対策を追記した後は追加対策を受け付けず、完了操作を促す', async () => {
+        const { updateCurrentWorkItem } = useKYStore.getState()
+        updateCurrentWorkItem({
+            workDescription: '足場上で資材を運ぶ',
+            hazardDescription: '転落する',
+            riskLevel: 4,
+            whyDangerous: ['足元が滑りやすい'],
+            countermeasures: [
+                { category: 'equipment', text: '手すりを設置する' },
+                { category: 'behavior', text: '監視員を配置する' },
+            ],
+        })
+
+        vi.mocked(postChat).mockResolvedValueOnce({
+            reply: 'もう1件追加します。',
+            extracted: {
+                countermeasures: [{ category: 'ppe', text: 'フルハーネスを二丁掛けで使用する' }],
+                nextAction: 'ask_countermeasure',
+            },
+        })
+
+        const { result } = renderHook(() => useChat())
+
+        await act(async () => {
+            await result.current.sendMessage('フルハーネスを二丁掛けで使います')
+        })
+        expect(vi.mocked(postChat)).toHaveBeenCalledTimes(1)
+        expect(useKYStore.getState().currentWorkItem.countermeasures).toHaveLength(3)
+        expect(useKYStore.getState().messages.at(-1)?.content).toContain('3件目の対策を追記しました')
+
+        await act(async () => {
+            await result.current.sendMessage('さらに追加します')
+        })
+        expect(vi.mocked(postChat)).toHaveBeenCalledTimes(1)
+        expect(useKYStore.getState().messages.at(-1)?.content).toContain('対策は3件目まで追記済みです')
+    })
+
     it.each([
         ['ky 完了'],
         ['KY完了。'],

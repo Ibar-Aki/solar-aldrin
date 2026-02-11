@@ -28,6 +28,7 @@ type ApiErrorInit = {
     retriable?: boolean
     errorType?: ChatErrorType
     retryAfterSec?: number
+    code?: string
 }
 
 export class ApiError extends Error {
@@ -35,6 +36,7 @@ export class ApiError extends Error {
     retriable: boolean
     errorType: ChatErrorType
     retryAfterSec?: number
+    code?: string
 
     constructor(message: string, init: ApiErrorInit = {}) {
         super(message)
@@ -43,6 +45,7 @@ export class ApiError extends Error {
         this.retriable = init.retriable ?? false
         this.errorType = init.errorType ?? inferErrorType(init.status)
         this.retryAfterSec = init.retryAfterSec
+        this.code = init.code
     }
 }
 
@@ -81,6 +84,7 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         const errorMessage = (errorData as { error?: string }).error || 'AI応答の取得に失敗しました'
+        const errorCode = (errorData as { code?: unknown }).code
         const retryAfterRaw = res.headers.get('Retry-After')
         const retryAfterParsed = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined
         const retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
@@ -89,6 +93,7 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
             retriable: Boolean((errorData as { retriable?: boolean }).retriable),
             errorType: inferErrorType(res.status),
             retryAfterSec,
+            code: typeof errorCode === 'string' ? errorCode : undefined,
         })
     }
 
@@ -118,6 +123,7 @@ export async function postChat(request: ChatRequest): Promise<ChatSuccessRespons
             status: res.status,
             errorType: inferErrorType(res.status),
             retriable: Boolean(ext.retriable),
+            code: ext.code,
         })
     }
 

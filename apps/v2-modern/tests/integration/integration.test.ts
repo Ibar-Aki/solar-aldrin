@@ -60,6 +60,7 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
         expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
+        expect(body.meta?.server?.maxTokens).toBe(900)
     })
 
     it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
@@ -253,6 +254,7 @@ describe('Chat API Integration Flow', () => {
                     responseFormat?: string
                     parseRecoveryEnabled?: boolean
                     openaiRetryCount?: number
+                    maxTokens?: number
                 }
             }
         }
@@ -263,6 +265,7 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
         expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
+        expect(body.meta?.server?.maxTokens).toBe(900)
     })
 
     it('finish_reason=length でJSONが壊れた場合は1回だけ再生成して回復できる', async () => {
@@ -325,6 +328,66 @@ describe('Chat API Integration Flow', () => {
         expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
     })
 
+    it('finish_reason=length で空文字応答でも再生成して回復できる', async () => {
+        const firstEmpty = {
+            choices: [{
+                message: {
+                    content: '',
+                },
+                finish_reason: 'length',
+            }],
+            usage: { total_tokens: 60 },
+        }
+        const secondRecovered = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '対策を1つ教えてください。',
+                        extracted: { nextAction: 'ask_countermeasure' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 92 },
+        }
+
+        vi.mocked(fetch)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => firstEmpty,
+                text: async () => '',
+            } as Response)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => secondRecovered,
+                text: async () => '',
+            } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '次へ進めてください' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            reply: string
+            meta?: {
+                parseRetry?: { attempted?: boolean; succeeded?: boolean }
+                openai?: { requestCount?: number }
+            }
+        }
+
+        expect(body.reply).toContain('対策')
+        expect(body.meta?.parseRetry?.attempted).toBe(true)
+        expect(body.meta?.parseRetry?.succeeded).toBe(true)
+        expect(body.meta?.openai?.requestCount).toBe(2)
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    })
+
     it('should return invalid json error without additional OpenAI recovery calls', async () => {
         const mockBad = {
             choices: [{
@@ -361,6 +424,7 @@ describe('Chat API Integration Flow', () => {
                     responseFormat?: string
                     parseRecoveryEnabled?: boolean
                     openaiRetryCount?: number
+                    maxTokens?: number
                 }
             }
         }
@@ -372,7 +436,110 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
         expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
+        expect(body.meta?.server?.maxTokens).toBe(900)
         expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+    })
+
+    it('OPENAI_MAX_TOKENS をリクエストと meta.server.maxTokens に反映する', async () => {
+        const mockOpenAIResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '了解しました。',
+                        extracted: { nextAction: 'ask_hazard' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 42 },
+        }
+
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => mockOpenAIResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key', OPENAI_MAX_TOKENS: '1500' })
+        expect(res.status).toBe(200)
+
+        const body = await res.json() as {
+            meta?: {
+                server?: {
+                    maxTokens?: number
+                }
+            }
+        }
+        expect(body.meta?.server?.maxTokens).toBe(1500)
+
+        const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit
+        const requestBody = JSON.parse(String(init.body)) as { max_tokens?: number }
+        expect(requestBody.max_tokens).toBe(1500)
+    })
+
+    it('スキーマ不整合時は要約付きdetailsを返す', async () => {
+        const invalidSchemaResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '了解しました。',
+                        extracted: {
+                            nextAction: 'invalid_action',
+                        },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 70 },
+        }
+
+        vi.mocked(fetch).mockResolvedValueOnce({
+            ok: true,
+            json: async () => invalidSchemaResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '次へ進めます' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(502)
+        const body = await res.json() as {
+            code?: string
+            retriable?: boolean
+            details?: {
+                reason?: string
+                finishReason?: string | null
+                issueCount?: number
+                issues?: Array<{ path?: string; code?: string; message?: string }>
+            }
+            meta?: {
+                parseRetry?: { attempted?: boolean; succeeded?: boolean }
+            }
+        }
+
+        expect(body.code).toBe('AI_RESPONSE_INVALID_SCHEMA')
+        expect(body.retriable).toBe(true)
+        expect(body.details?.reason).toBe('schema_validation_failed')
+        expect(body.details?.finishReason).toBe('stop')
+        expect(body.details?.issueCount).toBeGreaterThan(0)
+        expect(Array.isArray(body.details?.issues)).toBe(true)
+        expect((body.details?.issues?.length ?? 0)).toBeGreaterThan(0)
+        expect(typeof body.details?.issues?.[0]?.code).toBe('string')
+        expect(body.meta?.parseRetry?.attempted).toBe(false)
     })
 
     it('should keep system prompt fixed and move external context into a user reference message', async () => {

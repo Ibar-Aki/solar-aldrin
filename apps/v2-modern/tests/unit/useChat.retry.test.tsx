@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useChat } from '@/hooks/useChat'
 import { useKYStore } from '@/stores/kyStore'
-import { postChat } from '@/lib/api'
+import { ApiError, postChat } from '@/lib/api'
 
 vi.mock('@/lib/api', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -98,5 +98,27 @@ describe('useChat retry behavior', () => {
 
         expect(result.current.canRetry).toBe(true)
         expect(useKYStore.getState().error).toContain('5秒')
+    })
+
+    it('AI_RESPONSE_INVALID_SCHEMA は混雑文言ではなく形式エラー文言を表示する', async () => {
+        vi.mocked(postChat).mockRejectedValueOnce(
+            new ApiError('AIからの応答が不正な形式です。再試行してください。', {
+                status: 502,
+                retriable: true,
+                errorType: 'server',
+                code: 'AI_RESPONSE_INVALID_SCHEMA',
+            })
+        )
+
+        const { result } = renderHook(() => useChat())
+
+        await act(async () => {
+            await result.current.sendMessage('形式エラー検証')
+        })
+
+        expect(result.current.canRetry).toBe(true)
+        const errorMessage = useKYStore.getState().error ?? ''
+        expect(errorMessage).toContain('形式チェック')
+        expect(errorMessage).not.toContain('混雑')
     })
 })

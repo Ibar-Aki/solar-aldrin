@@ -14,6 +14,8 @@
 更新日: 2026-02-11（完了ボタンの強制表示条件を再調整し、2件到達時でも終盤状態のみ表示するよう限定）
 更新日: 2026-02-11（Mobile Safari見た目合わせ: KYボード列比率/余白の微調整、入力エリアのボタン比率とエラーバッジ配置を調整）
 更新日: 2026-02-11（実費テスト再現性改善: length切れ自動再生成、行動目標の重複質問抑止、metrics 405対策、LIVEトークン解決の安定化）
+更新日: 2026-02-11（実費エラー改善: 空文字length応答の再生成救済、スキーマエラー詳細化、UIエラーメッセージの混雑/形式エラー分離）
+更新日: 2026-02-11（1件目KYの対策追加入力導線を改善: 2件目対策直後の自動遷移停止、3件目のみ追記、`1件目完了` ボタン導入）
 
 ## 目的
 
@@ -67,6 +69,8 @@
   - 進行バー（作業・危険 → 行動目標 → 確認）の表示を維持しつつ、完了ボタン表示条件を更新
   - 完了ボタンは `lastAssistantNextAction === completed` だけでなく、`status === confirmation` または `status === action_goal` かつ `actionGoal` 設定済みでも表示するよう改善
   - 危険が2件保存済み (`workItemCount >= 2`) の場合でも、`action_goal / confirmation / nextAction=completed / actionGoal設定済み` の終盤状態に限定して完了ボタンを表示
+  - 1件目で対策2件が揃った時点で `1件目完了` ボタンを表示し、**ボタン押下時にのみ** 2件目KYへ遷移
+  - 1件目で対策3件目まで入力された場合は、入力欄を隠して `1件目完了` ボタンのみ表示
 - `apps/v2-modern/src/pages/HomePage.tsx`
   - APIトークン設定UIを共通化し、新規開始フォームだけでなく「進行中セッションあり」の分岐画面からも更新可能に改善
 
@@ -103,6 +107,13 @@
   - UI操作（危険度ボタン）とAPI応答が競合するケースに備え、抽出データ統合時に最新state参照へ修正
   - 行動目標フェーズで目標入力が明確な場合、**API呼び出し無しでローカル確定**（`ask_goal` 重複質問の抑止）
   - API応答が誤って `nextAction=ask_goal` を返した場合でも、ユーザー入力から行動目標を復元して `confirm` へ補正
+  - 1件目KYで対策2件到達後は、AIの `nextAction` による自動コミットを抑止し、確認文
+    - `他に何か対策はありますか？それとも、2件目のKYに移りますか？`
+    を必ず表示
+  - 1件目KYでは対策3件目のみ追記可能とし、4件目以降は受け付けず `1件目完了` 操作を案内
+  - 「2件目のKYに移る」旨のテキスト入力でも、API呼び出し無しで1件目を確定し
+    - `次の、2件目の想定される危険を教えてください。`
+    を表示して2件目へ移行
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - `status === completed` を監視し、ストア側で完了になったケースでも `/complete` へ自動遷移するよう補強
 
@@ -111,6 +122,11 @@
 - `apps/v2-modern/workers/routes/chat.ts`
   - OpenAI応答の `finish_reason=length` かつ JSON破損時に、**1回だけ出力枠を拡張して再生成**する復旧処理を追加
   - これにより `AI_RESPONSE_INVALID_JSON` の断続発生を低減（再生成に成功した場合は通常応答へ復帰）
+  - 空文字応答（`preview=""`）でも parse失敗として扱い、`finish_reason=length` 条件で再生成へ進むよう判定を厳密化
+  - `AI_RESPONSE_INVALID_SCHEMA` の `details` を `reason/finishReason/issueCount/issues` 形式へ要約し、再現分析を容易化
+- `apps/v2-modern/src/hooks/useChat.ts`
+  - `AI_RESPONSE_INVALID_JSON` / `AI_RESPONSE_INVALID_SCHEMA` を「混雑」扱いにせず、形式エラー専用メッセージへ分岐
+  - これにより、ユーザー向け再試行案内と運用側の原因切り分けの整合性を改善
 - `apps/v2-modern/src/lib/observability/telemetry.ts`
   - `VITE_TELEMETRY_ENDPOINT` が相対指定でも、`VITE_API_BASE_URL` が絶対URLのときは同一API originへ正規化
   - Pagesドメインへ誤送信していた `/api/metrics` の **405 ノイズ**を抑制

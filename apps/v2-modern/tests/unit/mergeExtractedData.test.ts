@@ -21,7 +21,7 @@ describe('mergeExtractedData', () => {
         expect(result.workItemPatch.whyDangerous).toEqual([
             '周囲の養生が不十分で火花が飛散して引火する恐れがあります',
         ])
-        expect(result.shouldCommitWorkItem).toBe(true)
+        expect(result.shouldCommitWorkItem).toBe(false)
     })
 
     it('既存の whyDangerous がある場合は推論補完を追加しない', () => {
@@ -42,6 +42,6 @@ describe('mergeExtractedData', () => {
         })
 
         expect(result.workItemPatch.whyDangerous).toBeUndefined()
-        expect(result.shouldCommitWorkItem).toBe(true)
+        expect(result.shouldCommitWorkItem).toBe(false)
     })
 })
