@@ -30,7 +30,8 @@ const MAX_HISTORY_TURNS = 10
 // 最大合計入力文字数 (ユーザー入力単体は1000文字、履歴含めて余裕を持たせる)
 const MAX_TOTAL_INPUT_LENGTH = USER_CONTENT_MAX_LENGTH * 10
 // 最大出力トークン数
-const MAX_TOKENS = 700 // 3.8: レスポンス簡素化に合わせて安全域を維持しつつ削減
+// Structured output が長文で切れると JSON 不正になりやすいため、少し余裕を持たせる。
+const MAX_TOKENS = 900
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
@@ -696,6 +697,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let openaiRequestCount = 0
         let openaiHttpAttempts = 0
         let openaiDurationMs = 0
+        let openaiLastFinishReason: string | null | undefined = null
         let totalTokens = 0
         const parseRetryAttempted = false
         const parseRetrySucceeded = false
@@ -718,6 +720,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
             openaiDurationMs += responseData.meta.durationMs
+            openaiLastFinishReason = responseData.meta.finishReason
             return responseData
         }
 
@@ -732,18 +735,28 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         try {
             parsedContent = safeParseJSON(responseData.content)
         } catch {
-            logError('json_parse_failed_strict_schema', { reqId })
+            const preview = responseData.content.slice(0, 240)
+            logError('json_parse_failed_strict_schema', {
+                reqId,
+                finishReason: openaiLastFinishReason ?? null,
+                preview,
+            })
             c.header('Retry-After', '1')
             return c.json({
                 error: 'AIからの応答が不正な形式です。再試行してください。',
                 code: 'AI_RESPONSE_INVALID_JSON',
                 requestId: reqId,
                 retriable: true,
+                details: {
+                    finishReason: openaiLastFinishReason ?? null,
+                    preview,
+                },
                 meta: {
                     openai: {
                         requestCount: openaiRequestCount,
                         httpAttempts: openaiHttpAttempts,
                         durationMs: openaiDurationMs,
+                        finishReason: openaiLastFinishReason ?? null,
                     },
                     parseRetry: {
                         attempted: parseRetryAttempted,
@@ -774,6 +787,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                         requestCount: openaiRequestCount,
                         httpAttempts: openaiHttpAttempts,
                         durationMs: openaiDurationMs,
+                        finishReason: openaiLastFinishReason ?? null,
                     },
                     parseRetry: {
                         attempted: parseRetryAttempted,
@@ -798,6 +812,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     requestCount: openaiRequestCount,
                     httpAttempts: openaiHttpAttempts,
                     durationMs: openaiDurationMs,
+                    finishReason: openaiLastFinishReason ?? null,
                 },
                 parseRetry: {
                     attempted: parseRetryAttempted,

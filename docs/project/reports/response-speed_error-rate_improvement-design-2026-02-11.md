@@ -5,6 +5,8 @@
 - 更新日: 2026-02-11
 - 更新日: 2026-02-11（A/B実装反映）
 - 更新日: 2026-02-11（危険2件完了後の「KY完了」自動完了導線を追記）
+- 更新日: 2026-02-11（実費LIVE 2回再測定と比較結果を追記）
+- 更新日: 2026-02-11（AI_RESPONSE_INVALID_JSON対策後の実費LIVE 2回再測定を反映）
 
 ## 1. 目的
 
@@ -148,3 +150,34 @@ OpenAI公式ドキュメント:
 - UIUX補強（完了導線）を実装。
   - 変更: `apps/v2-modern/src/hooks/useChat.ts`, `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - 内容: 危険2件が保存済みの状態で「KY完了」を受けた場合、API呼び出し無しで `status=completed` とし、完了画面（`/complete`）へ自動遷移。
+
+## 9. 実費LIVE再測定（2026-02-11）
+
+出典:
+- `apps/v2-modern/reports/real-cost/LIVE/real-cost-LIVE-2026-02-11T07-43-25-404Z.md`（直前比較の再測定1）
+- `apps/v2-modern/reports/real-cost/LIVE/real-cost-LIVE-2026-02-11T07-45-43-178Z.md`（直前比較の再測定2）
+- `apps/v2-modern/reports/real-cost/LIVE/real-cost-LIVE-2026-02-11T08-18-35-514Z.md`（対策後1）
+- `apps/v2-modern/reports/real-cost/LIVE/real-cost-LIVE-2026-02-11T08-19-52-554Z.md`（対策後2）
+- `apps/v2-modern/reports/real-cost/LIVE/real-cost-LIVE-2026-02-11T07-24-45-611Z.md`（最良ベースライン）
+
+### 9.1 直前2ラン（07:43/07:45）との比較
+
+| 指標 | 直前2回平均 | 対策後2回平均 | 評価 |
+|---|---:|---:|---|
+| Total Duration | 113.2s | 83.6s | 改善 |
+| Avg API Response | 8.6s | 4.1s | 改善 |
+| Errors (AI/System) | 3.0 | 0.0 | 改善 |
+| Wait > 15s Turns | 0.0 | 0.0 | 同等 |
+
+### 9.2 最良ベースライン（07:24）との比較
+
+| 指標 | 最良ベースライン | 対策後2回平均 | 評価 |
+|---|---:|---:|---|
+| Total Duration | 64.4s | 83.6s | 悪化 |
+| Avg API Response | 3.7s | 4.1s | やや悪化 |
+| Errors (AI/System) | 0 | 0.0 | 同等 |
+
+補足:
+- `Avg API Response` は `/api/chat` の API Trace 遅延（成功応答優先）で算出。
+- ベースライン（07:24レポート）は旧表示が `Avg AI Response=2.6s` のため、同一基準比較として API Trace から再計算した `3.7s` を採用。
+- 対策後2回では `AI_RESPONSE_INVALID_JSON` は発生せず、いずれも Score A / Errors 0 で完走。

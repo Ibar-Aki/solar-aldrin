@@ -12,6 +12,7 @@ export type OpenAIResponseMeta = {
     httpAttempts: number
     httpRetries: number
     durationMs: number
+    finishReason?: string | null
 }
 
 interface OpenAIResponse {
@@ -186,11 +187,36 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
     }
 
     const data = await response.json() as {
-        choices: Array<{ message: { content: string } }>
+        choices: Array<{
+            message: {
+                content: unknown
+            }
+            finish_reason?: string | null
+        }>
         usage?: { total_tokens: number }
     }
 
-    const rawContent = data.choices[0]?.message?.content || '{}'
+    const normalizeMessageContent = (content: unknown): string => {
+        if (typeof content === 'string') return content
+        if (Array.isArray(content)) {
+            const text = content
+                .map((part) => {
+                    if (typeof part === 'string') return part
+                    if (part && typeof part === 'object') {
+                        const record = part as Record<string, unknown>
+                        if (typeof record.text === 'string') return record.text
+                    }
+                    return ''
+                })
+                .join('')
+                .trim()
+            return text
+        }
+        return ''
+    }
+
+    const firstChoice = data.choices[0]
+    const rawContent = normalizeMessageContent(firstChoice?.message?.content) || '{}'
     const cleanContent = cleanJsonMarkdown(rawContent)
 
     return {
@@ -200,6 +226,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             httpAttempts,
             httpRetries: Math.max(0, httpAttempts - 1),
             durationMs: Date.now() - startedAt,
+            finishReason: firstChoice?.finish_reason ?? null,
         },
     }
 }
@@ -208,13 +235,14 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
  * Markdown記法 (```json ... ```) を除去し、JSON文字列を抽出する
  */
 export function cleanJsonMarkdown(content: string): string {
+    const normalized = content.replace(/^\uFEFF/, '').trim()
     try {
         // まずそのままパースできるか試す
-        JSON.parse(content)
-        return content
+        JSON.parse(normalized)
+        return normalized
     } catch {
         // Markdown記法の除去
-        const clean = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
+        const clean = normalized.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
 
         // { ... } の範囲を抽出
         const firstBrace = clean.indexOf('{')
@@ -225,7 +253,7 @@ export function cleanJsonMarkdown(content: string): string {
         }
 
         // フォールバック: 元の文字列を返す（呼び出し元でパースエラーになる）
-        return content
+        return normalized
     }
 }
 

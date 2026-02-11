@@ -94,15 +94,16 @@ nextAction:
 - 一度に1つの質問だけする
 - **「なぜ」という言葉はなるべく避け、「どのような状況で」「何が原因で」と聞く**
 - 専門用語は避け、分かりやすい言葉を使う
+- 「reply」は原則1〜2文、長くても120文字程度に抑える（冗長な要約を避ける）
 
 ## 出力形式 (CRITICAL)
 必ず以下のJSON形式で応答してください。Markdownや他のテキストを含めないでください。
 
 - 「reply」は必須
-- 「extracted.nextAction」は必須
-- 「workDescription」/「hazardDescription」/「whyDangerous」/「countermeasures」/「riskLevel」/「actionGoal」は
-  **判明しているときのみ出力**し、未特定ならキー自体を省略すること
-- 未特定項目を null や [] で埋めないこと
+- 「extracted」内のキー
+  （nextAction, workDescription, hazardDescription, whyDangerous, countermeasures, riskLevel, actionGoal）
+  は **必ず全て出力**すること
+- 未特定項目はキーを省略せず、必ず null を入れること（空配列 [] は使わない）
 - 「countermeasures」は **カテゴリ付き**で出力すること:
   - category は "ppe" | "behavior" | "equipment"
   - text は具体的な対策文
@@ -112,14 +113,12 @@ nextAction:
   "reply": "ユーザーへの自然な応答テキスト（ここだけがユーザーに表示されます）",
   "extracted": {
     "nextAction": "ask_work | ask_hazard | ask_why | ask_countermeasure | ask_risk_level | ask_more_work | ask_goal | confirm | completed",
-    "workDescription": "何をするとき（判明時のみ）",
-    "hazardDescription": "どうなる（判明時のみ）",
-    "whyDangerous": ["何が原因で（判明時のみ）"],
-    "countermeasures": [
-      { "category": "ppe", "text": "具体的な対策（判明時のみ）" }
-    ],
-    "riskLevel": 1,
-    "actionGoal": "行動目標（判明時のみ）"
+    "workDescription": "何をするとき（未確定なら null）",
+    "hazardDescription": "どうなる（未確定なら null）",
+    "whyDangerous": ["何が原因で（未確定なら null）"],
+    "countermeasures": null,
+    "riskLevel": null,
+    "actionGoal": "行動目標（未確定なら null）"
   }
 }
 `

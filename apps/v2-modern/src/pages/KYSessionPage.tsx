@@ -128,7 +128,14 @@ export function KYSessionPage() {
     })
     const kyBoardIndex = Math.min(2, workItemCount + 1)
     const hasActionGoal = Boolean((session.actionGoal ?? '').trim())
-    const canForceComplete = workItemCount >= 2
+    const canForceComplete =
+        workItemCount >= 2 &&
+        (
+            status === 'action_goal' ||
+            status === 'confirmation' ||
+            lastAssistantNextAction === 'completed' ||
+            hasActionGoal
+        )
     const canShowCompleteButton =
         canForceComplete ||
         (

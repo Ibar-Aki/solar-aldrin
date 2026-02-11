@@ -1,8 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ApiBaseUrl,
-    # NOTE: ブラウザ向けにトークンをバンドルへ埋め込む運用は漏えい前提になるため非推奨。
-    # 実費テスト/スモーク等で必要な場合は、テスト実行環境の VITE_API_TOKEN を使用すること。
+    # NOTE: Do not embed API token into frontend bundles.
+    # Use runtime token input (or test env VITE_API_TOKEN) when required.
     [string]$ApiToken,
     [string]$ProjectName = 'voice-ky-v2'
 )
@@ -30,7 +30,7 @@ if ($uri.Scheme -ne 'https') {
 }
 
 $env:VITE_API_BASE_URL = $ApiBaseUrl.TrimEnd('/')
-# 既存シェルに残っている値でバンドル埋め込みが再発しないよう、ビルド直前に明示解除する。
+# Explicitly clear any inherited value to prevent token embedding at build time.
 if (Test-Path Env:VITE_API_TOKEN) {
     Write-Host "INFO: Clearing existing VITE_API_TOKEN before build to avoid token embedding."
 }

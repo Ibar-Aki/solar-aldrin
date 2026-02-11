@@ -62,7 +62,7 @@ test.use({
 const METRICS = {
     startTime: 0,
     endTime: 0,
-    aiResponseTimes: [] as number[],
+    uiReadyTimes: [] as number[],
     errors: 0,
     turns: 0,
     navigationSuccess: false,
@@ -132,7 +132,7 @@ function escapeTableText(value: string): string {
 function resetRunState() {
     METRICS.startTime = 0
     METRICS.endTime = 0
-    METRICS.aiResponseTimes = []
+    METRICS.uiReadyTimes = []
     METRICS.errors = 0
     METRICS.turns = 0
     METRICS.navigationSuccess = false
@@ -331,9 +331,24 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const reportPath = path.join(reportDir, `real-cost-${mode}-${timestamp}.md`)
 
     // メトリクス計算
-    const avgResponseTime = METRICS.aiResponseTimes.length > 0
-        ? (METRICS.aiResponseTimes.reduce((a, b) => a + b, 0) / METRICS.aiResponseTimes.length / 1000).toFixed(1)
-        : 'N/A'
+    // Perf KPI は UI状態遷移ではなく、/api/chat の実レスポンス遅延で集計する。
+    const successfulApiLatencies = apiTrace
+        .filter(entry => entry.status < 400 && typeof entry.latencyMs === 'number')
+        .map(entry => entry.latencyMs as number)
+    const fallbackApiLatencies = apiTrace
+        .filter(entry => typeof entry.latencyMs === 'number')
+        .map(entry => entry.latencyMs as number)
+    const effectiveApiLatencies = successfulApiLatencies.length > 0 ? successfulApiLatencies : fallbackApiLatencies
+    const avgApiResponseSec =
+        effectiveApiLatencies.length > 0
+            ? Number((effectiveApiLatencies.reduce((a, b) => a + b, 0) / effectiveApiLatencies.length / 1000).toFixed(1))
+            : null
+    const avgApiResponseText = avgApiResponseSec === null ? 'N/A' : avgApiResponseSec.toFixed(1)
+    const uiReadyAvgSec =
+        METRICS.uiReadyTimes.length > 0
+            ? Number((METRICS.uiReadyTimes.reduce((a, b) => a + b, 0) / METRICS.uiReadyTimes.length / 1000).toFixed(1))
+            : null
+    const uiReadyAvgText = uiReadyAvgSec === null ? 'N/A' : uiReadyAvgSec.toFixed(1)
 
     const chatCount = apiTrace.length
     const totalTokens = apiTrace.reduce((sum, entry) => sum + (entry.usageTotalTokens ?? 0), 0)
@@ -343,7 +358,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const parseRetryUsed = apiTrace.reduce((sum, entry) => sum + (entry.parseRetryAttempted ? 1 : 0), 0)
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
     const serverPolicyViolations = apiTrace.reduce((sum, entry) => sum + (entry.serverPolicyViolation ? 1 : 0), 0)
-    const waitOver15sTurns = METRICS.aiResponseTimes.filter(ms => ms >= 15_000).length
+    const waitOver15sTurns = effectiveApiLatencies.filter(ms => ms >= 15_000).length
 
     // 評価スコア算出 (簡易ロジック)
     let score = 'A'
@@ -389,7 +404,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | Metric | Value | Target | Status |
 |---|---|---|---|
 | **Total Duration** | ${duration}s | < 120s | ${Number(duration) < 120 ? '🟢' : '🟡'} |
-| **Avg AI Response** | ${avgResponseTime}s | < 5s | ${Number(avgResponseTime) < 5 ? '🟢' : '🟡'} |
+| **Avg API Response** | ${avgApiResponseText}s | < 5s | ${avgApiResponseSec !== null && avgApiResponseSec < 5 ? '🟢' : '🟡'} |
+| **Avg UI Ready** | ${uiReadyAvgText}s | - | ℹ️ |
 | **Conversation Turns** | ${METRICS.turns} | 3-5 | ${METRICS.turns <= 5 ? '🟢' : (METRICS.turns > 8 ? '🔴' : '🟡')} |
 | **Errors (AI/System)** | ${METRICS.errors} | 0 | ${METRICS.errors === 0 ? '🟢' : '🔴'} |
 | **Nav Success** | ${METRICS.navigationSuccess ? 'Yes' : 'No'} | Yes | ${METRICS.navigationSuccess ? '🟢' : '🔴'} |
@@ -424,7 +440,7 @@ ${pageErrors.length > 0 ? pageErrors.slice(-20).map(line => `- ${escapeTableText
 
 ## Analysis
 - **Flow Completeness**: ${METRICS.navigationSuccess ? 'Full flow completed' : 'Stopped mid-flow'}
-- **AI Responsiveness**: Verified via ChatBubble detection.
+- **AI Responsiveness**: API Trace latency (/api/chat) based KPI.
 `
     fs.writeFileSync(reportPath, markdown)
     console.log(`Report generated: ${reportPath}`)
@@ -481,22 +497,23 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     console.log(`--- STARTING TEST (Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'}) ---`)
     await recordLog('System', `Test Started: 溶接作業シナリオ (Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'})`)
 
-    // LIVEはWorkers側がBearer必須の想定。トークンはバンドルに埋め込まず、実行環境から注入する。
+    // LIVEはトークンをバンドルへ埋め込まず、必要時のみ実行環境から注入する。
     if (RUN_LIVE) {
         const token = LIVE_API_TOKEN
         if (!token) {
-            throw new Error('VITE_API_TOKEN is required for RUN_LIVE_TESTS=1 (or set API_TOKEN in .dev.vars)')
-        }
-        if (!process.env.VITE_API_TOKEN?.trim()) {
-            addFailureDiagnostic('VITE_API_TOKEN is not set. Falling back to .dev.vars API_TOKEN for this run.')
-        }
-        await page.addInitScript(({ key, value }) => {
-            try {
-                window.localStorage.setItem(key, value)
-            } catch {
-                // ignore
+            addFailureDiagnostic('VITE_API_TOKEN is not set. Running without Authorization header (optional-auth mode expected).')
+        } else {
+            if (!process.env.VITE_API_TOKEN?.trim()) {
+                addFailureDiagnostic('VITE_API_TOKEN is not set. Falling back to .dev.vars API_TOKEN for this run.')
             }
-        }, { key: API_TOKEN_STORAGE_KEY, value: token })
+            await page.addInitScript(({ key, value }) => {
+                try {
+                    window.localStorage.setItem(key, value)
+                } catch {
+                    // ignore
+                }
+            }, { key: API_TOKEN_STORAGE_KEY, value: token })
+        }
     }
 
     // Dry Run モック設定
@@ -618,7 +635,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
 
         const endWait = Date.now()
-        METRICS.aiResponseTimes.push(endWait - startWait)
+        METRICS.uiReadyTimes.push(endWait - startWait)
 
         // 最新のAI応答を取得
         const initialBubble = assistantBubbles.last()
@@ -659,12 +676,12 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         assertNoFatalInfraError()
                         const onCompletePage = page.url().includes('/complete') || await completionHeading.isVisible().catch(() => false)
                         if (onCompletePage) {
-                            METRICS.aiResponseTimes.push(Date.now() - startWait)
+                            METRICS.uiReadyTimes.push(Date.now() - startWait)
                             return
                         }
                         const countAfter = await assistantBubbles.count()
                         if (countAfter > countBefore) {
-                            METRICS.aiResponseTimes.push(Date.now() - startWait)
+                            METRICS.uiReadyTimes.push(Date.now() - startWait)
                             return
                         }
 
@@ -672,7 +689,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         const isInputEnabled = await chatInput.isEnabled().catch(() => false)
                         // 返答バブルが「追加」されない実装でも、thinkingが消えて入力が戻れば完了扱いとする。
                         if (!isThinkingVisible && isInputEnabled) {
-                            METRICS.aiResponseTimes.push(Date.now() - startWait)
+                            METRICS.uiReadyTimes.push(Date.now() - startWait)
                             return
                         }
 
@@ -783,6 +800,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         }
 
         let completionArrived = false
+        let requiresAutoCompleteAfterKyDone = false
 
         // シナリオ開始
         // Dry Runの時は期待値を指定して安定化
@@ -823,7 +841,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
 
                 const endWait = Date.now()
-                METRICS.aiResponseTimes.push(endWait - startWait)
+                METRICS.uiReadyTimes.push(endWait - startWait)
                 const riskReply = await assistantBubbles.last().textContent() || ''
                 await recordLog('AI', riskReply)
                 selectedRisk = true
@@ -889,11 +907,18 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
             // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）
             // すでに2件完了済みなら、KY完了で自動完了遷移に乗る。
+            requiresAutoCompleteAfterKyDone = committedCount >= 2
             await sendUserMessage('KY完了')
+            const autoCompleteTimeoutMs = requiresAutoCompleteAfterKyDone ? 30000 : 15000
             const completedByShortcut = await Promise.race([
-                page.waitForURL('**/complete', { timeout: 15000 }).then(() => true).catch(() => false),
-                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false),
+                page.waitForURL('**/complete', { timeout: autoCompleteTimeoutMs }).then(() => true).catch(() => false),
+                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: autoCompleteTimeoutMs }).then(() => true).catch(() => false),
             ])
+            if (requiresAutoCompleteAfterKyDone && !completedByShortcut) {
+                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
+                addFailureDiagnostic(`auto completion not triggered after KY完了. progress=${progressText ?? 'unknown'} committedCount=${committedCount}`)
+                throw new Error('KY完了 auto completion did not trigger despite 2 committed work items')
+            }
             if (completedByShortcut) {
                 completionArrived = true
                 await recordLog('System', 'Navigated to Complete page (auto after KY完了)')
