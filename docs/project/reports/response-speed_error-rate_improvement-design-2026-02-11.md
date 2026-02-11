@@ -4,6 +4,7 @@
 - 作成者: Codex＋GPT-5
 - 更新日: 2026-02-11
 - 更新日: 2026-02-11（A/B実装反映）
+- 更新日: 2026-02-11（危険2件完了後の「KY完了」自動完了導線を追記）
 
 ## 1. 目的
 
@@ -144,3 +145,6 @@ OpenAI公式ドキュメント:
 - B（リトライ予算の一本化）を実装。
   - 変更: `apps/v2-modern/workers/routes/chat.ts`, `apps/v2-modern/src/hooks/useChat.ts`
   - 内容: サーバー側に `OPENAI_RETRY_COUNT`（既定1、0〜2）を導入。クライアント側サイレントリトライは `VITE_ENABLE_RETRY_SILENT=1` のときのみ有効、最大1回に縮小。
+- UIUX補強（完了導線）を実装。
+  - 変更: `apps/v2-modern/src/hooks/useChat.ts`, `apps/v2-modern/src/pages/KYSessionPage.tsx`
+  - 内容: 危険2件が保存済みの状態で「KY完了」を受けた場合、API呼び出し無しで `status=completed` とし、完了画面（`/complete`）へ自動遷移。

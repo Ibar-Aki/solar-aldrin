@@ -41,6 +41,14 @@ export function KYSessionPage() {
         }
     }, [session, navigate])
 
+    // ストア状態でセッション完了になった場合は自動で完了画面へ遷移
+    useEffect(() => {
+        if (!session) return
+        if (status === 'completed') {
+            navigate('/complete')
+        }
+    }, [session, status, navigate])
+
     // 初回メッセージ
     const initialized = useRef(false)
     useEffect(() => {
@@ -120,13 +128,17 @@ export function KYSessionPage() {
     })
     const kyBoardIndex = Math.min(2, workItemCount + 1)
     const hasActionGoal = Boolean((session.actionGoal ?? '').trim())
+    const canForceComplete = workItemCount >= 2
     const canShowCompleteButton =
-        workItemCount > 0 &&
-        !hasCurrentWork &&
+        canForceComplete ||
         (
-            lastAssistantNextAction === 'completed' ||
-            status === 'confirmation' ||
-            (status === 'action_goal' && hasActionGoal)
+            workItemCount > 0 &&
+            !hasCurrentWork &&
+            (
+                lastAssistantNextAction === 'completed' ||
+                status === 'confirmation' ||
+                (status === 'action_goal' && hasActionGoal)
+            )
         )
 
     return (

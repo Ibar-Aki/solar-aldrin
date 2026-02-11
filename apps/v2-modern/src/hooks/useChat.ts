@@ -296,7 +296,7 @@ export function useChat() {
         setError(null)
         addMessage(
             'assistant',
-            'その危険を防ぐための対策を教えてください。（設備・環境 / 人配置・行動 / 保護具 のどれでもOK。合計2件以上あると安心です）',
+            'その危険を防ぐための、1つ目の対策を教えてください。',
             { nextAction: 'ask_countermeasure' }
         )
     }, [session, status, updateCurrentWorkItem, addMessage, setError])
@@ -575,7 +575,7 @@ export function useChat() {
             })
             addMessage(
                 'assistant',
-                '2件の危険と対策が完了しているため、このままKYを完了します。',
+                '2件の危険と対策が完了しました。KY完了です！',
                 { nextAction: 'completed' }
             )
             return

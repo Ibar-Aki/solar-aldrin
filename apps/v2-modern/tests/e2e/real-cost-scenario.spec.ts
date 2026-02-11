@@ -433,8 +433,8 @@ ${pageErrors.length > 0 ? pageErrors.slice(-20).map(line => `- ${escapeTableText
 test.use({ viewport: { width: 1280, height: 720 } })
 
 test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
-    // タイムアウトを少し長めに設定 (5分)
-    test.setTimeout(300 * 1000)
+    // LIVEは再試行や待機が重なるため、タイムアウトを広めに確保する。
+    test.setTimeout(RUN_LIVE ? 420 * 1000 : 300 * 1000)
     resetRunState()
     METRICS.startTime = Date.now()
 
@@ -652,10 +652,16 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     const startWait = Date.now()
                     const countBefore = await assistantBubbles.count()
                     const thinking = page.locator('text=考え中...').first()
+                    const completionHeading = page.locator('text=KY活動完了').first()
                     const deadline = Date.now() + CHAT_WAIT_TIMEOUT_MS
 
                     while (Date.now() < deadline) {
                         assertNoFatalInfraError()
+                        const onCompletePage = page.url().includes('/complete') || await completionHeading.isVisible().catch(() => false)
+                        if (onCompletePage) {
+                            METRICS.aiResponseTimes.push(Date.now() - startWait)
+                            return
+                        }
                         const countAfter = await assistantBubbles.count()
                         if (countAfter > countBefore) {
                             METRICS.aiResponseTimes.push(Date.now() - startWait)
@@ -757,16 +763,26 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     await recordLog('AI', `(Verified presence of: ${expectedResponsePart})`)
                 }
 
-                // 最新のAI応答を取得
-                const latestBubble = assistantBubbles.last()
-                const textContent = await latestBubble.textContent() || ''
-                await recordLog('AI', textContent)
+                // 完了画面へ自動遷移した場合はチャットバブルが消えるため、取得をスキップする。
+                const onCompletePageNow =
+                    page.url().includes('/complete') ||
+                    await page.locator('text=KY活動完了').first().isVisible().catch(() => false)
+                if (!onCompletePageNow) {
+                    const bubbleCount = await assistantBubbles.count().catch(() => 0)
+                    if (bubbleCount > 0) {
+                        const latestBubble = assistantBubbles.last()
+                        const textContent = await latestBubble.textContent().catch(() => null) || ''
+                        await recordLog('AI', textContent)
+                    }
+                }
             } catch (error: unknown) {
                 const message = error instanceof Error ? error.message : String(error)
                 addFailureDiagnostic(`Turn ${userTurn} failed. User="${shortText(text, 40)}" reason="${shortText(message, 180)}"`)
                 throw error
             }
         }
+
+        let completionArrived = false
 
         // シナリオ開始
         // Dry Runの時は期待値を指定して安定化
@@ -831,44 +847,83 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             // 完了確認（AIが「これでOK？」を聞く想定）
             await sendUserMessage('これでOKです。他にありません。')
 
-            // 1件目が保存されたことを確認してから、KY完了ショートカットを使う
-            const waitForWorkItemCount = async (count: number, timeoutMs: number): Promise<boolean> => {
-                const target = page.locator(`text=/作業・危険 \\(${count}件\\)/`).first()
+            // 1件以上が保存されたことを確認してから、KY完了ショートカットを使う。
+            // 2件目が先に確定して進捗が一気に2件表示になる場合もあるため、>= 判定にする。
+            const readWorkItemCount = async (): Promise<number | null> => {
+                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
+                if (!progressText) return null
+                const match = progressText.match(/作業・危険\s*\((\d+)件\)/)
+                if (!match) return null
+                const parsed = Number.parseInt(match[1], 10)
+                return Number.isFinite(parsed) ? parsed : null
+            }
+            const waitForWorkItemCountAtLeast = async (count: number, timeoutMs: number): Promise<number | null> => {
                 const deadline = Date.now() + timeoutMs
                 while (Date.now() < deadline) {
                     assertNoFatalInfraError()
-                    const visible = await target.isVisible().catch(() => false)
-                    if (visible) return true
+                    const currentCount = await readWorkItemCount()
+                    if (typeof currentCount === 'number' && currentCount >= count) return currentCount
                     await page.waitForTimeout(250)
                 }
-                return false
+                return null
             }
 
-            let committed = await waitForWorkItemCount(1, 45000)
-            if (!committed) {
+            let committedCount = await waitForWorkItemCountAtLeast(1, 45000)
+            if (!committedCount) {
                 // AI抽出の揺れ対策: 1件目が保存されない場合は、必須情報＋対策2件以上を明示して追送する
                 await sendUserMessage(
                     '原因は周囲の養生が不十分なためです。対策は、設備・環境: 消火器を作業地点のすぐそばに設置します。設備・環境: スパッタシートで周囲の可燃物を隙間なく覆って養生します。'
                 )
-                committed = await waitForWorkItemCount(1, 45000)
+                committedCount = await waitForWorkItemCountAtLeast(1, 45000)
             }
-            if (!committed) {
+            if (!committedCount) {
                 // それでも反映されない場合は、追加の対策を1つ足して再トライ（最大2回）
                 await sendUserMessage('追加の対策として、保護具: 防炎手袋を着用します。')
-                committed = await waitForWorkItemCount(1, 45000)
+                committedCount = await waitForWorkItemCountAtLeast(1, 45000)
             }
-            if (!committed) {
+            if (!committedCount) {
                 const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
                 addFailureDiagnostic(`work item did not commit. progress=${progressText ?? 'unknown'}`)
                 throw new Error('work item did not commit')
             }
 
             // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）
+            // すでに2件完了済みなら、KY完了で自動完了遷移に乗る。
             await sendUserMessage('KY完了')
-            await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
+            const completedByShortcut = await Promise.race([
+                page.waitForURL('**/complete', { timeout: 15000 }).then(() => true).catch(() => false),
+                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false),
+            ])
+            if (completedByShortcut) {
+                completionArrived = true
+                await recordLog('System', 'Navigated to Complete page (auto after KY完了)')
+                METRICS.navigationSuccess = true
+            } else if (committedCount < 2) {
+                await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
+            }
         }
 
         // 4. 完了画面への遷移待ち
+        const tryWaitForCompletionPage = async (timeoutMs: number): Promise<boolean> => {
+            try {
+                await Promise.race([
+                    page.waitForURL('**/complete', { timeout: timeoutMs }),
+                    page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: timeoutMs }),
+                ])
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        if (!completionArrived) {
+            completionArrived = await tryWaitForCompletionPage(15000)
+        }
+        if (completionArrived && !METRICS.navigationSuccess) {
+            await recordLog('System', 'Navigated to Complete page (auto)')
+            METRICS.navigationSuccess = true
+        }
+
         const finishButton = page.getByTestId('button-complete-session')
 
         // ボタンが出ない場合は、行動目標/確定の追加メッセージで1〜2回だけ押し上げる
@@ -881,38 +936,40 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             }
         }
 
-        let finishVisible = await waitForFinishButton(30000)
-        if (!finishVisible && !DRY_RUN) {
-            await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
-            finishVisible = await waitForFinishButton(30000)
-        }
-        if (!finishVisible && !DRY_RUN) {
-            await sendUserMessage('はい、これで確定して終了してください。')
-            finishVisible = await waitForFinishButton(30000)
-        }
-        if (!finishVisible) {
-            const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
-            addFailureDiagnostic(`button-complete-session did not appear. progress=${progressText ?? 'unknown'}`)
-            throw new Error('button-complete-session did not appear')
-        }
+        if (!completionArrived) {
+            let finishVisible = await waitForFinishButton(30000)
+            if (!finishVisible && !DRY_RUN) {
+                await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
+                finishVisible = await waitForFinishButton(30000)
+            }
+            if (!finishVisible && !DRY_RUN) {
+                await sendUserMessage('はい、これで確定して終了してください。')
+                finishVisible = await waitForFinishButton(30000)
+            }
+            if (!finishVisible) {
+                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
+                addFailureDiagnostic(`button-complete-session did not appear. progress=${progressText ?? 'unknown'}`)
+                throw new Error('button-complete-session did not appear')
+            }
 
-        await finishButton.click()
-        await recordLog('User', '(Clicked Finish Button)')
+            await finishButton.click()
+            await recordLog('User', '(Clicked Finish Button)')
 
-        // 遷移待ち (URL or Element)
-        try {
-            await Promise.race([
-                page.waitForURL('**/complete', { timeout: 30000 }),
-                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
-            ])
-        } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error)
-            addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
-            throw error
+            // 遷移待ち (URL or Element)
+            try {
+                await Promise.race([
+                    page.waitForURL('**/complete', { timeout: 30000 }),
+                    page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
+                ])
+            } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error)
+                addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
+                throw error
+            }
+            completionArrived = true
+            await recordLog('System', 'Navigated to Complete page')
+            METRICS.navigationSuccess = true
         }
-
-        await recordLog('System', 'Navigated to Complete page')
-        METRICS.navigationSuccess = true
 
         // --- Phase 2.6 Evolution: Verify Feedback Features ---
         // フィードバックカードの出現待ち（API応答次第で表示されない場合もある）

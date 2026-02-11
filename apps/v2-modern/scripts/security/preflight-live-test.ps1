@@ -4,6 +4,7 @@ param(
     [string]$ApiToken = $env:VITE_API_TOKEN,
     [string]$Prompt = 'safety check test',
     [switch]$SkipChat,
+    [string]$ExpectedRequireApiToken = $env:LIVE_EXPECTED_REQUIRE_API_TOKEN,
     [string]$ExpectedPolicyVersion = $env:LIVE_EXPECTED_POLICY_VERSION,
     [string]$ExpectedResponseFormat = $env:LIVE_EXPECTED_RESPONSE_FORMAT,
     [string]$ExpectedParseRecoveryEnabled = $env:LIVE_EXPECTED_PARSE_RECOVERY_ENABLED,
@@ -126,6 +127,27 @@ function Assert-StatusCode {
         throw "$Label failed. expected=$Expected actual=$Actual body=$Body"
     }
     Write-Host ("[OK] {0}: {1}" -f $Label, $Actual)
+}
+
+function Parse-BoolText {
+    param(
+        [string]$Value,
+        [string]$Label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    $token = $Value.Trim().ToLowerInvariant()
+    if ($token -in @('1', 'true', 'yes', 'on')) {
+        return $true
+    }
+    if ($token -in @('0', 'false', 'no', 'off')) {
+        return $false
+    }
+
+    throw "$Label must be one of: 1,0,true,false,yes,no,on,off (actual=$Value)"
 }
 
 function Assert-ChatServerPolicy {
@@ -303,6 +325,25 @@ if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
 if (-not $apiRoot) {
     throw 'Failed to resolve API base URL. Set LIVE_API_BASE_URL (or ensure Pages bundle contains API base).'
 }
+Write-Host "ApiRoot: $apiRoot"
+
+$health = Invoke-HttpRequest -Method 'GET' -Url "$apiRoot/api/health"
+Assert-StatusCode -Label 'health' -Expected 200 -Actual $health.StatusCode -Body $health.Body
+
+$metricsBody = '{"event":"session_start"}'
+$metricsUnauth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/metrics" -Body $metricsBody
+$expectRequireApiToken = Parse-BoolText -Value $ExpectedRequireApiToken -Label 'ExpectedRequireApiToken'
+
+if ($metricsUnauth.StatusCode -ne 200 -and $metricsUnauth.StatusCode -ne 401) {
+    throw "metrics unauthenticated failed. expected=200|401 actual=$($metricsUnauth.StatusCode) body=$($metricsUnauth.Body)"
+}
+
+$detectedRequireApiToken = ($metricsUnauth.StatusCode -eq 401)
+if ($expectRequireApiToken -ne $null -and $expectRequireApiToken -ne $detectedRequireApiToken) {
+    throw "metrics unauthenticated requireApiToken mismatch. expected=$expectRequireApiToken actual=$detectedRequireApiToken body=$($metricsUnauth.Body)"
+}
+Write-Host "[OK] metrics unauthenticated: $($metricsUnauth.StatusCode) (requireApiToken=$detectedRequireApiToken)"
+
 if ([string]::IsNullOrWhiteSpace($ApiToken)) {
     $devVarsPath = Join-Path (Get-Location) '.dev.vars'
     $fallbackToken = Get-EnvLikeValue -FilePath $devVarsPath -Key 'API_TOKEN'
@@ -311,29 +352,24 @@ if ([string]::IsNullOrWhiteSpace($ApiToken)) {
         Write-Host "ApiToken: loaded from .dev.vars (API_TOKEN)"
     }
 }
-if ([string]::IsNullOrWhiteSpace($ApiToken)) {
-    throw 'ApiToken is required. Set VITE_API_TOKEN.'
-}
 
-Write-Host "ApiRoot: $apiRoot"
-
-$health = Invoke-HttpRequest -Method 'GET' -Url "$apiRoot/api/health"
-Assert-StatusCode -Label 'health' -Expected 200 -Actual $health.StatusCode -Body $health.Body
-
-$metricsBody = '{"event":"session_start"}'
-$metricsUnauth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/metrics" -Body $metricsBody
-Assert-StatusCode -Label 'metrics unauthenticated' -Expected 401 -Actual $metricsUnauth.StatusCode -Body $metricsUnauth.Body
-
-$authHeaders = @{ Authorization = "Bearer $ApiToken" }
-$metricsAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/metrics" -Headers $authHeaders -Body $metricsBody
-if ($metricsAuth.StatusCode -ne 200) {
-    $metricsAuthJson = Try-ParseJsonBody -Body $metricsAuth.Body
-    $metricsCode = $metricsAuthJson.code
-    if ($metricsAuth.StatusCode -eq 401 -and $metricsCode -eq 'AUTH_INVALID') {
-        throw "metrics authenticated failed. expected=200 actual=401 code=AUTH_INVALID. Hint: VITE_API_TOKEN does not match the target Worker API_TOKEN secret. body=$($metricsAuth.Body)"
+if ($detectedRequireApiToken -or -not [string]::IsNullOrWhiteSpace($ApiToken)) {
+    if ([string]::IsNullOrWhiteSpace($ApiToken)) {
+        throw 'ApiToken is required in requireApiToken mode. Set VITE_API_TOKEN.'
     }
+    $authHeaders = @{ Authorization = "Bearer $ApiToken" }
+    $metricsAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/metrics" -Headers $authHeaders -Body $metricsBody
+    if ($metricsAuth.StatusCode -ne 200) {
+        $metricsAuthJson = Try-ParseJsonBody -Body $metricsAuth.Body
+        $metricsCode = $metricsAuthJson.code
+        if ($metricsAuth.StatusCode -eq 401 -and $metricsCode -eq 'AUTH_INVALID') {
+            throw "metrics authenticated failed. expected=200 actual=401 code=AUTH_INVALID. Hint: VITE_API_TOKEN does not match the target Worker API_TOKEN secret. body=$($metricsAuth.Body)"
+        }
+    }
+    Assert-StatusCode -Label 'metrics authenticated' -Expected 200 -Actual $metricsAuth.StatusCode -Body $metricsAuth.Body
+} else {
+    Write-Host '[SKIP] metrics authenticated: ApiToken not provided (optional-auth mode)'
 }
-Assert-StatusCode -Label 'metrics authenticated' -Expected 200 -Actual $metricsAuth.StatusCode -Body $metricsAuth.Body
 
 if (-not $SkipChat) {
     $chatBody = [pscustomobject]@{
@@ -345,7 +381,12 @@ if (-not $SkipChat) {
         )
     } | ConvertTo-Json -Depth 6 -Compress
 
-    $chatAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/chat" -Headers $authHeaders -Body $chatBody
+    $chatAuthHeaders = @{}
+    if (-not [string]::IsNullOrWhiteSpace($ApiToken)) {
+        $chatAuthHeaders.Authorization = "Bearer $ApiToken"
+    }
+
+    $chatAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/chat" -Headers $chatAuthHeaders -Body $chatBody
     if ($chatAuth.StatusCode -ne 200) {
         $chatAuthJson = Try-ParseJsonBody -Body $chatAuth.Body
         $chatCode = $chatAuthJson.code

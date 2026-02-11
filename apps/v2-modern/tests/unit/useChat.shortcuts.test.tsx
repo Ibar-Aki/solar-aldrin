@@ -87,4 +87,44 @@ describe('useChat shortcuts', () => {
         expect(msgs.at(-1)?.role).toBe('assistant')
         expect(msgs.at(-1)?.extractedData?.nextAction).toBe('ask_goal')
     })
+
+    it('危険2件が保存済みなら、KY完了でAPI無しのままセッション完了に進める', async () => {
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+
+        const commitCompleteWorkItem = (index: number) => {
+            updateCurrentWorkItem({
+                workDescription: `作業${index}`,
+                hazardDescription: `危険${index}`,
+                riskLevel: 3,
+                whyDangerous: [`要因${index}`],
+                countermeasures: [
+                    { category: 'equipment', text: `設備対策${index}` },
+                    { category: 'ppe', text: `保護具対策${index}` },
+                ],
+            })
+            commitWorkItem()
+        }
+
+        commitCompleteWorkItem(1)
+        commitCompleteWorkItem(2)
+
+        expect(useKYStore.getState().session?.workItems).toHaveLength(2)
+        expect(useKYStore.getState().status).toBe('action_goal')
+
+        const { result } = renderHook(() => useChat())
+        await act(async () => {
+            await result.current.sendMessage('KY完了')
+        })
+
+        const state = useKYStore.getState()
+        expect(vi.mocked(postChat)).not.toHaveBeenCalled()
+        expect(state.status).toBe('completed')
+        expect(state.session?.completedAt).not.toBeNull()
+
+        const msgs = state.messages
+        expect(msgs.at(-2)?.role).toBe('user')
+        expect(msgs.at(-2)?.content).toBe('KY完了')
+        expect(msgs.at(-1)?.role).toBe('assistant')
+        expect(msgs.at(-1)?.extractedData?.nextAction).toBe('completed')
+    })
 })
