@@ -10,6 +10,7 @@ import type { ProcessPhase, HealthCondition } from '@/types/ky'
 import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
 import { getLatestSession } from '@/lib/db'
 import { History } from 'lucide-react'
+import { clearApiToken, getApiToken, maskApiToken, setApiToken } from '@/lib/apiToken'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -35,6 +36,9 @@ export function HomePage() {
     const [healthCondition, setHealthCondition] = useState<HealthCondition>(prefill?.healthCondition ?? 'good')
     const [isStarting, setIsStarting] = useState(false)
     const [latestAvailable, setLatestAvailable] = useState(false)
+    const [apiTokenInput, setApiTokenInput] = useState('')
+    const [apiTokenMasked, setApiTokenMasked] = useState(() => maskApiToken(getApiToken()))
+    const [apiTokenHint, setApiTokenHint] = useState<string | null>(null)
 
     // Clear location state after prefill applied (prevent re-prefill on refresh)
     // P2: Router経由でstateをクリア（window.history.replaceStateはRouter履歴を壊す）
@@ -96,6 +100,24 @@ export function HomePage() {
         }
     }
 
+    const handleSaveApiToken = () => {
+        const raw = apiTokenInput.trim()
+        if (!raw) return
+        setApiToken(raw)
+        setApiTokenMasked(maskApiToken(raw))
+        setApiTokenInput('')
+
+        // トークン文字列は任意だが、現行運用は 64桁hex を想定しているため注意喚起する（保存は続行）。
+        const looksLikeHex64 = /^[a-f0-9]{64}$/i.test(raw)
+        setApiTokenHint(looksLikeHex64 ? null : 'トークン形式が想定（64桁の16進）と異なります。認証エラー時は値を確認してください。')
+    }
+
+    const handleClearApiToken = () => {
+        clearApiToken()
+        setApiTokenMasked('')
+        setApiTokenHint(null)
+    }
+
     const handleUseLatest = async () => {
         try {
             const latest = await getLatestSession()
@@ -107,6 +129,55 @@ export function HomePage() {
             console.error('Failed to apply latest session:', error)
         }
     }
+
+    const renderApiTokenSettings = () => (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium text-slate-800">APIトークン設定（必要な場合）</div>
+                <div className="text-xs text-slate-600">
+                    {apiTokenMasked ? `設定済み: ${apiTokenMasked}` : '未設定'}
+                </div>
+            </div>
+            <Input
+                value={apiTokenInput}
+                onChange={(e) => setApiTokenInput(e.target.value)}
+                placeholder="APIトークン（Workers側で認証が必要な環境のみ）"
+                type="password"
+                className="placeholder:text-muted-foreground/70"
+                data-testid="input-api-token"
+            />
+            <div className="flex gap-2">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveApiToken}
+                    disabled={!apiTokenInput.trim()}
+                    className="flex-1"
+                >
+                    保存
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearApiToken}
+                    disabled={!apiTokenMasked}
+                    className="flex-1"
+                >
+                    削除
+                </Button>
+            </div>
+            {apiTokenHint && (
+                <Alert>
+                    <AlertDescription>{apiTokenHint}</AlertDescription>
+                </Alert>
+            )}
+            <div className="text-xs text-slate-600">
+                トークンは端末のブラウザ（localStorage）に保存されます。
+            </div>
+        </div>
+    )
 
     // 進行中のセッションがある場合
     if (session && session.completedAt === null) {
@@ -136,6 +207,7 @@ export function HomePage() {
                                 <p><strong>作業者:</strong> {session.userName}</p>
                                 <p><strong>登録済み作業:</strong> {session.workItems.length}件</p>
                             </div>
+                            {renderApiTokenSettings()}
                             <Button onClick={handleContinue} className="w-full">
                                 続きから再開
                             </Button>
@@ -183,6 +255,7 @@ export function HomePage() {
                         )}
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        {renderApiTokenSettings()}
                         <div>
                             <label className="text-sm font-medium text-gray-700">作業者名</label>
                             <Input
