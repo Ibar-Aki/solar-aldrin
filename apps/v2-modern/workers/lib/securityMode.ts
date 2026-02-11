@@ -23,7 +23,8 @@ export function isProductionEnv(env: Pick<SecurityEnv, 'SENTRY_ENV' | 'ENVIRONME
 export function shouldRequireApiToken(env: SecurityEnv): boolean {
     const explicit = parseBooleanFlag(env.REQUIRE_API_TOKEN)
     if (explicit !== null) return explicit
-    return isProductionEnv(env)
+    // 既定では必須化しない。必要な環境のみ REQUIRE_API_TOKEN=1 で有効化する。
+    return false
 }
 
 export function shouldRequireRateLimitKV(env: SecurityEnv): boolean {

@@ -25,24 +25,42 @@ describe('HomePage API token settings', () => {
         navigateMock.mockReset()
         useKYStore.setState(initialState, true)
         window.localStorage.clear()
+        vi.stubEnv('VITE_REQUIRE_API_TOKEN', '0')
     })
 
     afterEach(() => {
+        vi.unstubAllEnvs()
         cleanup()
     })
 
-    it('新規開始フォームでAPIトークン入力を表示する', () => {
+    it('通常環境では新規開始フォームにAPIトークン入力を表示しない', () => {
         render(<HomePage />)
 
-        expect(screen.getByTestId('input-api-token')).toBeInTheDocument()
+        expect(screen.queryByTestId('input-api-token')).not.toBeInTheDocument()
     })
 
-    it('進行中セッション画面でもAPIトークン入力を表示する', () => {
+    it('通常環境では進行中セッション画面にもAPIトークン入力を表示しない', () => {
         useKYStore.getState().startSession('Test User', 'Test Site', '晴れ', 'フリー', 'good')
 
         render(<HomePage />)
 
         expect(screen.getByText(/進行中のセッションがあります/)).toBeInTheDocument()
+        expect(screen.queryByTestId('input-api-token')).not.toBeInTheDocument()
+    })
+
+    it('必須環境（true/yes/1）ではAPIトークン入力を表示する', () => {
+        vi.stubEnv('VITE_REQUIRE_API_TOKEN', 'true')
+
+        render(<HomePage />)
+
+        expect(screen.getByTestId('input-api-token')).toBeInTheDocument()
+    })
+
+    it('必須環境（yes）でもAPIトークン入力を表示する', () => {
+        vi.stubEnv('VITE_REQUIRE_API_TOKEN', 'yes')
+
+        render(<HomePage />)
+
         expect(screen.getByTestId('input-api-token')).toBeInTheDocument()
     })
 })

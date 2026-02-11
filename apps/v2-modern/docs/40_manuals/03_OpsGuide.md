@@ -3,6 +3,8 @@
 本ドキュメントは、Voice KY Assistant v2 の運用・保守に関する手順をまとめたものです。
 
 更新日: 2026-02-07
+更新日: 2026-02-11（APIトークン認証の既定運用を更新）
+更新日: 2026-02-11（認証フラグ解釈と任意モードのBearer挙動を明記）
 
 ---
 
@@ -34,6 +36,18 @@
 ---
 
 ## 🛡️ セキュリティ設定 (Security Settings)
+
+### APIトークン認証の運用方針
+
+* **既定（推奨）**: `REQUIRE_API_TOKEN=0`（APIトークン認証を必須化しない）
+  * iPhoneや共有リンクで初回アクセスした利用者でも、設定なしで利用開始できます。
+* **必須化したい場合のみ**:
+  * Workers: `REQUIRE_API_TOKEN=1` と `API_TOKEN=<secret>` を設定
+  * Frontend: `VITE_REQUIRE_API_TOKEN=1` を設定（ホーム画面にAPIトークン入力欄を表示）
+* **フラグ解釈**:
+  * `1 / true / yes / on` は有効、`0 / false / no / off` は無効として解釈されます（Frontend/Workers共通）。
+* **認証任意モードの挙動**:
+  * `REQUIRE_API_TOKEN=0` のときは、`Authorization: Bearer ...` が付与されていても認証チェックをスキップします。
 
 ### レート制限 (Rate Limiting)
 

@@ -16,7 +16,7 @@ describe('securityMode helpers', () => {
     it('APIトークン必須判定は明示フラグを優先する', () => {
         expect(shouldRequireApiToken({ REQUIRE_API_TOKEN: '1', SENTRY_ENV: 'local' })).toBe(true)
         expect(shouldRequireApiToken({ REQUIRE_API_TOKEN: '0', SENTRY_ENV: 'production' })).toBe(false)
-        expect(shouldRequireApiToken({ SENTRY_ENV: 'production' })).toBe(true)
+        expect(shouldRequireApiToken({ SENTRY_ENV: 'production' })).toBe(false)
         expect(shouldRequireApiToken({ SENTRY_ENV: 'local' })).toBe(false)
     })
 

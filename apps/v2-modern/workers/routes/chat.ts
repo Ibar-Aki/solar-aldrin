@@ -66,33 +66,51 @@ const CHAT_RESPONSE_JSON_SCHEMA = {
             extracted: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['nextAction'],
+                required: [
+                    'nextAction',
+                    'workDescription',
+                    'hazardDescription',
+                    'whyDangerous',
+                    'countermeasures',
+                    'riskLevel',
+                    'actionGoal',
+                ],
                 properties: {
                     nextAction: { type: 'string', enum: NEXT_ACTION_ENUM },
-                    workDescription: { type: 'string' },
-                    hazardDescription: { type: 'string' },
+                    workDescription: { type: ['string', 'null'] },
+                    hazardDescription: { type: ['string', 'null'] },
                     whyDangerous: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        maxItems: 3,
+                        anyOf: [
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                                maxItems: 3,
+                            },
+                            { type: 'null' },
+                        ],
                     },
                     countermeasures: {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            additionalProperties: false,
-                            required: ['category', 'text'],
-                            properties: {
-                                category: { type: 'string', enum: COUNTERMEASURE_CATEGORY_ENUM },
-                                text: { type: 'string' },
+                        anyOf: [
+                            {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    additionalProperties: false,
+                                    required: ['category', 'text'],
+                                    properties: {
+                                        category: { type: 'string', enum: COUNTERMEASURE_CATEGORY_ENUM },
+                                        text: { type: 'string' },
+                                    },
+                                },
                             },
-                        },
+                            { type: 'null' },
+                        ],
                     },
                     riskLevel: {
-                        type: 'integer',
-                        enum: [1, 2, 3, 4, 5],
+                        type: ['integer', 'null'],
+                        enum: [1, 2, 3, 4, 5, null],
                     },
-                    actionGoal: { type: 'string' },
+                    actionGoal: { type: ['string', 'null'] },
                 },
             },
         },

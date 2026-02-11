@@ -3,6 +3,7 @@
 **最終更新日**: 2026-02-11
 **更新日**: 2026-02-11
 **更新日**: 2026-02-11（`meta.server` 可観測化、`whyDangerous` 補完ロジック追加）
+**更新日**: 2026-02-11（iPhone/共有リンクでのAPIトークン設定不要化に同期）
 
 ---
 
@@ -341,7 +342,7 @@ graph LR
 | 項目 | 仕様 | 備考 |
 |:--|:--|:--|
 | CORS | 許可オリジンは `ALLOWED_ORIGINS` に加え、開発/本番で固定の許可一覧を適用 | `STRICT_CORS=1` の場合は https の Pages 固定URL（`*.voice-ky-*.pages.dev`）のみ許可 |
-| 認証 | `Authorization: Bearer <token>` | `REQUIRE_API_TOKEN=1` か本番判定で必須化。未設定時は `AUTH_CONFIG_MISSING` を返す |
+| 認証 | `Authorization: Bearer <token>`（必須化時のみ） | 既定は任意。`REQUIRE_API_TOKEN=1` のときのみ必須化。未設定時は `AUTH_CONFIG_MISSING` を返す |
 | レート制限 | 1分あたり30回（全API） | KVが無い場合はメモリフォールバック。`REQUIRE_RATE_LIMIT_KV=1` でKV必須化 |
 | ヘルスチェック | `/api/health` | 認証・レート制限の必須設定不足がある場合は `degraded` を返す |
 
@@ -707,7 +708,7 @@ graph TD
 | 変数名 | 必須 | 説明 |
 |:------|:----:|------|
 | `OPENAI_API_KEY` | 必須 | OpenAI APIキー |
-| `API_TOKEN` | 本番 | API認証トークン |
+| `API_TOKEN` | 任意 | API認証トークン（`REQUIRE_API_TOKEN=1` の場合に使用） |
 | `REQUIRE_API_TOKEN` | - | 1で常時必須化 |
 | `STRICT_CORS` | - | 1で厳格CORS |
 | `REQUIRE_RATE_LIMIT_KV` | - | 1でKV必須化 |
@@ -743,7 +744,7 @@ graph TD
 | 項目 | 内容 |
 |:--|:--|
 | 認証方式 | `Authorization: Bearer <token>`。サーバー側 `API_TOKEN` と一致させる。 |
-| 認証必須条件 | `REQUIRE_API_TOKEN=1` もしくは本番環境判定で必須化。 |
+| 認証必須条件 | `REQUIRE_API_TOKEN=1` のときのみ必須化（既定は不要）。 |
 | レート制限 | 1分あたり30回（全API）。 |
 | `Retry-After` | 429時に秒数を返却。クライアントは待機後に再試行。 |
 | 代替ストア | KVが無い場合はメモリフォールバック（開発用途）。 |
@@ -1216,9 +1217,9 @@ export const FeedbackResponseSchema = z.object({
 
 | 原因 | 対処法 |
 |:--|:--|
-| ホーム画面のAPIトークン未設定 | ホーム画面の「APIトークン設定」で保存し、再試行 |
+| 必須化環境でホーム画面のAPIトークン未設定 | ホーム画面の「APIトークン設定」で保存し、再試行 |
 | サーバー側 `API_TOKEN` と不一致 | 両方のトークンが同一か確認 |
-| `REQUIRE_API_TOKEN=1` だがトークン未設定 | サーバー側 `API_TOKEN` を設定 |
+| `REQUIRE_API_TOKEN=1` だがサーバー側トークン未設定 | サーバー側 `API_TOKEN` を設定 |
 
 ### 2. 「混雑中です」と表示される（429エラー）
 
@@ -1505,7 +1506,7 @@ ENABLE_FEEDBACK = "1"
 ```bash
 # .env.staging
 VITE_API_BASE_URL=https://staging-api.example.com/api
-VITE_REQUIRE_API_TOKEN=1
+VITE_REQUIRE_API_TOKEN=0
 VITE_ENABLE_RETRY_SILENT=0
 VITE_TELEMETRY_ENABLED=1
 VITE_TELEMETRY_SAMPLE_RATE=1.0
@@ -1513,8 +1514,7 @@ VITE_TELEMETRY_SAMPLE_RATE=1.0
 # wrangler.toml (staging)
 [vars]
 OPENAI_API_KEY = "sk-..."
-API_TOKEN = "staging-token-xxx"
-REQUIRE_API_TOKEN = "1"
+REQUIRE_API_TOKEN = "0"
 STRICT_CORS = "0"
 REQUIRE_RATE_LIMIT_KV = "1"
 ENABLE_FEEDBACK = "1"
@@ -1526,11 +1526,11 @@ FEEDBACK_KV = { binding = "FEEDBACK_KV", id = "..." }
 
 **特徴**:
 
-- 認証必須
+- 認証不要（既定）
 - CORS緩和（テスト用オリジン許可）
 - レート制限有効（KV使用）
 - テレメトリ有効（全送信）
-- ブラウザ実行時はホーム画面の「APIトークン設定」で `localStorage` に保存したトークンを使用
+- APIトークン設定なしで利用開始可能（iPhone/共有リンク含む）
 
 ---
 
@@ -1539,7 +1539,7 @@ FEEDBACK_KV = { binding = "FEEDBACK_KV", id = "..." }
 ```bash
 # .env.production
 VITE_API_BASE_URL=https://api.example.com/api
-VITE_REQUIRE_API_TOKEN=1
+VITE_REQUIRE_API_TOKEN=0
 VITE_ENABLE_RETRY_SILENT=0
 VITE_TELEMETRY_ENABLED=1
 VITE_TELEMETRY_SAMPLE_RATE=0.1
@@ -1547,8 +1547,7 @@ VITE_TELEMETRY_SAMPLE_RATE=0.1
 # wrangler.toml (production)
 [vars]
 OPENAI_API_KEY = "sk-..."
-API_TOKEN = "production-token-xxx"
-REQUIRE_API_TOKEN = "1"
+REQUIRE_API_TOKEN = "0"
 STRICT_CORS = "1"
 REQUIRE_RATE_LIMIT_KV = "1"
 ENABLE_FEEDBACK = "1"
@@ -1565,13 +1564,13 @@ dataset = "voice_ky_metrics"
 
 **特徴**:
 
-- 認証必須
+- 認証不要（既定）
 - CORS厳格（`*.voice-ky-*.pages.dev` のみ）
 - レート制限必須（KV必須）
 - サイレントリトライは既定で無効（必要時のみ `VITE_ENABLE_RETRY_SILENT=1`）
 - テレメトリ有効（10%サンプリング）
 - Sentry/Analytics Engine連携
-- ブラウザ実行時はホーム画面の「APIトークン設定」で `localStorage` に保存したトークンを使用
+- APIトークン設定なしで利用開始可能（iPhone/共有リンク含む）
 
 ---
 
@@ -1580,11 +1579,11 @@ dataset = "voice_ky_metrics"
 | 変数名 | 開発 | ステージング | 本番 | 説明 |
 |:--|:--:|:--:|:--:|:--|
 | `VITE_API_TOKEN` | - | 任意 | 任意 | 実費テスト/事前チェック用途（ブラウザ常用はlocalStorage設定を利用） |
-| `VITE_REQUIRE_API_TOKEN` | 0 | 1 | 1 | 認証必須フラグ |
+| `VITE_REQUIRE_API_TOKEN` | 0 | 0 | 0 | 1でクライアント側の認証必須UIを表示 |
 | `VITE_ENABLE_RETRY_SILENT` | 0 | 0 | 0 | サイレントリトライ（1で明示有効） |
 | `VITE_TELEMETRY_ENABLED` | 0 | 1 | 1 | テレメトリ送信 |
-| `API_TOKEN` | - | ✓ | ✓ | サーバー認証トークン |
-| `REQUIRE_API_TOKEN` | 0 | 1 | 1 | サーバー認証必須 |
+| `API_TOKEN` | - | 任意 | 任意 | サーバー認証トークン（必須化時のみ使用） |
+| `REQUIRE_API_TOKEN` | 0 | 0 | 0 | 1でサーバー認証必須 |
 | `STRICT_CORS` | 0 | 0 | 1 | CORS厳格モード |
 | `REQUIRE_RATE_LIMIT_KV` | 0 | 1 | 1 | KV必須 |
 

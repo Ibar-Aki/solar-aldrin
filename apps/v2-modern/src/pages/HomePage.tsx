@@ -11,6 +11,7 @@ import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/
 import { getLatestSession } from '@/lib/db'
 import { History } from 'lucide-react'
 import { clearApiToken, getApiToken, maskApiToken, setApiToken } from '@/lib/apiToken'
+import { shouldRequireApiTokenClient } from '@/lib/envFlags'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -39,6 +40,7 @@ export function HomePage() {
     const [apiTokenInput, setApiTokenInput] = useState('')
     const [apiTokenMasked, setApiTokenMasked] = useState(() => maskApiToken(getApiToken()))
     const [apiTokenHint, setApiTokenHint] = useState<string | null>(null)
+    const requireApiToken = shouldRequireApiTokenClient()
 
     // Clear location state after prefill applied (prevent re-prefill on refresh)
     // P2: Router経由でstateをクリア（window.history.replaceStateはRouter履歴を壊す）
@@ -207,7 +209,7 @@ export function HomePage() {
                                 <p><strong>作業者:</strong> {session.userName}</p>
                                 <p><strong>登録済み作業:</strong> {session.workItems.length}件</p>
                             </div>
-                            {renderApiTokenSettings()}
+                            {requireApiToken && renderApiTokenSettings()}
                             <Button onClick={handleContinue} className="w-full">
                                 続きから再開
                             </Button>
@@ -255,7 +257,7 @@ export function HomePage() {
                         )}
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {renderApiTokenSettings()}
+                        {requireApiToken && renderApiTokenSettings()}
                         <div>
                             <label className="text-sm font-medium text-gray-700">作業者名</label>
                             <Input

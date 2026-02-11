@@ -212,14 +212,17 @@ app.use('/api/*', async (c, next) => {
         }, 503)
     }
 
-    if (!token) {
-        if (validToken || requireApiToken) {
-            return c.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED', requestId: c.get('reqId') }, 401)
-        }
+    // 認証任意モードでは Authorization の有無/内容に関わらず認証判定をスキップする。
+    // 旧クライアントがBearerを送っても401にせず、移行時の恒常エラーを避ける。
+    if (!requireApiToken) {
         return next()
     }
 
-    if (!validToken || token !== validToken) {
+    if (!token) {
+        return c.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED', requestId: c.get('reqId') }, 401)
+    }
+
+    if (token !== validToken) {
         return c.json({ error: 'Unauthorized', code: 'AUTH_INVALID', requestId: c.get('reqId') }, 401)
     }
 

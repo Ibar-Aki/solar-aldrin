@@ -12,14 +12,10 @@ import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
 import { getTimeGreeting } from '@/lib/greeting'
 import { getApiToken } from '@/lib/apiToken'
+import { shouldEnableSilentRetryClient, shouldRequireApiTokenClient } from '@/lib/envFlags'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
-const ENABLE_SILENT_RETRY = (() => {
-    const raw = import.meta.env.VITE_ENABLE_RETRY_SILENT
-    if (raw === '1') return true
-    // B: リトライ予算をサーバー主導に寄せるため、既定は無効。
-    return false
-})()
+const ENABLE_SILENT_RETRY = shouldEnableSilentRetryClient()
 const MAX_SILENT_RETRIES = 1
 
 type RetrySource = 'none' | 'manual' | 'silent'
@@ -81,11 +77,14 @@ function toApiError(error: unknown): ApiError {
 function normalizeChatError(error: unknown): NormalizedChatError {
     const apiError = toApiError(error)
     const retryAfterSec = apiError.retryAfterSec
+    const requireAuth = shouldRequireApiTokenClient()
 
     switch (apiError.errorType) {
         case 'auth':
             return {
-                message: '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。',
+                message: requireAuth
+                    ? '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。'
+                    : '認証エラーです。サーバー側の認証設定を確認してください。',
                 errorType: 'auth',
                 status: apiError.status,
                 retriable: apiError.retriable,
@@ -333,7 +332,7 @@ export function useChat() {
             lastUserMessageRef.current = text
 
             // 認証チェック (Hardening Phase C)
-            const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
+            const requireAuth = shouldRequireApiTokenClient()
             const hasToken = Boolean(getApiToken())
 
             if (requireAuth && !hasToken) {

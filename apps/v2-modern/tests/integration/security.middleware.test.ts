@@ -63,6 +63,37 @@ describe('security middleware integration', () => {
         expect(res.status).toBe(401)
     })
 
+    it('REQUIRE_API_TOKEN=0 ならAPI_TOKEN設定済みでもAuthorizationなしで通る', async () => {
+        const env: TestEnv = {
+            ...baseEnv,
+            SENTRY_ENV: 'production',
+            REQUIRE_API_TOKEN: '0',
+            REQUIRE_RATE_LIMIT_KV: '0',
+            API_TOKEN: 'token123',
+        }
+        const res = await appWithRoutes.fetch(metricsRequest(), env)
+        expect(res.status).toBe(200)
+    })
+
+    it('認証任意モードではAuthorizationが付与されていても検証せず通る', async () => {
+        const env: TestEnv = {
+            ...baseEnv,
+            SENTRY_ENV: 'production',
+            REQUIRE_API_TOKEN: '0',
+            REQUIRE_RATE_LIMIT_KV: '0',
+            API_TOKEN: 'token123',
+        }
+        const res = await appWithRoutes.fetch(
+            metricsRequest({
+                headers: {
+                    Authorization: 'Bearer stale-token',
+                },
+            }),
+            env
+        )
+        expect(res.status).toBe(200)
+    })
+
     it('STRICT_CORS有効時に未許可Originは403になる', async () => {
         const env: TestEnv = {
             ...baseEnv,
