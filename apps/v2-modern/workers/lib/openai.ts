@@ -236,24 +236,43 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
  */
 export function cleanJsonMarkdown(content: string): string {
     const normalized = content.replace(/^\uFEFF/, '').trim()
+    const stripCodeFence = (value: string): string => {
+        // Strict fenced block only.
+        const strictFence = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+        if (strictFence?.[1]) return strictFence[1].trim()
+
+        // Embedded fenced block with prose around it.
+        const embeddedFence = value.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+        if (embeddedFence?.[1]) return embeddedFence[1].trim()
+
+        return value
+    }
+
+    const unfenced = stripCodeFence(normalized)
     try {
         // まずそのままパースできるか試す
-        JSON.parse(normalized)
-        return normalized
+        JSON.parse(unfenced)
+        return unfenced
     } catch {
-        // Markdown記法の除去
-        const clean = normalized.replace(/```json\s*/g, '').replace(/```\s*$/g, '')
+        // { ... } / [ ... ] の範囲を抽出
+        const clean = unfenced.trim()
+        const firstObject = clean.indexOf('{')
+        const lastObject = clean.lastIndexOf('}')
+        const firstArray = clean.indexOf('[')
+        const lastArray = clean.lastIndexOf(']')
 
-        // { ... } の範囲を抽出
-        const firstBrace = clean.indexOf('{')
-        const lastBrace = clean.lastIndexOf('}')
+        const hasObject = firstObject !== -1 && lastObject > firstObject
+        const hasArray = firstArray !== -1 && lastArray > firstArray
 
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            return clean.substring(firstBrace, lastBrace + 1)
+        if (hasObject && (!hasArray || firstObject < firstArray)) {
+            return clean.substring(firstObject, lastObject + 1)
+        }
+        if (hasArray) {
+            return clean.substring(firstArray, lastArray + 1)
         }
 
         // フォールバック: 元の文字列を返す（呼び出し元でパースエラーになる）
-        return normalized
+        return unfenced
     }
 }
 
