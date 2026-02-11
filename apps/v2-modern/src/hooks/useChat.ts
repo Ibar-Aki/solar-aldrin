@@ -177,6 +177,7 @@ export function useChat() {
         updateCurrentWorkItem,
         commitWorkItem,
         startNewWorkItem,
+        completeSession,
         updateActionGoal,
         setStatus,
         setLoading,
@@ -221,9 +222,7 @@ export function useChat() {
             [
                 `${greeting}`,
                 `本日は${processPhase}ですね。今日もこれから安全に作業をしましょう。`,
-                '',
-                'まず【1件目】の想定される危険を教えてください。',
-                '「何をするとき」「何が原因で」「どうなる」が分かるように、短くでOKです。',
+                'まず、1件目の想定される危険を教えてください。',
             ].join('\n')
         )
     }, [session, addMessage, setEnvironmentRisk])
@@ -552,6 +551,36 @@ export function useChat() {
     }, [session, messages, addMessage, setLoading, setError, handleExtractedData, currentWorkItem, status])
 
     const sendMessage = useCallback(async (text: string) => {
+        // 仕様: 2件が完了済みなら「KY完了」で即時にセッション完了（APIは呼ばない）
+        if (session && status !== 'completed' && session.workItems.length >= 2 && isKYCompleteCommand(text)) {
+            const normalized = text.trim()
+            addMessage('user', normalized)
+            void sendTelemetry({
+                event: 'input_length',
+                sessionId: session.id,
+                value: normalized.length,
+                data: {
+                    source: 'chat',
+                },
+            })
+
+            setError(null)
+            startNewWorkItem()
+            completeSession({
+                actionGoal: session.actionGoal ?? null,
+                pointingConfirmed: session.pointingConfirmed ?? null,
+                allMeasuresImplemented: session.allMeasuresImplemented ?? null,
+                hadNearMiss: session.hadNearMiss ?? null,
+                nearMissNote: session.nearMissNote ?? null,
+            })
+            addMessage(
+                'assistant',
+                '2件の危険と対策が完了しているため、このままKYを完了します。',
+                { nextAction: 'completed' }
+            )
+            return
+        }
+
         // 仕様: 2件目の途中でも「KY完了」で本日のKYを打ち切れる（未完成の2件目は破棄）
         if (session && status === 'work_items' && session.workItems.length >= 1 && isKYCompleteCommand(text)) {
             const normalized = text.trim()
@@ -580,7 +609,7 @@ export function useChat() {
         }
 
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [session, status, addMessage, setError, startNewWorkItem, setStatus, sendMessageInternal])
+    }, [session, status, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return
