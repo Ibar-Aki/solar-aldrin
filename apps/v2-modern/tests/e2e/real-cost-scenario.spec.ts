@@ -5,6 +5,7 @@ import * as path from 'path'
 const RUN_LIVE = process.env.RUN_LIVE_TESTS === '1'
 const DRY_RUN = process.env.DRY_RUN === '1'
 const SHOULD_SKIP = !RUN_LIVE && !DRY_RUN
+const LIVE_PREFLIGHT_PASSED = process.env.LIVE_PREFLIGHT_PASSED === '1'
 
 function readEnvLikeValue(filePath: string, key: string): string | null {
     if (!fs.existsSync(filePath)) return null
@@ -48,7 +49,11 @@ const LIVE_API_TOKEN = LIVE_API_TOKEN_INFO.token
 const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
 const EXPECTED_SERVER_POLICY_VERSION = process.env.LIVE_EXPECTED_POLICY_VERSION?.trim() || '2026-02-11-a-b-observability-1'
 const EXPECTED_SERVER_RESPONSE_FORMAT = process.env.LIVE_EXPECTED_RESPONSE_FORMAT?.trim() || 'json_schema_strict'
-const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = process.env.LIVE_EXPECTED_PARSE_RECOVERY_ENABLED === '1'
+const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = (() => {
+    const raw = process.env.LIVE_EXPECTED_PARSE_RECOVERY_ENABLED?.trim().toLowerCase()
+    if (!raw) return true
+    return raw === '1' || raw === 'true'
+})()
 const EXPECTED_SERVER_OPENAI_RETRY_COUNT = (() => {
     const raw = process.env.LIVE_EXPECTED_OPENAI_RETRY_COUNT?.trim()
     if (!raw) return 1
@@ -613,6 +618,13 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     }
 
     try {
+        if (RUN_LIVE && !LIVE_PREFLIGHT_PASSED) {
+            const guardMessage =
+                'LIVE preflight guard: LIVE_PREFLIGHT_PASSED=1 が未設定です。`npm run test:cost:live` で事前疎通チェックを通してから実行してください。'
+            addFailureDiagnostic(guardMessage)
+            throw new Error(guardMessage)
+        }
+
         console.log('Navigating to root...')
         // 1. 基本情報入力 (Loginではなく、KY開始画面)
         await page.goto('/', { waitUntil: 'networkidle' })

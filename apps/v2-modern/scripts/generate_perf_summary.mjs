@@ -93,6 +93,55 @@ function detectMode(filePath) {
     return 'UNKNOWN'
 }
 
+function parseFailureDiagnostics(content) {
+    const sectionMatch = content.match(/## Failure Diagnostics\s*([\s\S]*?)(?:\n## |\n?$)/)
+    if (!sectionMatch) return []
+    return sectionMatch[1]
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.startsWith('- '))
+        .map(line => line.replace(/^- /, '').trim())
+}
+
+function detectAuthConfigIssue(diagnostics) {
+    const authPatterns = [
+        /\bAUTH_REQUIRED\b/i,
+        /\bAUTH_INVALID\b/i,
+        /\bAUTH_CONFIG_MISSING\b/i,
+        /\bOPENAI_AUTH_ERROR\b/i,
+        /\bUnauthorized\b/i,
+        /Incorrect API key/i,
+        /preflight/i,
+        /fatal-infra/i,
+    ]
+
+    const hasTokenUnsetFailure = diagnostics.some(line =>
+        /VITE_API_TOKEN is not set/i.test(line) && !/optional-auth mode expected/i.test(line)
+    )
+
+    if (hasTokenUnsetFailure) return true
+    return diagnostics.some(line => authPatterns.some(pattern => pattern.test(line)))
+}
+
+function detectRuntimeQualityIssue({ diagnostics, parseRetryUsed, retryButtonClicks, waitOver15sTurns, errors, hasAuthConfigIssue }) {
+    const qualityPatterns = [
+        /\bAI_RESPONSE_INVALID_JSON\b/i,
+        /\bAI_RESPONSE_INVALID_SCHEMA\b/i,
+        /\bAI_TIMEOUT\b/i,
+        /\b504\b/i,
+        /\bTIMEOUT\b/i,
+        /retry did not recover/i,
+        /AIサービスが混雑/i,
+    ]
+
+    if ((parseRetryUsed ?? 0) > 0) return true
+    if ((retryButtonClicks ?? 0) > 0) return true
+    if ((waitOver15sTurns ?? 0) > 0) return true
+    if (diagnostics.some(line => qualityPatterns.some(pattern => pattern.test(line)))) return true
+    if (errors > 0 && !hasAuthConfigIssue) return true
+    return false
+}
+
 function parseReport(filePath) {
     const content = fs.readFileSync(filePath, 'utf8')
     const dateMatch = content.match(/^\- \*\*Date\*\*: (.+)$/m)
@@ -127,6 +176,16 @@ function parseReport(filePath) {
     const parseRetrySucceeded = parseOptionalInteger(metrics['Parse Retry Succeeded'])
     const retryButtonClicks = parseOptionalInteger(metrics['Retry Button Clicks'])
     const waitOver15sTurns = parseOptionalInteger(metrics['Wait > 15s Turns'])
+    const failureDiagnostics = parseFailureDiagnostics(content)
+    const hasAuthConfigIssue = detectAuthConfigIssue(failureDiagnostics)
+    const hasRuntimeQualityIssue = detectRuntimeQualityIssue({
+        diagnostics: failureDiagnostics,
+        parseRetryUsed,
+        retryButtonClicks,
+        waitOver15sTurns,
+        errors,
+        hasAuthConfigIssue,
+    })
 
     return {
         filePath,
@@ -146,6 +205,8 @@ function parseReport(filePath) {
         parseRetrySucceeded,
         retryButtonClicks,
         waitOver15sTurns,
+        hasAuthConfigIssue,
+        hasRuntimeQualityIssue,
     }
 }
 
@@ -211,6 +272,8 @@ function buildSummary(dayKey, stats, existingMeta) {
 | OpenAI HTTP Attempts P95 | ${formatInt(httpAttemptsP95)} | OpenAI HTTP Attempts を使用 |
 | エラー率 | ${formatRate(stats.errorCount, stats.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRate(stats.retryCount, stats.total)} | Result=FAIL または Nav Success=No または Errors>0 |
+| 設定/認証系発生率 | ${formatRate(stats.authConfigIssueReportCount, stats.total)} | preflight未達 / 認証系エラー |
+| 実行時品質系発生率 | ${formatRate(stats.runtimeQualityIssueReportCount, stats.total)} | JSON/Timeout/待機遅延/リトライ多発 |
 | JSONパース再試行率 | ${formatRate(stats.parseRetryReportCount, stats.total)} | Parse Retry Used > 0 |
 | リトライ押下率 | ${formatRate(stats.retryButtonReportCount, stats.total)} | Retry Button Clicks > 0 |
 | リトライ押下合計 | ${stats.retryButtonClicksTotal} | Retry Button Clicks の合計 |
@@ -234,11 +297,20 @@ function buildSummary(dayKey, stats, existingMeta) {
 | OpenAI HTTP Attempts P95 | ${formatInt(liveHttpAttemptsP95)} | OpenAI HTTP Attempts を使用 |
 | エラー率 | ${formatRateForBucket(stats.live.errorCount, stats.live.total)} | Errors (AI/System) > 0 |
 | 再試行率 | ${formatRateForBucket(stats.live.retryCount, stats.live.total)} | Result=FAIL または Nav Success=No または Errors>0 |
+| 設定/認証系発生率 | ${formatRateForBucket(stats.live.authConfigIssueReportCount, stats.live.total)} | preflight未達 / 認証系エラー |
+| 実行時品質系発生率 | ${formatRateForBucket(stats.live.runtimeQualityIssueReportCount, stats.live.total)} | JSON/Timeout/待機遅延/リトライ多発 |
 | JSONパース再試行率 | ${formatRateForBucket(stats.live.parseRetryReportCount, stats.live.total)} | Parse Retry Used > 0 |
 | リトライ押下率 | ${formatRateForBucket(stats.live.retryButtonReportCount, stats.live.total)} | Retry Button Clicks > 0 |
 | リトライ押下合計 | ${stats.live.retryButtonClicksTotal} | Retry Button Clicks の合計 |
 | 待機>15s発生率 | ${formatRateForBucket(stats.live.waitOver15sReportCount, stats.live.total)} | Wait > 15s Turns > 0 |
 | 待機>15s合計ターン | ${stats.live.waitOver15sTurnsTotal} | Wait > 15s Turns の合計 |
+
+## 失敗要因の分離（運用/設定 vs 実行時品質）
+
+| 分類 | 全体 | LIVEのみ | 判定ルール |
+|---|---|---|---|
+| 運用/設定系 | ${stats.authConfigIssueReportCount}件 | ${stats.live.authConfigIssueReportCount}件 | preflight未達、AUTH_REQUIRED/AUTH_INVALID/OPENAI_AUTH_ERROR 等 |
+| 実行時品質系 | ${stats.runtimeQualityIssueReportCount}件 | ${stats.live.runtimeQualityIssueReportCount}件 | AI_RESPONSE_INVALID_JSON/SCHEMA、TIMEOUT、待機>15s、Retry多発 |
 
 ## 内訳
 
@@ -273,6 +345,8 @@ function main() {
                 openaiHttpAttempts: [],
                 errorCount: 0,
                 retryCount: 0,
+                authConfigIssueReportCount: 0,
+                runtimeQualityIssueReportCount: 0,
                 parseRetryReportCount: 0,
                 retryButtonReportCount: 0,
                 retryButtonClicksTotal: 0,
@@ -290,6 +364,8 @@ function main() {
                     openaiHttpAttempts: [],
                     errorCount: 0,
                     retryCount: 0,
+                    authConfigIssueReportCount: 0,
+                    runtimeQualityIssueReportCount: 0,
                     parseRetryReportCount: 0,
                     retryButtonReportCount: 0,
                     retryButtonClicksTotal: 0,
@@ -321,6 +397,12 @@ function main() {
         }
         if (report.needsRetry) {
             bucket.retryCount += 1
+        }
+        if (report.hasAuthConfigIssue) {
+            bucket.authConfigIssueReportCount += 1
+        }
+        if (report.hasRuntimeQualityIssue) {
+            bucket.runtimeQualityIssueReportCount += 1
         }
         if ((report.parseRetryUsed ?? 0) > 0) {
             bucket.parseRetryReportCount += 1
@@ -359,6 +441,12 @@ function main() {
             }
             if (report.needsRetry) {
                 bucket.live.retryCount += 1
+            }
+            if (report.hasAuthConfigIssue) {
+                bucket.live.authConfigIssueReportCount += 1
+            }
+            if (report.hasRuntimeQualityIssue) {
+                bucket.live.runtimeQualityIssueReportCount += 1
             }
             if ((report.parseRetryUsed ?? 0) > 0) {
                 bucket.live.parseRetryReportCount += 1
@@ -412,6 +500,8 @@ function main() {
 - **OpenAI HTTP Attempts P50/P95**: 各レポートの \`OpenAI HTTP Attempts\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **エラー率**: \`Errors (AI/System)\` が 1 以上のレポート比率
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
+- **設定/認証系発生率**: Failure Diagnostics に preflight未達 / 認証系コード（AUTH_REQUIRED, AUTH_INVALID, OPENAI_AUTH_ERROR 等）が含まれる比率
+- **実行時品質系発生率**: JSON/Schema不整合、TIMEOUT、待機>15秒、Retry多発など実行時品質問題が含まれる比率
 - **JSONパース再試行率**: \`Parse Retry Used\` が 1 以上のレポート比率
 - **リトライ押下率**: \`Retry Button Clicks\` が 1 以上のレポート比率
 - **待機>15s発生率**: \`Wait > 15s Turns\` が 1 以上のレポート比率
@@ -435,6 +525,7 @@ node scripts/generate_perf_summary.mjs
 ## 補足
 
 - DRY-RUN は API 呼び出しを行わないため、\`Avg AI Response\` が 0.0s になりやすい
+- LIVE は \`npm run test:cost:live\` を利用し、preflight 通過後のみ実行する想定
 - 指標の定義や閾値は運用に合わせて調整可能
 `
 

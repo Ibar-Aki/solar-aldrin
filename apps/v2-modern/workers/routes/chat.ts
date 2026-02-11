@@ -32,7 +32,7 @@ const MAX_TOTAL_INPUT_LENGTH = USER_CONTENT_MAX_LENGTH * 10
 // 最大出力トークン数
 // Structured output が長文で切れると JSON 不正になりやすいため、少し余裕を持たせる。
 const MAX_TOKENS = 900
-const PARSE_RECOVERY_MAX_TOKENS = 1200
+const PARSE_RECOVERY_MAX_TOKENS = 1500
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
@@ -781,7 +781,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const serverPolicyMeta = {
             policyVersion: '2026-02-11-a-b-observability-1',
             responseFormat: 'json_schema_strict',
-            parseRecoveryEnabled: false,
+            parseRecoveryEnabled: true,
             openaiRetryCount,
         }
 

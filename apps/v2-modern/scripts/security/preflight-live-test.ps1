@@ -22,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($ExpectedResponseFormat)) {
     $ExpectedResponseFormat = 'json_schema_strict'
 }
 
-$expectedParseRecoveryEnabledValue = $false
+$expectedParseRecoveryEnabledValue = $true
 if (-not [string]::IsNullOrWhiteSpace($ExpectedParseRecoveryEnabled)) {
     $parseRecoveryToken = $ExpectedParseRecoveryEnabled.Trim().ToLowerInvariant()
     if ($parseRecoveryToken -in @('1', 'true')) {

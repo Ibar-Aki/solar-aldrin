@@ -59,7 +59,7 @@ describe('Chat API Integration Flow', () => {
         expect(body.extracted).toHaveProperty('nextAction', 'ask_hazard')
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
-        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
     })
 
     it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
@@ -262,7 +262,7 @@ describe('Chat API Integration Flow', () => {
         expect(body.error).toContain('再試行')
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
-        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
     })
 
     it('finish_reason=length でJSONが壊れた場合は1回だけ再生成して回復できる', async () => {
@@ -371,7 +371,7 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.parseRetry?.succeeded).toBe(false)
         expect(body.meta?.server?.policyVersion).toBe('2026-02-11-a-b-observability-1')
         expect(body.meta?.server?.responseFormat).toBe('json_schema_strict')
-        expect(body.meta?.server?.parseRecoveryEnabled).toBe(false)
+        expect(body.meta?.server?.parseRecoveryEnabled).toBe(true)
         expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     })
 
