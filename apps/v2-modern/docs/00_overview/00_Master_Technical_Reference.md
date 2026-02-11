@@ -1,6 +1,7 @@
 # マスター技術リファレンス (v2-modern)
 
-**最終更新日**: 2026-02-09
+**最終更新日**: 2026-02-11
+**更新日**: 2026-02-11
 
 ---
 
@@ -23,9 +24,9 @@
 | 目的 | コマンド | 備考 |
 |:---|:---|:---|
 | **開発開始** | `npm run dev:all` | フロント・バック同時起動 |
-| **テスト(全)** | `npm test` | Unit + E2E |
-| **型チェック** | `npm run type-check` | tscによる検査 |
-| **Lint修正** | `npm run lint:fix` | ESLint自動修正 |
+| **テスト(全)** | `npm test` | Unit（Vitest） |
+| **ビルド検証** | `npm run build` | TypeScriptチェック + Viteビルド |
+| **Lint** | `npm run lint` | ESLint検査 |
 | **デプロイ(Front)** | `npm run deploy:pages` | Cloudflare Pagesへ |
 | **デプロイ(Back)** | `npm run deploy:workers` | Cloudflare Workersへ |
 | **実費テスト** | `npm run test:cost:ops` | 本番APIで課金テスト |
@@ -149,14 +150,17 @@ apps/v2-modern/
 │
 ├── tests/                     ← テスト
 │   ├── e2e/                   ← E2Eテスト (5個)
-│   ├── unit/                  ← ユニットテスト (16個)
+│   ├── unit/                  ← ユニットテスト (23個)
 │   └── integration/           ← 統合テスト
 │
 ├── docs/                      ← ドキュメント
-│   ├── 00_planning/           ← 計画・フェーズ管理
-│   ├── 10_design/             ← 設計
-│   ├── 20_manuals/            ← マニュアル
-│   └── 30_reviews/            ← レビュー
+│   ├── 00_overview/           ← 概要・マスター資料
+│   ├── 00_planning/           ← 計画資料
+│   ├── 10_planning/           ← 計画資料（旧系統）
+│   ├── 20_phases/             ← フェーズ資料
+│   ├── 30_design/             ← 設計
+│   ├── 40_manuals/            ← マニュアル
+│   └── 50_reviews/            ← レビュー
 │
 ├── scripts/                   ← 運用スクリプト
 ├── reports/                   ← テストレポート
@@ -263,21 +267,24 @@ graph TB
 - **会話サマリ送信条件**: 直近の会話メッセージが6件以上の場合に `conversationSummary` を付与する（短い会話でのトークン増を避ける）。
 - **サイレントリトライ**: `VITE_ENABLE_RETRY_SILENT=1` または本番環境で有効。タイムアウト、レート制限、再試行可能なサーバーエラーで最大2回まで自動再試行する。
 - **手動リトライ**: 直前メッセージの再送を許可し、エラー種別ごとに再試行可否を判断する（認証エラーは再送不可）。
+- **危険度ボタンのAPI呼び出し**: 危険度（1〜5）選択時は `/api/chat` を呼ばず、ローカルで `riskLevel` と次の質問（対策入力）を反映する。
 
 ### ライブラリ (lib/)
 
 | ファイル | 機能 |
 |----------|------|
 | `api.ts` | API呼び出し (postChat, postFeedback) |
-| `apiBase.ts` | APIエラークラス |
+| `apiBase.ts` | APIベースURL正規化 |
 | `db.ts` | IndexedDB永続化 (Dexie) |
 | `schema.ts` | Zodスキーマ (API応答検証) |
 | `kySchemas.ts` | KYデータ構造スキーマ |
 | `contextUtils.ts` | 文脈注入 |
 | `historyUtils.ts` | 履歴管理 |
 | `exportUtils.ts` | エクスポート |
-| `validation.ts` | 入力検証 |
+| `validation.ts` | 抽出データ検証・作業項目完了判定 |
 | `clientId.ts` | クライアントID生成 |
+| `apiToken.ts` | APIトークンの保存/読込（localStorage） |
+| `nonAnswer.ts` | 「なし/ありません」等の非回答判定 |
 | `dateUtils.ts` | 日付ユーティリティ |
 | `riskLevelVisibility.ts` | 危険度表示制御 |
 | `speechRecognitionErrors.ts` | 音声認識エラー処理 |
@@ -294,10 +301,11 @@ graph LR
         ENTRY[index.ts<br/>エントリポイント]
         
         subgraph "ミドルウェア"
-            CORS[CORS]
-            AUTH[認証]
-            RL[レート制限]
             REQ[リクエストID]
+            ORG[Originチェック]
+            CORS[CORS]
+            RL[レート制限]
+            AUTH[認証]
         end
         
         subgraph "ルート"
@@ -311,8 +319,8 @@ graph LR
     KV[KV Storage]
     AE[Analytics Engine]
     
-    ENTRY --> CORS --> AUTH --> RL --> REQ
-    REQ --> CHAT & FB & MET
+    ENTRY --> REQ --> ORG --> CORS --> RL --> AUTH
+    AUTH --> CHAT & FB & MET
     CHAT --> OPENAI
     FB --> OPENAI
     MET --> AE
@@ -528,7 +536,7 @@ graph LR
 ```mermaid
 pie title テスト分類
     "E2Eテスト" : 5
-    "ユニットテスト" : 16
+    "ユニットテスト" : 23
 ```
 
 ### E2Eテスト (5件)
@@ -541,17 +549,17 @@ pie title テスト分類
 | **ios_compatibility** | iOS互換性 |
 | **pdf-visual** | PDFビジュアル確認 |
 
-### ユニットテスト (16件)
+### ユニットテスト (23件)
 
 | 分類 | テストファイル |
 |:----|---------------|
-| API | api.chatError, apiBase |
+| API | api.chatError, api.feedbackError, apiBase |
 | ストア | kyStore |
 | コンポーネント | completionPage, micButton.errorClear |
-| フック | useChat.retry |
+| フック | useChat.retry, useChat.shortcuts |
 | ユーティリティ | historyUtils, contextInjection, riskLevelVisibility, speechRecognitionErrors |
 | バックエンド | rateLimit, openaiHttpError, logger, securityMode, metrics |
-| スキーマ | schema |
+| スキーマ | schema, kySchemas.extracted, kySchemas.workItem, validation.nonAnswer |
 
 ---
 
@@ -574,7 +582,7 @@ sequenceDiagram
     rect rgb(230, 240, 255)
         Note over User, useChat: チャットループ
         User->>Session: テキスト/音声入力
-        Session->>useChat: sendMessage
+        Session->>useChat: sendMessage（危険度ボタン選択時はローカル更新）
         useChat->>API: POST /api/chat
         API->>OpenAI: Chat Completions
         OpenAI-->>API: 応答 + 抽出データ
@@ -719,13 +727,14 @@ graph TD
 | 変数名 | 必須 | 説明 |
 |:------|:----:|------|
 | `VITE_API_BASE_URL` | - | APIベースURL（未指定時は `/api`） |
-| `VITE_API_TOKEN` | - | API認証トークン（必要時のみ） |
+| `VITE_API_TOKEN` | - | 実費テスト/事前チェック用途（ブラウザ常用は非推奨） |
 | `VITE_REQUIRE_API_TOKEN` | - | 1でクライアント側も認証必須扱い |
 | `VITE_ENABLE_CONTEXT_INJECTION` | - | 0でコンテキスト注入を無効化 |
-| `VITE_ENABLE_RETRY_SILENT` | - | 1でサイレントリトライを有効化 |
+| `VITE_ENABLE_RETRY_SILENT` | - | 1でサイレントリトライを有効化（未指定時は本番で有効） |
 | `VITE_TELEMETRY_ENABLED` | - | 0でテレメトリ送信を停止 |
 | `VITE_TELEMETRY_SAMPLE_RATE` | - | 0〜1でサンプリング率を指定 |
 | `VITE_TELEMETRY_ENDPOINT` | - | 計測送信先を上書き |
+| `VITE_WAIT_NOTICE_AFTER_MS` | - | 応答待機メッセージ表示までの時間（ms、既定15,000） |
 
 ### 認証・レート制限の運用詳細
 
@@ -1201,7 +1210,7 @@ export const FeedbackResponseSchema = z.object({
 
 | 原因 | 対処法 |
 |:--|:--|
-| `VITE_API_TOKEN` が未設定 | `.env` に `VITE_API_TOKEN=your-token` を追加 |
+| ホーム画面のAPIトークン未設定 | ホーム画面の「APIトークン設定」で保存し、再試行 |
 | サーバー側 `API_TOKEN` と不一致 | 両方のトークンが同一か確認 |
 | `REQUIRE_API_TOKEN=1` だがトークン未設定 | サーバー側 `API_TOKEN` を設定 |
 
@@ -1490,7 +1499,6 @@ ENABLE_FEEDBACK = "1"
 ```bash
 # .env.staging
 VITE_API_BASE_URL=https://staging-api.example.com/api
-VITE_API_TOKEN=staging-token-xxx
 VITE_REQUIRE_API_TOKEN=1
 VITE_ENABLE_RETRY_SILENT=1
 VITE_TELEMETRY_ENABLED=1
@@ -1516,6 +1524,7 @@ FEEDBACK_KV = { binding = "FEEDBACK_KV", id = "..." }
 - CORS緩和（テスト用オリジン許可）
 - レート制限有効（KV使用）
 - テレメトリ有効（全送信）
+- ブラウザ実行時はホーム画面の「APIトークン設定」で `localStorage` に保存したトークンを使用
 
 ---
 
@@ -1524,7 +1533,6 @@ FEEDBACK_KV = { binding = "FEEDBACK_KV", id = "..." }
 ```bash
 # .env.production
 VITE_API_BASE_URL=https://api.example.com/api
-VITE_API_TOKEN=production-token-xxx
 VITE_REQUIRE_API_TOKEN=1
 VITE_ENABLE_RETRY_SILENT=1
 VITE_TELEMETRY_ENABLED=1
@@ -1557,6 +1565,7 @@ dataset = "voice_ky_metrics"
 - サイレントリトライ有効（デフォルト）
 - テレメトリ有効（10%サンプリング）
 - Sentry/Analytics Engine連携
+- ブラウザ実行時はホーム画面の「APIトークン設定」で `localStorage` に保存したトークンを使用
 
 ---
 
@@ -1564,7 +1573,7 @@ dataset = "voice_ky_metrics"
 
 | 変数名 | 開発 | ステージング | 本番 | 説明 |
 |:--|:--:|:--:|:--:|:--|
-| `VITE_API_TOKEN` | - | ✓ | ✓ | クライアント認証トークン |
+| `VITE_API_TOKEN` | - | 任意 | 任意 | 実費テスト/事前チェック用途（ブラウザ常用はlocalStorage設定を利用） |
 | `VITE_REQUIRE_API_TOKEN` | 0 | 1 | 1 | 認証必須フラグ |
 | `VITE_ENABLE_RETRY_SILENT` | 0 | 1 | 1 | サイレントリトライ |
 | `VITE_TELEMETRY_ENABLED` | 0 | 1 | 1 | テレメトリ送信 |
@@ -1673,3 +1682,4 @@ dataset = "voice_ky_metrics"
   }
 }
 ```
+
