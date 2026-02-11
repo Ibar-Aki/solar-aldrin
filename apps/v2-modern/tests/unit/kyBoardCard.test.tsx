@@ -3,11 +3,39 @@ import { render, screen } from '@testing-library/react'
 import { KYBoardCard } from '@/components/KYBoardCard'
 import type { WorkItem } from '@/types/ky'
 
-function renderCard(item: Partial<WorkItem>) {
-    return render(<KYBoardCard currentWorkItem={item} workItemIndex={1} />)
+function renderCard(item: Partial<WorkItem>, workItemIndex = 1) {
+    return render(<KYBoardCard currentWorkItem={item} workItemIndex={workItemIndex} />)
 }
 
 describe('KYBoardCard', () => {
+    it('1件目で未入力時は理想的なKYのプレースホルダーを表示する', () => {
+        renderCard({})
+
+        expect(screen.getByText('例）脚立上で天井配線を固定する時')).toBeInTheDocument()
+        expect(screen.getByText('例）脚立の設置角度が不適切で足元が滑りやすいため')).toBeInTheDocument()
+        expect(screen.getByText('例）バランスを崩して墜落し、頭部を負傷する')).toBeInTheDocument()
+    })
+
+    it('1件目でも入力済みの欄ではプレースホルダーを表示しない', () => {
+        renderCard({
+            workDescription: '脚立上で天井配線を固定する',
+            hazardDescription: 'バランスを崩して墜落する',
+            whyDangerous: ['脚立の設置角度が不適切'],
+        })
+
+        expect(screen.queryByText('例）脚立上で天井配線を固定する時')).not.toBeInTheDocument()
+        expect(screen.queryByText('例）脚立の設置角度が不適切で足元が滑りやすいため')).not.toBeInTheDocument()
+        expect(screen.queryByText('例）バランスを崩して墜落し、頭部を負傷する')).not.toBeInTheDocument()
+    })
+
+    it('2件目では未入力でもプレースホルダーを表示しない', () => {
+        renderCard({}, 2)
+
+        expect(screen.queryByText('例）脚立上で天井配線を固定する時')).not.toBeInTheDocument()
+        expect(screen.queryByText('例）脚立の設置角度が不適切で足元が滑りやすいため')).not.toBeInTheDocument()
+        expect(screen.queryByText('例）バランスを崩して墜落し、頭部を負傷する')).not.toBeInTheDocument()
+    })
+
     it('初期表示では想定される危険の4行のみを表示し、対策表は表示しない', () => {
         renderCard({
             workDescription: '足場の上で配管を固定する',
@@ -43,4 +71,3 @@ describe('KYBoardCard', () => {
         expect(screen.getByText('危険度: 5')).toBeInTheDocument()
     })
 })
-

@@ -13,6 +13,12 @@ const CATEGORY_LABELS: Record<CountermeasureCategory, string> = {
     ppe: '保護具',
 }
 
+const FIRST_WORK_ITEM_PLACEHOLDERS = {
+    workDescription: '例）脚立上で天井配線を固定する時',
+    whyDangerous: '例）脚立の設置角度が不適切で足元が滑りやすいため',
+    hazardDescription: '例）バランスを崩して墜落し、頭部を負傷する',
+} as const
+
 function formatMultiline(values: Array<string | null | undefined> | null | undefined): string {
     const lines = (values ?? [])
         .map((v) => (typeof v === 'string' ? v.trim() : ''))
@@ -35,11 +41,16 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
     const riskLabel = typeof currentWorkItem.riskLevel === 'number' ? String(currentWorkItem.riskLevel) : ''
     const whyText = formatMultiline(currentWorkItem.whyDangerous)
     const isHazardCompleted = isHazardSectionComplete(currentWorkItem)
+    const isFirstWorkItem = workItemIndex === 1
 
     const measures = currentWorkItem.countermeasures ?? []
     const equipmentText = formatMeasuresByCategory(measures, 'equipment')
     const behaviorText = formatMeasuresByCategory(measures, 'behavior')
     const ppeText = formatMeasuresByCategory(measures, 'ppe')
+
+    const workDescriptionText = (currentWorkItem.workDescription ?? '').trim()
+    const whyDangerousText = whyText.trim()
+    const hazardDescriptionText = (currentWorkItem.hazardDescription ?? '').trim()
 
     return (
         <Card className="border-slate-200 bg-white/90 py-0 shadow-sm">
@@ -66,7 +77,9 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
                             何をする時
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
-                            {currentWorkItem.workDescription ?? ''}
+                            {workDescriptionText || (
+                                isFirstWorkItem ? <span className="text-slate-400">{FIRST_WORK_ITEM_PLACEHOLDERS.workDescription}</span> : ''
+                            )}
                         </div>
                     </div>
                     <div className="grid grid-cols-12 border-t border-slate-800">
@@ -74,7 +87,9 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
                             何が原因で
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
-                            {whyText}
+                            {whyDangerousText || (
+                                isFirstWorkItem ? <span className="text-slate-400">{FIRST_WORK_ITEM_PLACEHOLDERS.whyDangerous}</span> : ''
+                            )}
                         </div>
                     </div>
                     <div className="grid grid-cols-12 border-t border-slate-800">
@@ -82,7 +97,9 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
                             どうなる
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
-                            {currentWorkItem.hazardDescription ?? ''}
+                            {hazardDescriptionText || (
+                                isFirstWorkItem ? <span className="text-slate-400">{FIRST_WORK_ITEM_PLACEHOLDERS.hazardDescription}</span> : ''
+                            )}
                         </div>
                     </div>
 

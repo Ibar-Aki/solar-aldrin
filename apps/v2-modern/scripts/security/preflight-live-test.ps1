@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = $env:LIVE_BASE_URL,
     [string]$ApiBaseUrl = $env:LIVE_API_BASE_URL,
+    [string]$WorkerBaseUrl = $env:LIVE_WORKER_BASE_URL,
     [string]$ApiToken = $env:VITE_API_TOKEN,
     [string]$Prompt = 'safety check test',
     [switch]$SkipChat,
@@ -8,7 +9,8 @@ param(
     [string]$ExpectedPolicyVersion = $env:LIVE_EXPECTED_POLICY_VERSION,
     [string]$ExpectedResponseFormat = $env:LIVE_EXPECTED_RESPONSE_FORMAT,
     [string]$ExpectedParseRecoveryEnabled = $env:LIVE_EXPECTED_PARSE_RECOVERY_ENABLED,
-    [string]$ExpectedOpenAiRetryCount = $env:LIVE_EXPECTED_OPENAI_RETRY_COUNT
+    [string]$ExpectedOpenAiRetryCount = $env:LIVE_EXPECTED_OPENAI_RETRY_COUNT,
+    [string]$ExpectedMaxTokens = $env:LIVE_EXPECTED_MAX_TOKENS
 )
 
 Set-StrictMode -Version Latest
@@ -37,6 +39,11 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedParseRecoveryEnabled)) {
 $expectedOpenAiRetryCountValue = 1
 if (-not [string]::IsNullOrWhiteSpace($ExpectedOpenAiRetryCount)) {
     $expectedOpenAiRetryCountValue = [int]$ExpectedOpenAiRetryCount
+}
+
+$expectedMaxTokensValue = $null
+if (-not [string]::IsNullOrWhiteSpace($ExpectedMaxTokens)) {
+    $expectedMaxTokensValue = [int]$ExpectedMaxTokens
 }
 
 function Get-EnvLikeValue {
@@ -157,6 +164,7 @@ function Assert-ChatServerPolicy {
         [string]$ExpectedResponseFormatValue,
         [bool]$ExpectedParseRecoveryEnabledValue,
         [int]$ExpectedOpenAiRetryCountValue,
+        [AllowNull()][Nullable[int]]$ExpectedMaxTokensValue,
         [string]$RawBody
     )
 
@@ -180,6 +188,7 @@ function Assert-ChatServerPolicy {
     $responseFormatProperty = $server.PSObject.Properties['responseFormat']
     $parseRecoveryProperty = $server.PSObject.Properties['parseRecoveryEnabled']
     $retryCountProperty = $server.PSObject.Properties['openaiRetryCount']
+    $maxTokensProperty = $server.PSObject.Properties['maxTokens']
 
     $actualPolicyVersion = if ($policyVersionProperty) { [string]$policyVersionProperty.Value } else { '' }
     $actualResponseFormat = if ($responseFormatProperty) { [string]$responseFormatProperty.Value } else { '' }
@@ -194,6 +203,13 @@ function Assert-ChatServerPolicy {
     }
     $actualOpenAiRetryCount = [int]$retryCountProperty.Value
 
+    $actualMaxTokens = $null
+    if ($maxTokensProperty -and $null -ne $maxTokensProperty.Value) {
+        $actualMaxTokens = [int]$maxTokensProperty.Value
+    } elseif ($ExpectedMaxTokensValue -ne $null) {
+        throw "chat authenticated response missing meta.server.maxTokens. body=$RawBody"
+    }
+
     $mismatches = @()
     if ($actualPolicyVersion -ne $ExpectedPolicyVersionValue) {
         $mismatches += "policyVersion expected=$ExpectedPolicyVersionValue actual=$actualPolicyVersion"
@@ -207,12 +223,16 @@ function Assert-ChatServerPolicy {
     if ($actualOpenAiRetryCount -ne $ExpectedOpenAiRetryCountValue) {
         $mismatches += "openaiRetryCount expected=$ExpectedOpenAiRetryCountValue actual=$actualOpenAiRetryCount"
     }
+    if ($ExpectedMaxTokensValue -ne $null -and $actualMaxTokens -ne $ExpectedMaxTokensValue) {
+        $mismatches += "maxTokens expected=$ExpectedMaxTokensValue actual=$actualMaxTokens"
+    }
 
     if ($mismatches.Count -gt 0) {
         throw "chat meta.server mismatch. $($mismatches -join ', ') body=$RawBody"
     }
 
-    Write-Host "[OK] chat meta.server: policyVersion=$actualPolicyVersion responseFormat=$actualResponseFormat parseRecoveryEnabled=$actualParseRecoveryEnabled openaiRetryCount=$actualOpenAiRetryCount"
+    $maxTokensLabel = if ($actualMaxTokens -ne $null) { $actualMaxTokens } else { 'missing' }
+    Write-Host "[OK] chat meta.server: policyVersion=$actualPolicyVersion responseFormat=$actualResponseFormat parseRecoveryEnabled=$actualParseRecoveryEnabled openaiRetryCount=$actualOpenAiRetryCount maxTokens=$maxTokensLabel"
 }
 
 function Resolve-DefaultPagesUrl {
@@ -239,8 +259,8 @@ function Normalize-ApiRoot {
     param([string]$Value)
 
     $trimmed = $Value.TrimEnd('/')
-    if ($trimmed.EndsWith('/api')) {
-        return $trimmed.Substring(0, $trimmed.Length - 4)
+    if ($trimmed -match '/api(?:/.*)?$') {
+        return ($trimmed -replace '/api(?:/.*)?$', '')
     }
     return $trimmed
 }
@@ -275,6 +295,7 @@ function Resolve-ApiSettingsFromBundle {
     $js = (Invoke-WebRequest -Uri $assetUrl -UseBasicParsing).Content
 
     $apiCandidates = @([regex]::Matches($js, 'https://[^\"''\s]+/api\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    $workerCandidates = @([regex]::Matches($js, 'https://[^\"''\s]+workers\.dev(?:/api)?') | ForEach-Object { $_.Value } | Select-Object -Unique)
     $apiBaseUrl = $null
     if ($apiCandidates.Count -gt 0) {
         $apiBaseUrl = ($apiCandidates | Where-Object { $_ -match 'workers\.dev/api' } | Select-Object -First 1)
@@ -285,8 +306,76 @@ function Resolve-ApiSettingsFromBundle {
 
     return [pscustomobject]@{
         ApiBaseUrl = $apiBaseUrl
+        WorkerCandidates = $workerCandidates
         AssetUrl = $assetUrl
     }
+}
+
+function Test-ApiRootCandidate {
+    param([string]$Candidate)
+
+    if ([string]::IsNullOrWhiteSpace($Candidate)) {
+        return $false
+    }
+
+    $root = Normalize-ApiRoot -Value $Candidate
+    try {
+        $health = Invoke-HttpRequest -Method 'GET' -Url "$root/api/health"
+        return $health.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
+function Resolve-WorkerNameFromToml {
+    $tomlPath = Join-Path (Get-Location) 'wrangler.worker.toml'
+    if (-not (Test-Path $tomlPath)) {
+        return $null
+    }
+
+    $toml = Get-Content -Path $tomlPath -Raw
+    $match = [regex]::Match($toml, '(?m)^\s*name\s*=\s*\"([^\"]+)\"\s*$')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    $name = $match.Groups[1].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return $null
+    }
+
+    return $name
+}
+
+function Get-WorkerApiRootFromRecentReports {
+    $reportRoot = Join-Path (Get-Location) 'reports\real-cost'
+    if (-not (Test-Path $reportRoot)) {
+        return $null
+    }
+
+    $files = Get-ChildItem -Path $reportRoot -Recurse -Filter '*.md' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 20
+    if (-not $files -or $files.Count -eq 0) {
+        return $null
+    }
+
+    foreach ($file in $files) {
+        $content = Get-Content -Path $file.FullName -Raw
+        $matches = [regex]::Matches($content, 'https://[^\"''\s\|]+workers\.dev/api/chat')
+        if ($matches.Count -eq 0) {
+            continue
+        }
+        foreach ($m in $matches) {
+            $url = [string]$m.Value
+            if ([string]::IsNullOrWhiteSpace($url)) {
+                continue
+            }
+            return (Normalize-ApiRoot -Value $url)
+        }
+    }
+
+    return $null
 }
 
 if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
@@ -301,6 +390,7 @@ Write-Host "=== Preflight for live cost test ==="
 Write-Host "BaseUrl: $normalizedBaseUrl"
 
 $apiRoot = $null
+$resolvedFromBundle = $null
 if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
     $apiRoot = Normalize-ApiRoot -Value $ApiBaseUrl
 } else {
@@ -309,21 +399,66 @@ if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
         $probe = Invoke-HttpRequest -Method 'POST' -Url "$normalizedBaseUrl/api/metrics" -Body '{"event":"session_start"}'
         if ($probe.StatusCode -ne 405) {
             $apiRoot = $normalizedBaseUrl
+        } else {
+            Write-Host '[INFO] BaseUrl /api/metrics returned 405. Trying Worker API fallback...'
         }
     } catch {
         # ignore probe errors and fall back to bundle parsing
     }
 
     if (-not $apiRoot) {
-        $resolved = Resolve-ApiSettingsFromBundle -PagesUrl $normalizedBaseUrl
-        if ($resolved.ApiBaseUrl) {
-            $apiRoot = Normalize-ApiRoot -Value $resolved.ApiBaseUrl
+        try {
+            $resolvedFromBundle = Resolve-ApiSettingsFromBundle -PagesUrl $normalizedBaseUrl
+            if ($resolvedFromBundle.ApiBaseUrl) {
+                $apiRoot = Normalize-ApiRoot -Value $resolvedFromBundle.ApiBaseUrl
+            }
+        } catch {
+            # ignore bundle read failures and continue with fallback candidates
+        }
+    }
+
+    if (-not $apiRoot) {
+        $workerCandidates = @()
+
+        if (-not [string]::IsNullOrWhiteSpace($WorkerBaseUrl)) {
+            $workerCandidates += (Normalize-ApiRoot -Value $WorkerBaseUrl)
+        }
+
+        if ($resolvedFromBundle -and $resolvedFromBundle.WorkerCandidates) {
+            foreach ($candidate in $resolvedFromBundle.WorkerCandidates) {
+                if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+                $workerCandidates += (Normalize-ApiRoot -Value ([string]$candidate))
+            }
+        }
+
+        $workerName = Resolve-WorkerNameFromToml
+        if (-not [string]::IsNullOrWhiteSpace($workerName)) {
+            $workerCandidates += "https://$workerName.workers.dev"
+        }
+
+        $reportWorkerRoot = Get-WorkerApiRootFromRecentReports
+        if (-not [string]::IsNullOrWhiteSpace($reportWorkerRoot)) {
+            $workerCandidates += (Normalize-ApiRoot -Value $reportWorkerRoot)
+        }
+
+        $normalizedCandidates = @(
+            $workerCandidates |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                Select-Object -Unique
+        )
+
+        foreach ($candidate in $normalizedCandidates) {
+            if (Test-ApiRootCandidate -Candidate $candidate) {
+                $apiRoot = $candidate
+                Write-Host "[OK] Worker fallback selected: $apiRoot"
+                break
+            }
         }
     }
 }
 
 if (-not $apiRoot) {
-    throw 'Failed to resolve API base URL. Set LIVE_API_BASE_URL (or ensure Pages bundle contains API base).'
+    throw 'Failed to resolve API base URL. Set LIVE_API_BASE_URL or LIVE_WORKER_BASE_URL (or ensure Pages bundle/report contains Worker API URL).'
 }
 Write-Host "ApiRoot: $apiRoot"
 
@@ -403,6 +538,7 @@ if (-not $SkipChat) {
         -ExpectedResponseFormatValue $ExpectedResponseFormat `
         -ExpectedParseRecoveryEnabledValue $expectedParseRecoveryEnabledValue `
         -ExpectedOpenAiRetryCountValue $expectedOpenAiRetryCountValue `
+        -ExpectedMaxTokensValue $expectedMaxTokensValue `
         -RawBody $chatAuth.Body
 }
 

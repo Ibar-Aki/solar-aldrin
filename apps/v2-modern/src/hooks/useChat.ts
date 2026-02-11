@@ -18,7 +18,13 @@ import { isWorkItemComplete } from '@/lib/validation'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = shouldEnableSilentRetryClient()
-const MAX_SILENT_RETRIES = 1
+const MAX_SILENT_RETRIES = (() => {
+    const raw = import.meta.env.VITE_SILENT_RETRY_MAX
+    const parsed = typeof raw === 'string' ? Number.parseInt(raw.trim(), 10) : NaN
+    // サーバー主導の再試行に寄せるため既定は0。必要時のみ環境変数で明示的に有効化する。
+    if (!Number.isFinite(parsed)) return 0
+    return Math.max(0, Math.min(parsed, 2))
+})()
 
 type RetrySource = 'none' | 'manual' | 'silent'
 const MAX_CLIENT_HISTORY_MESSAGES = 12
@@ -180,10 +186,9 @@ function normalizeChatError(error: unknown): NormalizedChatError {
 }
 
 function shouldSilentRetry(error: NormalizedChatError): boolean {
-    if (!ENABLE_SILENT_RETRY) return false
-    if (error.errorType === 'timeout') return true
-    if (error.errorType === 'rate_limit') return true
-    if (error.errorType === 'server' && error.retriable) return true
+    if (!ENABLE_SILENT_RETRY || MAX_SILENT_RETRIES <= 0) return false
+    // 429のときのみ限定的に自動再送を許可。その他は手動リトライへ誘導する。
+    if (error.errorType === 'rate_limit' && error.retriable) return true
     return false
 }
 

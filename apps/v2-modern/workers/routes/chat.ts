@@ -34,6 +34,12 @@ const MAX_TOTAL_INPUT_LENGTH = USER_CONTENT_MAX_LENGTH * 10
 // Structured output が長文で切れると JSON 不正になりやすいため、少し余裕を持たせる。
 const MAX_TOKENS = 900
 const PARSE_RECOVERY_MAX_TOKENS = 1500
+const QUICK_PROFILE_MAX_TOKENS = 700
+const QUICK_PROFILE_SOFT_TIMEOUT_MS = 16000
+const QUICK_PROFILE_HARD_TIMEOUT_MS = 24000
+const STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET = 10000
+const RECOVERY_PROFILE_SOFT_TIMEOUT_MS = 32000
+const RECOVERY_PROFILE_HARD_TIMEOUT_MS = 45000
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
@@ -155,6 +161,133 @@ type SchemaIssueSummary = {
     path: string
     code: string
     message: string
+}
+
+type ChatExecutionProfileName = 'quick' | 'standard' | 'recovery'
+
+type RuntimeConfig = {
+    timeoutMs: number
+    retryCount: number
+    maxTokens: number
+}
+
+type ChatExecutionProfile = {
+    name: ChatExecutionProfileName
+    maxTokens: number
+    softTimeoutMs: number
+    hardTimeoutMs: number
+    retryCount: number
+    temperature: number
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value))
+}
+
+function getLastUserMessage(
+    requestMessages: Array<{ role: 'user' | 'assistant'; content: string }>
+): string {
+    for (let i = requestMessages.length - 1; i >= 0; i -= 1) {
+        if (requestMessages[i]?.role === 'user') {
+            return requestMessages[i].content ?? ''
+        }
+    }
+    return ''
+}
+
+function isQuickInteraction(
+    requestMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    sessionContext: ChatRequest['sessionContext']
+): boolean {
+    const normalized = getLastUserMessage(requestMessages)
+        .normalize('NFKC')
+        .trim()
+        .replace(/\s+/g, '')
+        .toLowerCase()
+
+    if (!normalized) return false
+
+    if (
+        normalized.includes('ky完了') ||
+        normalized.includes('これでok') ||
+        normalized.includes('これで大丈夫') ||
+        normalized.includes('終了') ||
+        normalized.includes('完了') ||
+        normalized.includes('確定')
+    ) {
+        return true
+    }
+
+    if (/^(はい|了解|ok|okay|お願いします|大丈夫です)$/.test(normalized)) {
+        return true
+    }
+
+    if (/^(危険度|リスク)(は|=|:)?[1-5]です?$/.test(normalized)) {
+        return true
+    }
+
+    if (normalized.includes('行動目標') || normalized.includes('目標')) {
+        return true
+    }
+
+    if ((sessionContext?.workItemCount ?? 0) >= 1 && normalized.includes('他にありません')) {
+        return true
+    }
+
+    return false
+}
+
+function buildExecutionProfile(name: ChatExecutionProfileName, runtime: RuntimeConfig): ChatExecutionProfile {
+    if (name === 'quick') {
+        const maxTokens = clampNumber(Math.min(runtime.maxTokens, QUICK_PROFILE_MAX_TOKENS), 300, 4000)
+        const softTimeoutMs = clampNumber(Math.min(runtime.timeoutMs, QUICK_PROFILE_SOFT_TIMEOUT_MS), 1000, 120000)
+        const hardTimeoutMs = clampNumber(
+            Math.max(softTimeoutMs + 4000, QUICK_PROFILE_HARD_TIMEOUT_MS),
+            softTimeoutMs,
+            120000
+        )
+        return {
+            name,
+            maxTokens,
+            softTimeoutMs,
+            hardTimeoutMs,
+            retryCount: 0,
+            temperature: 0.2,
+        }
+    }
+
+    if (name === 'recovery') {
+        const maxTokens = clampNumber(Math.max(runtime.maxTokens, PARSE_RECOVERY_MAX_TOKENS), 300, 4000)
+        const softTimeoutMs = clampNumber(Math.max(runtime.timeoutMs, RECOVERY_PROFILE_SOFT_TIMEOUT_MS), 1000, 120000)
+        const hardTimeoutMs = clampNumber(
+            Math.max(softTimeoutMs + 5000, RECOVERY_PROFILE_HARD_TIMEOUT_MS),
+            softTimeoutMs,
+            120000
+        )
+        return {
+            name,
+            maxTokens,
+            softTimeoutMs,
+            hardTimeoutMs,
+            retryCount: clampNumber(runtime.retryCount, 0, 1),
+            temperature: 0.2,
+        }
+    }
+
+    const softTimeoutMs = clampNumber(runtime.timeoutMs, 1000, 120000)
+    const hardTimeoutMs = clampNumber(
+        Math.max(softTimeoutMs + 3000, softTimeoutMs + STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET),
+        softTimeoutMs,
+        120000
+    )
+    return {
+        name,
+        maxTokens: runtime.maxTokens,
+        softTimeoutMs,
+        hardTimeoutMs,
+        retryCount: runtime.retryCount,
+        temperature: 0.3,
+    }
 }
 
 function summarizeSchemaValidationError(error: unknown, maxIssues: number = 5): { issueCount: number; issues: SchemaIssueSummary[] } | null {
@@ -838,6 +971,16 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const openaiTimeoutMs = resolveOpenAITimeoutMs(c.env.OPENAI_TIMEOUT_MS)
         const openaiRetryCount = resolveOpenAIRetryCount(c.env.OPENAI_RETRY_COUNT)
         const openaiMaxTokens = resolveOpenAIMaxTokens(c.env.OPENAI_MAX_TOKENS)
+        const runtimeConfig: RuntimeConfig = {
+            timeoutMs: openaiTimeoutMs,
+            retryCount: openaiRetryCount,
+            maxTokens: openaiMaxTokens,
+        }
+        const initialProfileName: ChatExecutionProfileName = isQuickInteraction(limitedHistory, sessionContext)
+            ? 'quick'
+            : 'standard'
+        const initialProfile = buildExecutionProfile(initialProfileName, runtimeConfig)
+        const recoveryProfile = buildExecutionProfile('recovery', runtimeConfig)
 
         const requestBodyBase = {
             model: 'gpt-4o-mini',
@@ -846,7 +989,6 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
                 ...limitedHistory,
             ],
-            max_tokens: openaiMaxTokens,
             response_format: {
                 type: 'json_schema' as const,
                 json_schema: CHAT_RESPONSE_JSON_SCHEMA,
@@ -860,28 +1002,85 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let totalTokens = 0
         let parseRetryAttempted = false
         let parseRetrySucceeded = false
-        const serverPolicyMeta = {
+        let activeProfile: ChatExecutionProfile = initialProfile
+        let timeoutSoftRecoveryCount = 0
+        let timeoutHardFailureCount = 0
+        let timeoutTier: 'none' | 'soft_recovered' | 'hard_timeout' = 'none'
+
+        const buildServerPolicyMeta = () => ({
             policyVersion: '2026-02-11-a-b-observability-1',
             responseFormat: 'json_schema_strict',
             parseRecoveryEnabled: true,
+            // Backward-compatible fields for existing preflight/e2e checks.
             openaiRetryCount,
             maxTokens: openaiMaxTokens,
-        }
+            // Dynamic profile fields for observability.
+            profileName: activeProfile.name,
+            profileRetryCount: activeProfile.retryCount,
+            profileMaxTokens: activeProfile.maxTokens,
+            profileSoftTimeoutMs: activeProfile.softTimeoutMs,
+            profileHardTimeoutMs: activeProfile.hardTimeoutMs,
+            timeoutSoftRecoveryCount,
+            timeoutHardFailureCount,
+            timeoutTier,
+        })
 
-        const callOpenAI = async (body: Record<string, unknown>, opts?: { timeoutMs?: number; retryCount?: number }) => {
+        const buildRequestBody = (
+            profile: ChatExecutionProfile,
+            overrides?: Partial<Record<'max_tokens' | 'temperature', number>>
+        ): Record<string, unknown> => ({
+            ...requestBodyBase,
+            max_tokens: overrides?.max_tokens ?? profile.maxTokens,
+            temperature: overrides?.temperature ?? profile.temperature,
+        })
+
+        const callOpenAISingle = async (
+            body: Record<string, unknown>,
+            profile: ChatExecutionProfile,
+            timeoutMs: number,
+            retryCount: number
+        ) => {
+            activeProfile = profile
             openaiRequestCount += 1
             const responseData = await fetchOpenAICompletion({
                 apiKey,
                 body,
                 reqId,
-                timeoutMs: opts?.timeoutMs ?? openaiTimeoutMs,
-                retryCount: opts?.retryCount ?? openaiRetryCount,
+                timeoutMs,
+                retryCount,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
             openaiDurationMs += responseData.meta.durationMs
             openaiLastFinishReason = responseData.meta.finishReason
             return responseData
+        }
+
+        const callOpenAI = async (body: Record<string, unknown>, profile: ChatExecutionProfile) => {
+            try {
+                return await callOpenAISingle(body, profile, profile.softTimeoutMs, profile.retryCount)
+            } catch (error) {
+                if (!(error instanceof Error) || error.message !== 'TIMEOUT') {
+                    throw error
+                }
+
+                if (profile.hardTimeoutMs <= profile.softTimeoutMs) {
+                    throw new Error('TIMEOUT_SOFT')
+                }
+
+                timeoutSoftRecoveryCount += 1
+                timeoutTier = 'soft_recovered'
+                try {
+                    return await callOpenAISingle(body, profile, profile.hardTimeoutMs, 0)
+                } catch (hardTimeoutError) {
+                    if (hardTimeoutError instanceof Error && hardTimeoutError.message === 'TIMEOUT') {
+                        timeoutHardFailureCount += 1
+                        timeoutTier = 'hard_timeout'
+                        throw new Error('TIMEOUT_HARD')
+                    }
+                    throw hardTimeoutError
+                }
+            }
         }
 
         const responseSchema = ChatSuccessResponseSchema.omit({ usage: true })
@@ -911,19 +1110,18 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         const requestParseRecovery = async () => {
             parseRetryAttempted = true
-            return callOpenAI({
-                ...requestBodyBase,
-                // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
-                max_tokens: PARSE_RECOVERY_MAX_TOKENS,
-                temperature: 0.2,
-            })
+            return callOpenAI(
+                buildRequestBody(recoveryProfile, {
+                    // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
+                    max_tokens: PARSE_RECOVERY_MAX_TOKENS,
+                    temperature: recoveryProfile.temperature,
+                }),
+                recoveryProfile
+            )
         }
 
-        // UIUX優先: 低温度でJSONの壊れ率を下げる（多少の表現多様性は捨てる）
-        let responseData = await callOpenAI({
-            ...requestBodyBase,
-            temperature: 0.3,
-        })
+        // 会話フェーズ別プロファイル（quick / standard / recovery）を適用。
+        let responseData = await callOpenAI(buildRequestBody(initialProfile), initialProfile)
         let evaluation = evaluateModelOutput(responseData.content)
 
         if (evaluation.parseFailed && openaiLastFinishReason === 'length') {
@@ -960,7 +1158,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                         attempted: parseRetryAttempted,
                         succeeded: parseRetrySucceeded,
                     },
-                    server: serverPolicyMeta,
+                    server: buildServerPolicyMeta(),
                 },
             }, 502)
         }
@@ -1006,7 +1204,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                         attempted: parseRetryAttempted,
                         succeeded: parseRetrySucceeded,
                     },
-                    server: serverPolicyMeta,
+                    server: buildServerPolicyMeta(),
                 },
             }, 502)
         }
@@ -1031,14 +1229,26 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     attempted: parseRetryAttempted,
                     succeeded: parseRetrySucceeded,
                 },
-                server: serverPolicyMeta,
+                server: buildServerPolicyMeta(),
             },
         })
 
     } catch (error) {
-        if (error instanceof Error && error.message === 'TIMEOUT') {
-            c.header('Retry-After', '2')
-            return c.json({ error: 'AI応答がタイムアウトしました', code: 'AI_TIMEOUT', requestId: c.get('reqId'), retriable: true }, 504)
+        if (
+            error instanceof Error &&
+            (error.message === 'TIMEOUT' || error.message === 'TIMEOUT_SOFT' || error.message === 'TIMEOUT_HARD')
+        ) {
+            const timeoutDetailTier = error.message === 'TIMEOUT_HARD' ? 'hard' : 'soft'
+            c.header('Retry-After', timeoutDetailTier === 'hard' ? '2' : '1')
+            return c.json({
+                error: 'AI応答がタイムアウトしました',
+                code: 'AI_TIMEOUT',
+                requestId: c.get('reqId'),
+                retriable: true,
+                details: {
+                    timeoutTier: timeoutDetailTier,
+                },
+            }, 504)
         }
 
         if (error instanceof OpenAIHTTPErrorWithDetails) {

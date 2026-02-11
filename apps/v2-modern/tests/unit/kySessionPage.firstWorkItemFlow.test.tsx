@@ -62,6 +62,16 @@ describe('KYSessionPage first work item flow', () => {
         expect(screen.getByPlaceholderText('メッセージを入力...')).toBeInTheDocument()
     })
 
+    it('進捗バーに参考情報ボタンを表示し、国交省PDFリンクを設定する', () => {
+        render(<KYSessionPage />)
+
+        const link = screen.getByRole('link', { name: '参考情報（国土交通省PDF）を開く' })
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute('href', 'https://www.mlit.go.jp/common/001187973.pdf')
+        expect(link).toHaveAttribute('target', '_blank')
+        expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
     it('1件目で対策3件が揃ったら入力欄を隠し、完了ボタンのみ表示する', () => {
         useKYStore.getState().updateCurrentWorkItem({
             workDescription: '足場上で資材を運ぶ',

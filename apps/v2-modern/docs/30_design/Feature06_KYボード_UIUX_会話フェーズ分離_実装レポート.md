@@ -16,6 +16,11 @@
 更新日: 2026-02-11（実費テスト再現性改善: length切れ自動再生成、行動目標の重複質問抑止、metrics 405対策、LIVEトークン解決の安定化）
 更新日: 2026-02-11（実費エラー改善: 空文字length応答の再生成救済、スキーマエラー詳細化、UIエラーメッセージの混雑/形式エラー分離）
 更新日: 2026-02-11（1件目KYの対策追加入力導線を改善: 2件目対策直後の自動遷移停止、3件目のみ追記、`1件目完了` ボタン導入）
+更新日: 2026-02-11（1件目KYボードの危険3項目に、理想例プレースホルダーを追加）
+更新日: 2026-02-11（進捗バー右側に国交省PDFへの「参考情報」ボタンを追加）
+更新日: 2026-02-11（Home画面下部に入力フォーカスUI比較モデル（4パターン）を追加）
+更新日: 2026-02-11（入力フォーカスUIにA案（下部ブルーライン）を本番採用）
+更新日: 2026-02-11（P0/P1/P2対応: LIVE preflight厳格化、失敗分類の分離、会話フェーズ別実行プロファイルとsoft/hard timeout層を導入）
 
 ## 目的
 
@@ -80,6 +85,11 @@
   - 見出し配置を添付準拠に更新（`KYボード` 右上へ `【n件目】`）
   - 表ヘッダを「想定される危険」+ 右列「危険度」に再配置
   - 文言を「何をする時」へ変更
+  - 1件目 (`workItemIndex === 1`) の未入力セルに、理想的な記載例を `例）...` 形式で表示
+    - 何をする時: `例）脚立上で天井配線を固定する時`
+    - 何が原因で: `例）脚立の設置角度が不適切で足元が滑りやすいため`
+    - どうなる: `例）バランスを崩して墜落し、頭部を負傷する`
+  - 2件目では上記プレースホルダーを表示せず、従来どおり空欄表示を維持
   - 対策カテゴリ表示を「配置・行動」に統一
   - **危険4項目（何をする時 / 何が原因で / どうなる / 危険度）完了後のみ** 対策表を表示
   - 「危険への対策」行は薄いクリーム色に変更し、注意書きをヘッダへ統合
@@ -94,6 +104,28 @@
   - 行内余白・フォントサイズをモバイルで微調整し、表全体の密度を添付比率に近づけた
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - 入力エリアの左右/上下余白をモバイルでわずかに縮小し、下部固定バーの見た目を調整
+  - 進捗バー右側（`行動目標 → 確認` の横）に、外部リンクボタン `参考情報` を追加
+    - リンク先: `https://www.mlit.go.jp/common/001187973.pdf`
+    - 新規タブで開く設定（`target="_blank"`, `rel="noopener noreferrer"`）
+    - 塗りボタン + 太字 + 影で、操作要素と分かりやすい見た目に調整
+- `apps/v2-modern/src/components/FocusStylePreview.tsx`（新規）
+  - フォーカス見た目比較専用フィールドを実装（機能変更なし）
+  - `Input + Textarea` を4パターンで比較表示
+    - A: Blue Bottom Line（Teams系）
+    - B: Soft Blue Fill
+    - C: Brand Border Only
+    - D: Dual Accent（左アクセント + 枠）
+- `apps/v2-modern/src/pages/HomePage.tsx`
+  - Home画面下部に `FocusStylePreview` を追加し、候補選定のための比較UIを常時表示
+- `apps/v2-modern/src/components/ui/input.tsx` / `apps/v2-modern/src/components/ui/textarea.tsx`
+  - フォーカス時の灰色リング（`focus-visible:ring-[3px]`）を廃止
+  - A案（Teams系）として、**下部のみ青ライン**のスタイルへ統一
+    - `focus-visible:ring-0`
+    - `focus-visible:shadow-none`
+    - `focus-visible:border-b-2`
+    - `focus-visible:border-b-blue-600`
+- `apps/v2-modern/src/pages/HomePage.tsx`
+  - A案採用に伴い、比較モデル表示を本番画面から外した（比較コードは `experiments` 配下に保管）
 
 ### 会話・状態遷移
 
@@ -132,7 +164,15 @@
   - Pagesドメインへ誤送信していた `/api/metrics` の **405 ノイズ**を抑制
 - `apps/v2-modern/tests/e2e/real-cost-scenario.spec.ts`
   - LIVE実行時に `.dev.vars` の `API_TOKEN` を事前に `VITE_API_TOKEN` へ昇格し、テスト内フォールバック分岐を削減
+  - LIVE実行で `VITE_API_TOKEN/API_TOKEN` が未解決なら即時失敗する preflight ガードを追加（認証不整合の混入防止）
+  - API Trace の失敗を `auth_config/runtime_quality/policy_mismatch/other` に分類し、Failure Summaryへ反映
   - Browser Console収集に location 情報を付与し、`405` 等の発生源追跡を容易化
+- `apps/v2-modern/workers/routes/chat.ts`
+  - 会話フェーズ別プロファイル（`quick`/`standard`/`recovery`）で `max_tokens` / `retry` / timeout を切替
+  - soft timeout 失敗後に hard timeout を1回だけ試行する階層を導入し、`meta.server.timeoutTier` で観測可能化
+- `apps/v2-modern/src/hooks/useChat.ts`
+  - サイレントリトライ既定値を 0 に変更し、クライアント側多段再送を抑制
+  - 429(retriable) のみ限定的に自動再送する方針へ統一
 
 ### プロンプト
 

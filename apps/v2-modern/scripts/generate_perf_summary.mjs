@@ -142,6 +142,31 @@ function detectRuntimeQualityIssue({ diagnostics, parseRetryUsed, retryButtonCli
     return false
 }
 
+function parseFailureSummaryCounts(content) {
+    const match = content.match(/^\- \*\*Failure Summary\*\*: (.+)$/m)
+    if (!match) return null
+
+    const raw = match[1].trim()
+    if (!raw) return null
+
+    const hasStructuredCounts = /(auth|runtime|policy|other)\s*=\s*\d+/i.test(raw)
+    if (!hasStructuredCounts) return null
+
+    const parseCount = (name) => {
+        const countMatch = raw.match(new RegExp(`${name}\\s*=\\s*(\\d+)`, 'i'))
+        if (!countMatch) return 0
+        const parsed = Number.parseInt(countMatch[1], 10)
+        return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    return {
+        auth: parseCount('auth'),
+        runtime: parseCount('runtime'),
+        policy: parseCount('policy'),
+        other: parseCount('other'),
+    }
+}
+
 function parseReport(filePath) {
     const content = fs.readFileSync(filePath, 'utf8')
     const dateMatch = content.match(/^\- \*\*Date\*\*: (.+)$/m)
@@ -161,7 +186,7 @@ function parseReport(filePath) {
     }
 
     const totalDuration = parseSeconds(metrics['Total Duration'])
-    const avgResponse = parseSeconds(metrics['Avg AI Response'])
+    const avgResponse = parseSeconds(metrics['Avg API Response'] || metrics['Avg AI Response'])
     const errors = parseInteger(metrics['Errors (AI/System)'])
     const navSuccess = (metrics['Nav Success'] || '').trim().toLowerCase()
     const navFailed = navSuccess.startsWith('no')
@@ -177,8 +202,24 @@ function parseReport(filePath) {
     const retryButtonClicks = parseOptionalInteger(metrics['Retry Button Clicks'])
     const waitOver15sTurns = parseOptionalInteger(metrics['Wait > 15s Turns'])
     const failureDiagnostics = parseFailureDiagnostics(content)
-    const hasAuthConfigIssue = detectAuthConfigIssue(failureDiagnostics)
-    const hasRuntimeQualityIssue = detectRuntimeQualityIssue({
+    const failureSummaryCounts = parseFailureSummaryCounts(content)
+    const hasAuthConfigIssue = failureSummaryCounts
+        ? failureSummaryCounts.auth > 0
+        : detectAuthConfigIssue(failureDiagnostics)
+    const hasRuntimeQualityIssue = failureSummaryCounts
+        ? failureSummaryCounts.runtime > 0
+        : detectRuntimeQualityIssue({
+            diagnostics: failureDiagnostics,
+            parseRetryUsed,
+            retryButtonClicks,
+            waitOver15sTurns,
+            errors,
+            hasAuthConfigIssue,
+        })
+    const hasPolicyMismatchIssue = failureSummaryCounts
+        ? failureSummaryCounts.policy > 0
+        : failureDiagnostics.some(line => /meta\.server mismatch|policy mismatch|LIVE preflight guard/i.test(line))
+    const hasRuntimeQualityIssueLegacy = detectRuntimeQualityIssue({
         diagnostics: failureDiagnostics,
         parseRetryUsed,
         retryButtonClicks,
@@ -186,6 +227,9 @@ function parseReport(filePath) {
         errors,
         hasAuthConfigIssue,
     })
+    const hasRuntimeQualityIssueFinal = failureSummaryCounts
+        ? hasRuntimeQualityIssue
+        : hasRuntimeQualityIssueLegacy
 
     return {
         filePath,
@@ -206,7 +250,8 @@ function parseReport(filePath) {
         retryButtonClicks,
         waitOver15sTurns,
         hasAuthConfigIssue,
-        hasRuntimeQualityIssue,
+        hasRuntimeQualityIssue: hasRuntimeQualityIssueFinal,
+        hasPolicyMismatchIssue,
     }
 }
 
@@ -262,8 +307,8 @@ function buildSummary(dayKey, stats, existingMeta) {
 | レポート件数 | ${stats.total} |  |
 | 総所要時間 P50 | ${formatSeconds(durationP50)} | Total Duration を使用 |
 | 総所要時間 P95 | ${formatSeconds(durationP95)} | Total Duration を使用 |
-| 応答時間 P50 | ${formatSeconds(p50)} | Avg AI Response を使用 |
-| 応答時間 P95 | ${formatSeconds(p95)} | Avg AI Response を使用 |
+| 応答時間 P50 | ${formatSeconds(p50)} | Avg API Response（旧: Avg AI Response）を使用 |
+| 応答時間 P95 | ${formatSeconds(p95)} | Avg API Response（旧: Avg AI Response）を使用 |
 | 総トークン P50 | ${formatInt(tokensP50)} | Total Tokens を使用 |
 | 総トークン P95 | ${formatInt(tokensP95)} | Total Tokens を使用 |
 | トークン/チャット P50 | ${formatInt(avgTokensP50)} | Avg Tokens / Chat を使用 |
@@ -274,6 +319,7 @@ function buildSummary(dayKey, stats, existingMeta) {
 | 再試行率 | ${formatRate(stats.retryCount, stats.total)} | Result=FAIL または Nav Success=No または Errors>0 |
 | 設定/認証系発生率 | ${formatRate(stats.authConfigIssueReportCount, stats.total)} | preflight未達 / 認証系エラー |
 | 実行時品質系発生率 | ${formatRate(stats.runtimeQualityIssueReportCount, stats.total)} | JSON/Timeout/待機遅延/リトライ多発 |
+| ポリシー不一致発生率 | ${formatRate(stats.policyMismatchIssueReportCount, stats.total)} | meta.server mismatch / preflightガード違反 |
 | JSONパース再試行率 | ${formatRate(stats.parseRetryReportCount, stats.total)} | Parse Retry Used > 0 |
 | リトライ押下率 | ${formatRate(stats.retryButtonReportCount, stats.total)} | Retry Button Clicks > 0 |
 | リトライ押下合計 | ${stats.retryButtonClicksTotal} | Retry Button Clicks の合計 |
@@ -287,8 +333,8 @@ function buildSummary(dayKey, stats, existingMeta) {
 | レポート件数 | ${stats.live.total} |  |
 | 総所要時間 P50 | ${formatSecondsForBucket(liveDurationP50, stats.live.total)} | Total Duration を使用 |
 | 総所要時間 P95 | ${formatSecondsForBucket(liveDurationP95, stats.live.total)} | Total Duration を使用 |
-| 応答時間 P50 | ${formatSecondsForBucket(liveP50, stats.live.total)} | Avg AI Response を使用 |
-| 応答時間 P95 | ${formatSecondsForBucket(liveP95, stats.live.total)} | Avg AI Response を使用 |
+| 応答時間 P50 | ${formatSecondsForBucket(liveP50, stats.live.total)} | Avg API Response（旧: Avg AI Response）を使用 |
+| 応答時間 P95 | ${formatSecondsForBucket(liveP95, stats.live.total)} | Avg API Response（旧: Avg AI Response）を使用 |
 | 総トークン P50 | ${formatInt(liveTokensP50)} | Total Tokens を使用 |
 | 総トークン P95 | ${formatInt(liveTokensP95)} | Total Tokens を使用 |
 | トークン/チャット P50 | ${formatInt(liveAvgTokensP50)} | Avg Tokens / Chat を使用 |
@@ -299,6 +345,7 @@ function buildSummary(dayKey, stats, existingMeta) {
 | 再試行率 | ${formatRateForBucket(stats.live.retryCount, stats.live.total)} | Result=FAIL または Nav Success=No または Errors>0 |
 | 設定/認証系発生率 | ${formatRateForBucket(stats.live.authConfigIssueReportCount, stats.live.total)} | preflight未達 / 認証系エラー |
 | 実行時品質系発生率 | ${formatRateForBucket(stats.live.runtimeQualityIssueReportCount, stats.live.total)} | JSON/Timeout/待機遅延/リトライ多発 |
+| ポリシー不一致発生率 | ${formatRateForBucket(stats.live.policyMismatchIssueReportCount, stats.live.total)} | meta.server mismatch / preflightガード違反 |
 | JSONパース再試行率 | ${formatRateForBucket(stats.live.parseRetryReportCount, stats.live.total)} | Parse Retry Used > 0 |
 | リトライ押下率 | ${formatRateForBucket(stats.live.retryButtonReportCount, stats.live.total)} | Retry Button Clicks > 0 |
 | リトライ押下合計 | ${stats.live.retryButtonClicksTotal} | Retry Button Clicks の合計 |
@@ -311,6 +358,7 @@ function buildSummary(dayKey, stats, existingMeta) {
 |---|---|---|---|
 | 運用/設定系 | ${stats.authConfigIssueReportCount}件 | ${stats.live.authConfigIssueReportCount}件 | preflight未達、AUTH_REQUIRED/AUTH_INVALID/OPENAI_AUTH_ERROR 等 |
 | 実行時品質系 | ${stats.runtimeQualityIssueReportCount}件 | ${stats.live.runtimeQualityIssueReportCount}件 | AI_RESPONSE_INVALID_JSON/SCHEMA、TIMEOUT、待機>15s、Retry多発 |
+| ポリシー不一致 | ${stats.policyMismatchIssueReportCount}件 | ${stats.live.policyMismatchIssueReportCount}件 | meta.server mismatch / preflightガード違反 |
 
 ## 内訳
 
@@ -347,6 +395,7 @@ function main() {
                 retryCount: 0,
                 authConfigIssueReportCount: 0,
                 runtimeQualityIssueReportCount: 0,
+                policyMismatchIssueReportCount: 0,
                 parseRetryReportCount: 0,
                 retryButtonReportCount: 0,
                 retryButtonClicksTotal: 0,
@@ -366,6 +415,7 @@ function main() {
                     retryCount: 0,
                     authConfigIssueReportCount: 0,
                     runtimeQualityIssueReportCount: 0,
+                    policyMismatchIssueReportCount: 0,
                     parseRetryReportCount: 0,
                     retryButtonReportCount: 0,
                     retryButtonClicksTotal: 0,
@@ -403,6 +453,9 @@ function main() {
         }
         if (report.hasRuntimeQualityIssue) {
             bucket.runtimeQualityIssueReportCount += 1
+        }
+        if (report.hasPolicyMismatchIssue) {
+            bucket.policyMismatchIssueReportCount += 1
         }
         if ((report.parseRetryUsed ?? 0) > 0) {
             bucket.parseRetryReportCount += 1
@@ -447,6 +500,9 @@ function main() {
             }
             if (report.hasRuntimeQualityIssue) {
                 bucket.live.runtimeQualityIssueReportCount += 1
+            }
+            if (report.hasPolicyMismatchIssue) {
+                bucket.live.policyMismatchIssueReportCount += 1
             }
             if ((report.parseRetryUsed ?? 0) > 0) {
                 bucket.live.parseRetryReportCount += 1
@@ -494,7 +550,7 @@ function main() {
 ## 指標の定義
 
 - **総所要時間 P50/P95**: 各レポートの \`Total Duration\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
-- **応答時間 P50/P95**: 各レポートの \`Avg AI Response\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
+- **応答時間 P50/P95**: 各レポートの \`Avg API Response\`（旧レポートは \`Avg AI Response\`）を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **総トークン P50/P95**: 各レポートの \`Total Tokens\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **トークン/チャット P50/P95**: 各レポートの \`Avg Tokens / Chat\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **OpenAI HTTP Attempts P50/P95**: 各レポートの \`OpenAI HTTP Attempts\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
@@ -502,6 +558,7 @@ function main() {
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
 - **設定/認証系発生率**: Failure Diagnostics に preflight未達 / 認証系コード（AUTH_REQUIRED, AUTH_INVALID, OPENAI_AUTH_ERROR 等）が含まれる比率
 - **実行時品質系発生率**: JSON/Schema不整合、TIMEOUT、待機>15秒、Retry多発など実行時品質問題が含まれる比率
+- **ポリシー不一致発生率**: \`meta.server mismatch\` や preflightガード違反が含まれる比率
 - **JSONパース再試行率**: \`Parse Retry Used\` が 1 以上のレポート比率
 - **リトライ押下率**: \`Retry Button Clicks\` が 1 以上のレポート比率
 - **待機>15s発生率**: \`Wait > 15s Turns\` が 1 以上のレポート比率

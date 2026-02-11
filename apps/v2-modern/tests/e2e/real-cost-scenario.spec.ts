@@ -60,6 +60,12 @@ const EXPECTED_SERVER_OPENAI_RETRY_COUNT = (() => {
     const parsed = Number.parseInt(raw, 10)
     return Number.isFinite(parsed) ? parsed : 1
 })()
+const EXPECTED_SERVER_MAX_TOKENS = (() => {
+    const raw = process.env.LIVE_EXPECTED_MAX_TOKENS?.trim()
+    if (!raw) return null
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) ? parsed : null
+})()
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
 test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
@@ -99,6 +105,8 @@ interface LogEntry {
     message: string
 }
 
+type FailureClass = 'auth_config' | 'runtime_quality' | 'policy_mismatch' | 'other'
+
 interface ApiTraceEntry {
     time: string
     method: string
@@ -124,7 +132,14 @@ interface ApiTraceEntry {
     serverResponseFormat?: string
     serverParseRecoveryEnabled?: boolean
     serverOpenaiRetryCount?: number
+    serverMaxTokens?: number
     serverPolicyViolation?: boolean
+    serverProfileName?: string
+    serverProfileRetryCount?: number
+    serverProfileMaxTokens?: number
+    serverProfileSoftTimeoutMs?: number
+    serverProfileHardTimeoutMs?: number
+    failureClass?: FailureClass
 }
 
 // Initialize the log array properly
@@ -144,6 +159,18 @@ function shortText(value: string, limit = 160): string {
 
 function escapeTableText(value: string): string {
     return value.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
+}
+
+const AUTH_FAILURE_CODES = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'OPENAI_AUTH_ERROR'])
+const RUNTIME_QUALITY_CODES = new Set(['AI_RESPONSE_INVALID_JSON', 'AI_RESPONSE_INVALID_SCHEMA', 'AI_TIMEOUT', 'AI_UPSTREAM_ERROR'])
+
+function classifyFailure(entry: ApiTraceEntry): FailureClass {
+    if (entry.serverPolicyViolation) return 'policy_mismatch'
+    if (entry.code && AUTH_FAILURE_CODES.has(entry.code)) return 'auth_config'
+    if (entry.code && RUNTIME_QUALITY_CODES.has(entry.code)) return 'runtime_quality'
+    if (entry.status === 401 || entry.status === 403) return 'auth_config'
+    if (entry.status >= 500 || entry.status === 429) return 'runtime_quality'
+    return 'other'
 }
 
 function resetRunState() {
@@ -245,6 +272,12 @@ async function recordApiTrace(response: Response) {
                     responseFormat?: string
                     parseRecoveryEnabled?: boolean
                     openaiRetryCount?: number
+                    maxTokens?: number
+                    profileName?: string
+                    profileRetryCount?: number
+                    profileMaxTokens?: number
+                    profileSoftTimeoutMs?: number
+                    profileHardTimeoutMs?: number
                 }
             }
         }
@@ -273,6 +306,24 @@ async function recordApiTrace(response: Response) {
         entry.serverOpenaiRetryCount = typeof payload.meta?.server?.openaiRetryCount === 'number'
             ? payload.meta.server.openaiRetryCount
             : undefined
+        entry.serverMaxTokens = typeof payload.meta?.server?.maxTokens === 'number'
+            ? payload.meta.server.maxTokens
+            : undefined
+        entry.serverProfileName = typeof payload.meta?.server?.profileName === 'string'
+            ? payload.meta.server.profileName
+            : undefined
+        entry.serverProfileRetryCount = typeof payload.meta?.server?.profileRetryCount === 'number'
+            ? payload.meta.server.profileRetryCount
+            : undefined
+        entry.serverProfileMaxTokens = typeof payload.meta?.server?.profileMaxTokens === 'number'
+            ? payload.meta.server.profileMaxTokens
+            : undefined
+        entry.serverProfileSoftTimeoutMs = typeof payload.meta?.server?.profileSoftTimeoutMs === 'number'
+            ? payload.meta.server.profileSoftTimeoutMs
+            : undefined
+        entry.serverProfileHardTimeoutMs = typeof payload.meta?.server?.profileHardTimeoutMs === 'number'
+            ? payload.meta.server.profileHardTimeoutMs
+            : undefined
 
         const shouldValidateServerPolicy =
             RUN_LIVE &&
@@ -292,9 +343,13 @@ async function recordApiTrace(response: Response) {
             if (entry.serverOpenaiRetryCount !== EXPECTED_SERVER_OPENAI_RETRY_COUNT) {
                 mismatchReasons.push(`openaiRetryCount expected=${EXPECTED_SERVER_OPENAI_RETRY_COUNT} actual=${entry.serverOpenaiRetryCount ?? 'missing'}`)
             }
+            if (EXPECTED_SERVER_MAX_TOKENS !== null && entry.serverMaxTokens !== EXPECTED_SERVER_MAX_TOKENS) {
+                mismatchReasons.push(`maxTokens expected=${EXPECTED_SERVER_MAX_TOKENS} actual=${entry.serverMaxTokens ?? 'missing'}`)
+            }
 
             if (mismatchReasons.length > 0) {
                 entry.serverPolicyViolation = true
+                entry.failureClass = 'policy_mismatch'
                 setFatalInfraError(
                     `chat meta.server mismatch (requestId=${entry.requestId ?? '-'}): ${mismatchReasons.join(', ')}`
                 )
@@ -322,6 +377,7 @@ async function recordApiTrace(response: Response) {
     apiTrace.push(entry)
 
     if (entry.status >= 400) {
+        entry.failureClass = classifyFailure(entry)
         METRICS.errors++
         addFailureDiagnostic(`API failure status=${entry.status} code=${entry.code ?? '-'} requestId=${entry.requestId ?? '-'} error=${entry.error ?? '-'} details=${entry.details ? shortText(entry.details, 160) : '-'}`)
 
@@ -376,6 +432,16 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
     const serverPolicyViolations = apiTrace.reduce((sum, entry) => sum + (entry.serverPolicyViolation ? 1 : 0), 0)
     const waitOver15sTurns = effectiveApiLatencies.filter(ms => ms >= 15_000).length
+    const authConfigFailures = apiTrace.filter(entry => entry.failureClass === 'auth_config').length
+    const runtimeQualityFailures = apiTrace.filter(entry => entry.failureClass === 'runtime_quality').length
+    let policyMismatchFailures = apiTrace.filter(entry => entry.failureClass === 'policy_mismatch').length
+    if (failureDiagnostics.some(msg => msg.includes('preflight') || msg.includes('meta.server mismatch'))) {
+        policyMismatchFailures = Math.max(policyMismatchFailures, 1)
+    }
+    const otherFailures = apiTrace.filter(entry => entry.failureClass === 'other').length
+    const failureSummaryLabel = status === 'PASS'
+        ? 'none'
+        : `auth=${authConfigFailures}, runtime=${runtimeQualityFailures}, policy=${policyMismatchFailures}, other=${otherFailures}`
 
     // 評価スコア算出 (簡易ロジック)
     let score = 'A'
@@ -396,11 +462,14 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
                 ? (entry.parseRetrySucceeded ? 'attempted:yes (ok)' : 'attempted:yes (failed)')
                 : '-'
             const serverMetaLabel = entry.serverPolicyVersion
-                ? `policy=${entry.serverPolicyVersion} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverOpenaiRetryCount ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
+                ? `policy=${entry.serverPolicyVersion} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverOpenaiRetryCount ?? '-'} maxTokens=${entry.serverMaxTokens ?? '-'} profile=${entry.serverProfileName ?? '-'} profileRetry=${entry.serverProfileRetryCount ?? '-'} profileMaxTokens=${entry.serverProfileMaxTokens ?? '-'} softTimeout=${entry.serverProfileSoftTimeoutMs ?? '-'} hardTimeout=${entry.serverProfileHardTimeoutMs ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
                 : (entry.serverPolicyViolation ? 'missing mismatch' : '-')
-            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
+            const failureClass = entry.status >= 400 || entry.serverPolicyViolation
+                ? (entry.failureClass ?? classifyFailure(entry))
+                : '-'
+            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${failureClass} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
         }).join('\n')
-        : '| - | - | - | - | - | - | - | - | - | - | - | - |'
+        : '| - | - | - | - | - | - | - | - | - | - | - | - | - |'
 
     const failureRows = failureDiagnostics.length > 0
         ? failureDiagnostics.map(item => `- ${item}`).join('\n')
@@ -415,7 +484,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 - **Result**: ${status === 'PASS' ? '✅ PASS' : '❌ FAIL'}
 - **Score**: ${score}
 - **Base URL**: ${METRICS.baseUrl || process.env.LIVE_BASE_URL || 'http://localhost:5173'}
-- **Failure Summary**: ${escapeTableText(shortText(status === 'PASS' ? 'none' : String(status), 200))}
+- **Failure Summary**: ${escapeTableText(shortText(failureSummaryLabel, 200))}
 
 ## Metrics Dashboard
 | Metric | Value | Target | Status |
@@ -433,6 +502,10 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **Parse Retry Used** | ${parseRetryUsed} | 0 | ${parseRetryUsed === 0 ? '🟢' : '🟡'} |
 | **Parse Retry Succeeded** | ${parseRetrySucceeded} | - | ℹ️ |
 | **Server Policy Violations** | ${serverPolicyViolations} | 0 | ${serverPolicyViolations === 0 ? '🟢' : '🔴'} |
+| **Auth/Config Failures** | ${authConfigFailures} | 0 | ${authConfigFailures === 0 ? '🟢' : '🔴'} |
+| **Runtime Quality Failures** | ${runtimeQualityFailures} | 0 | ${runtimeQualityFailures === 0 ? '🟢' : '🔴'} |
+| **Policy Mismatch Failures** | ${policyMismatchFailures} | 0 | ${policyMismatchFailures === 0 ? '🟢' : '🔴'} |
+| **Other Failures** | ${otherFailures} | 0 | ${otherFailures === 0 ? '🟢' : '🟡'} |
 | **Retry Button Clicks** | ${METRICS.retryButtonClicks} | 0 | ${METRICS.retryButtonClicks === 0 ? '🟢' : '🟡'} |
 | **Wait > 15s Turns** | ${waitOver15sTurns} | 0 | ${waitOver15sTurns === 0 ? '🟢' : '🟡'} |
 
@@ -442,8 +515,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 ${conversationLog.map(log => `| ${log.time} | **${log.speaker}** | ${log.message.replace(/\n/g, '<br>').slice(0, 100)}${log.message.length > 100 ? '...' : ''} |`).join('\n')}
 
 ## API Trace (/api/chat)
-| Time | Method | Status | Code | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | ServerMeta | Note |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| Time | Method | Status | Code | Failure Class | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | ServerMeta | Note |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 ${apiTraceRows}
 
 ## Failure Diagnostics
@@ -528,7 +601,9 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     if (RUN_LIVE) {
         const token = LIVE_API_TOKEN
         if (!token) {
-            addFailureDiagnostic('VITE_API_TOKEN is not set. Running without Authorization header (optional-auth mode expected).')
+            addFailureDiagnostic(
+                'LIVE preflight guard: VITE_API_TOKEN/API_TOKEN が未解決です。`npm run test:cost:preflight` 実行後に再度お試しください。'
+            )
         } else {
             if (LIVE_API_TOKEN_INFO.source === 'devvars') {
                 console.log('LIVE token source: .dev.vars(API_TOKEN) -> VITE_API_TOKEN')
@@ -621,6 +696,12 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         if (RUN_LIVE && !LIVE_PREFLIGHT_PASSED) {
             const guardMessage =
                 'LIVE preflight guard: LIVE_PREFLIGHT_PASSED=1 が未設定です。`npm run test:cost:live` で事前疎通チェックを通してから実行してください。'
+            addFailureDiagnostic(guardMessage)
+            throw new Error(guardMessage)
+        }
+        if (RUN_LIVE && !LIVE_API_TOKEN) {
+            const guardMessage =
+                'LIVE preflight guard: VITE_API_TOKEN/API_TOKEN が未解決です。`npm run test:cost:preflight` を通してから実行してください。'
             addFailureDiagnostic(guardMessage)
             throw new Error(guardMessage)
         }

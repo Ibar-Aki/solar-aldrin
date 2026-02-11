@@ -485,6 +485,142 @@ describe('Chat API Integration Flow', () => {
         expect(requestBody.max_tokens).toBe(1500)
     })
 
+    it('quick プロファイルでは max_tokens/retry を縮小し、meta.server に反映する', async () => {
+        const mockOpenAIResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '承知しました。次へ進みます。',
+                        extracted: { nextAction: 'confirm' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 28 },
+        }
+
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => mockOpenAIResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: 'はい' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'mock-key',
+            OPENAI_MAX_TOKENS: '1500',
+            OPENAI_RETRY_COUNT: '2',
+            OPENAI_TIMEOUT_MS: '30000',
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            meta?: {
+                server?: {
+                    maxTokens?: number
+                    profileName?: string
+                    profileRetryCount?: number
+                    profileMaxTokens?: number
+                    profileSoftTimeoutMs?: number
+                    profileHardTimeoutMs?: number
+                }
+            }
+        }
+        expect(body.meta?.server?.maxTokens).toBe(1500)
+        expect(body.meta?.server?.profileName).toBe('quick')
+        expect(body.meta?.server?.profileRetryCount).toBe(0)
+        expect(body.meta?.server?.profileMaxTokens).toBe(700)
+        expect(body.meta?.server?.profileSoftTimeoutMs).toBe(16000)
+        expect(body.meta?.server?.profileHardTimeoutMs).toBe(24000)
+
+        const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit
+        const requestBody = JSON.parse(String(init.body)) as { max_tokens?: number; temperature?: number }
+        expect(requestBody.max_tokens).toBe(700)
+        expect(requestBody.temperature).toBe(0.2)
+    })
+
+    it('quick プロファイルで soft timeout 後に hard timeout で回復した場合、tier を soft_recovered で返す', async () => {
+        const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' })
+        const recovered = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '復旧しました。',
+                        extracted: { nextAction: 'confirm' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 20 },
+        }
+
+        vi.mocked(fetch)
+            .mockRejectedValueOnce(abortError)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => recovered,
+                text: async () => '',
+            } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: 'ok' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            meta?: {
+                openai?: { requestCount?: number }
+                server?: {
+                    timeoutTier?: string
+                    timeoutSoftRecoveryCount?: number
+                    timeoutHardFailureCount?: number
+                }
+            }
+        }
+
+        expect(body.meta?.openai?.requestCount).toBe(2)
+        expect(body.meta?.server?.timeoutTier).toBe('soft_recovered')
+        expect(body.meta?.server?.timeoutSoftRecoveryCount).toBe(1)
+        expect(body.meta?.server?.timeoutHardFailureCount).toBe(0)
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    })
+
+    it('quick プロファイルで soft/hard timeout の両方が失敗した場合、AI_TIMEOUT(hard) を返す', async () => {
+        const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' })
+        vi.mocked(fetch).mockRejectedValue(abortError)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '了解' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, { OPENAI_API_KEY: 'mock-key' })
+        expect(res.status).toBe(504)
+        const body = await res.json() as {
+            code?: string
+            retriable?: boolean
+            details?: { timeoutTier?: string }
+        }
+        expect(body.code).toBe('AI_TIMEOUT')
+        expect(body.retriable).toBe(true)
+        expect(body.details?.timeoutTier).toBe('hard')
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    })
+
     it('スキーマ不整合時は要約付きdetailsを返す', async () => {
         const invalidSchemaResponse = {
             choices: [{
