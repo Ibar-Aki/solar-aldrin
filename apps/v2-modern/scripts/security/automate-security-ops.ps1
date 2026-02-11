@@ -246,4 +246,4 @@ if (-not [string]::IsNullOrWhiteSpace($BaseUrl)) {
 
 Write-Section "Done"
 Write-Host "Security operations have been completed."
-Write-Host "If needed, update frontend VITE_API_TOKEN with the same value."
+Write-Host "If needed, set VITE_API_TOKEN for preflight/cost tests, and set the runtime token in the browser (HomePage: APIトークン設定)."

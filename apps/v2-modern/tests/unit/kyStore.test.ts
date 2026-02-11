@@ -127,6 +127,9 @@ describe('kyStore', () => {
         fillAndCommit('2')
         expect(useKYStore.getState().session?.workItems).toHaveLength(2)
         expect(useKYStore.getState().status).toBe('action_goal')
+        expect(useKYStore.getState().messages.at(-1)?.role).toBe('assistant')
+        expect(useKYStore.getState().messages.at(-1)?.content).toContain('行動目標')
+        expect(useKYStore.getState().messages.at(-1)?.extractedData?.nextAction).toBe('ask_goal')
 
         fillAndCommit('3')
         expect(useKYStore.getState().session?.workItems).toHaveLength(2)

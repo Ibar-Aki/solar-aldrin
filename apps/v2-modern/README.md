@@ -1,7 +1,9 @@
 # Voice KY Assistant v2
 
 更新日: 2026-02-07（実費テスト運用、/api/chat のJSONパース失敗時の扱いと観測情報を追記／ファイル整理：ドキュメント移動/リネーム）
-更新日: 2026-02-11（E2E: 危険度ボタンはAPIなし、PDF visualスナップショット更新手順を追記）
+更新日: 2026-02-11（E2E: 危険度ボタンはAPIなし、PDF visualスナップショット更新手順を追記／APIトークン: バンドル埋め込みを避け、localStorage運用に変更）
+更新日: 2026-02-11（実費テストの認証系トラブルを即時判別できるよう改善。VITE_API_TOKEN 未設定時は .dev.vars の API_TOKEN をフォールバック）
+更新日: 2026-02-11（HomePageの進行中セッション画面でもAPIトークン設定を可能化／PagesデプロイスクリプトでVITE_API_TOKENをビルド前に明示解除）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -69,7 +71,8 @@ npm run dev:workers
 #### フロントエンド環境変数
 
 - 任意: `VITE_API_BASE_URL`（例: `https://voice-ky-v2.solar-aldrin-ky.workers.dev/api`）
-- 任意: `VITE_API_TOKEN`（Workers側で `API_TOKEN` を設定した場合）
+- 実費テスト/スモーク用: `VITE_API_TOKEN`（**フロントのバンドルへ埋め込まず**、Playwright/事前チェックで利用）
+- ブラウザ実行時の認証: ホーム画面の「APIトークン設定」でトークンを保存（localStorage）。進行中セッション画面からも更新可能
 
 #### /api/chat のエラーコードと観測用フィールド（実費テスト向け）
 
@@ -141,6 +144,8 @@ npm run test:cost:ops
 
 - `test:cost:ops` は `preflight` -> `Mobile Safari 実費E2E` -> `性能サマリ再生成` を連続実行します。
 - `RUN_LIVE_TESTS=1` は `test:cost:live` 内で自動設定されます。
+- `VITE_API_TOKEN` が未設定の場合、`test:cost:preflight` と `test:cost:live` は `.dev.vars` の `API_TOKEN` を自動利用します。
+- `AUTH_INVALID`（API_TOKEN不一致）または `OPENAI_AUTH_ERROR`（WorkerのOpenAIキー不正）を検知した場合は、テストを即時失敗させて原因を明示します。
 
 #### レポート整理（履歴圧縮）
 

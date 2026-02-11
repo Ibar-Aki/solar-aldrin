@@ -1,4 +1,5 @@
 import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+import { getApiToken } from '@/lib/apiToken'
 
 export type TelemetryEventName =
     | 'session_start'
@@ -26,7 +27,6 @@ function resolveApiBase(): string {
 }
 
 const apiBase = resolveApiBase()
-const token = import.meta.env.VITE_API_TOKEN
 const endpoint = import.meta.env.VITE_TELEMETRY_ENDPOINT || (apiBase ? `${apiBase}/metrics` : '/api/metrics')
 const enabled = import.meta.env.VITE_TELEMETRY_ENABLED !== '0'
 const sampleRate = Number(import.meta.env.VITE_TELEMETRY_SAMPLE_RATE || '1')
@@ -40,6 +40,7 @@ function shouldSample(rate: number) {
 export async function sendTelemetry(event: TelemetryEvent) {
     if (!enabled) return
     if (!shouldSample(sampleRate)) return
+    const token = getApiToken()
 
     const payload: TelemetryEvent = {
         ...event,

@@ -11,6 +11,7 @@ import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
 import { getTimeGreeting } from '@/lib/greeting'
+import { getApiToken } from '@/lib/apiToken'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
 const ENABLE_SILENT_RETRY = (() => {
@@ -84,7 +85,7 @@ function normalizeChatError(error: unknown): NormalizedChatError {
     switch (apiError.errorType) {
         case 'auth':
             return {
-                message: '認証エラーです。管理者にAPIトークン設定を確認してください。',
+                message: '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。',
                 errorType: 'auth',
                 status: apiError.status,
                 retriable: apiError.retriable,
@@ -268,11 +269,10 @@ export function useChat() {
 
     const isKYCompleteCommand = (text: string): boolean => {
         const normalized = text
+            .normalize('NFKC')
             .trim()
             .replace(/[\s\u3000]+/g, '') // 空白（全角含む）除去
             .replace(/[。．.!！?？]+$/g, '') // 末尾の句読点除去（誤爆防止: 中間は残す）
-            .replace(/Ｋ/g, 'K')
-            .replace(/Ｙ/g, 'Y')
             .toUpperCase()
         return normalized === 'KY完了'
     }
@@ -334,10 +334,10 @@ export function useChat() {
 
             // 認証チェック (Hardening Phase C)
             const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
-            const hasToken = Boolean(import.meta.env.VITE_API_TOKEN)
+            const hasToken = Boolean(getApiToken())
 
             if (requireAuth && !hasToken) {
-                const errorMsg = '認証エラーです。管理者にAPIトークン設定を確認してください。'
+                const errorMsg = '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。'
                 setError(errorMsg, 'chat')
                 addMessage('assistant', errorMsg)
                 return

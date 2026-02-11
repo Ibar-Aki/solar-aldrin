@@ -10,6 +10,55 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
 
+function Get-EnvLikeValue {
+    param(
+        [string]$FilePath,
+        [string]$Key
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        return $null
+    }
+
+    $pattern = "^\s*$([regex]::Escape($Key))\s*=\s*(.*)\s*$"
+    $line = Get-Content -Path $FilePath | Where-Object { $_ -match $pattern } | Select-Object -First 1
+    if (-not $line) {
+        return $null
+    }
+
+    if (-not ($line -match $pattern)) {
+        return $null
+    }
+
+    $value = $matches[1].Trim()
+    if ($value.Length -ge 2 -and (
+            ($value.StartsWith('"') -and $value.EndsWith('"')) -or
+            ($value.StartsWith("'") -and $value.EndsWith("'"))
+        )) {
+        $value = $value.Substring(1, $value.Length - 2)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
+
+    return $value
+}
+
+function Try-ParseJsonBody {
+    param([string]$Body)
+
+    if ([string]::IsNullOrWhiteSpace($Body)) {
+        return $null
+    }
+
+    try {
+        return $Body | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
 function Invoke-HttpRequest {
     param(
         [string]$Method,
@@ -119,20 +168,8 @@ function Resolve-ApiSettingsFromBundle {
         }
     }
 
-    $token = $null
-    $authMatch = [regex]::Match($js, 'Authorization:`Bearer\s+\$\{([A-Za-z0-9_$]+)\}`')
-    if ($authMatch.Success) {
-        $varName = $authMatch.Groups[1].Value
-        $escapedVarName = [regex]::Escape($varName)
-        $tokenMatch = [regex]::Match($js, "\b$escapedVarName\s*=\s*""([a-f0-9]{64})""")
-        if ($tokenMatch.Success) {
-            $token = $tokenMatch.Groups[1].Value
-        }
-    }
-
     return [pscustomobject]@{
         ApiBaseUrl = $apiBaseUrl
-        ApiToken = $token
         AssetUrl = $assetUrl
     }
 }
@@ -167,9 +204,6 @@ if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
         if ($resolved.ApiBaseUrl) {
             $apiRoot = Normalize-ApiRoot -Value $resolved.ApiBaseUrl
         }
-        if (-not $ApiToken -and $resolved.ApiToken) {
-            $ApiToken = $resolved.ApiToken
-        }
     }
 }
 
@@ -177,7 +211,15 @@ if (-not $apiRoot) {
     throw 'Failed to resolve API base URL. Set LIVE_API_BASE_URL (or ensure Pages bundle contains API base).'
 }
 if ([string]::IsNullOrWhiteSpace($ApiToken)) {
-    throw 'ApiToken is required. Set VITE_API_TOKEN (or ensure Pages bundle contains API token).'
+    $devVarsPath = Join-Path (Get-Location) '.dev.vars'
+    $fallbackToken = Get-EnvLikeValue -FilePath $devVarsPath -Key 'API_TOKEN'
+    if ($fallbackToken) {
+        $ApiToken = $fallbackToken
+        Write-Host "ApiToken: loaded from .dev.vars (API_TOKEN)"
+    }
+}
+if ([string]::IsNullOrWhiteSpace($ApiToken)) {
+    throw 'ApiToken is required. Set VITE_API_TOKEN.'
 }
 
 Write-Host "ApiRoot: $apiRoot"
@@ -191,6 +233,13 @@ Assert-StatusCode -Label 'metrics unauthenticated' -Expected 401 -Actual $metric
 
 $authHeaders = @{ Authorization = "Bearer $ApiToken" }
 $metricsAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/metrics" -Headers $authHeaders -Body $metricsBody
+if ($metricsAuth.StatusCode -ne 200) {
+    $metricsAuthJson = Try-ParseJsonBody -Body $metricsAuth.Body
+    $metricsCode = $metricsAuthJson.code
+    if ($metricsAuth.StatusCode -eq 401 -and $metricsCode -eq 'AUTH_INVALID') {
+        throw "metrics authenticated failed. expected=200 actual=401 code=AUTH_INVALID. Hint: VITE_API_TOKEN does not match the target Worker API_TOKEN secret. body=$($metricsAuth.Body)"
+    }
+}
 Assert-StatusCode -Label 'metrics authenticated' -Expected 200 -Actual $metricsAuth.StatusCode -Body $metricsAuth.Body
 
 if (-not $SkipChat) {
@@ -204,6 +253,13 @@ if (-not $SkipChat) {
     } | ConvertTo-Json -Depth 6 -Compress
 
     $chatAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/chat" -Headers $authHeaders -Body $chatBody
+    if ($chatAuth.StatusCode -ne 200) {
+        $chatAuthJson = Try-ParseJsonBody -Body $chatAuth.Body
+        $chatCode = $chatAuthJson.code
+        if ($chatAuth.StatusCode -eq 502 -and $chatCode -eq 'OPENAI_AUTH_ERROR') {
+            throw "chat authenticated failed. expected=200 actual=502 code=OPENAI_AUTH_ERROR. Hint: OPENAI_API_KEY configured on the target Worker is invalid/expired. body=$($chatAuth.Body)"
+        }
+    }
     Assert-StatusCode -Label 'chat authenticated' -Expected 200 -Actual $chatAuth.StatusCode -Body $chatAuth.Body
 }
 

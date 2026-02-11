@@ -1,4 +1,5 @@
 # phases/ - Phase別記録
+更新日: 2026-02-11
 
 このディレクトリには、各開発フェーズ（Phase 2.1 〜 2.8）の判定シート（Decision Matrix）と実施レポートが格納されています。
 
@@ -10,7 +11,7 @@
 | :--- | :--- |
 | `Phase2.1_Decision_Matrix.md` | Phase 2.1（運用防御）の機能判定シート |
 | `Phase2.2_Decision_Matrix.md` | Phase 2.2（UX/リファクタリング）の機能判定シート |
-| `Phase2.2_保留理由.md` | Phase 2.2リファクタリング保留の理由説明 |
+| `Phase2.2_Refactoring_Hold_Report.md` | Phase 2.2リファクタリング保留に関するレポート |
 | `Phase2.3_Decision_Matrix_Report.md` | Phase 2.3 判定レポート |
 | `Phase2.3_History_Decision_Matrix.md` | Phase 2.3（履歴管理）の判定シート |
 | `Phase2.3-2.5_Overall_Report.md` | Phase 2.3〜2.5 の横断的総合評価 |

@@ -13,6 +13,7 @@ import {
     type FeedbackResponse,
 } from '@/lib/schema'
 import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+import { getApiToken } from '@/lib/apiToken'
 
 function resolveApiBase(): string {
     return normalizeApiBaseFromEnv(import.meta.env.VITE_API_BASE_URL, '/api')
@@ -58,7 +59,7 @@ function inferErrorType(status?: number): ChatErrorType {
  * エラーレスポンスの場合は例外をスロー
  */
 export async function postChat(request: ChatRequest): Promise<ChatSuccessResponse> {
-    const token = import.meta.env.VITE_API_TOKEN
+    const token = getApiToken()
 
     let res: Response
     try {
@@ -131,7 +132,7 @@ export async function postFeedback(
     request: FeedbackRequest,
     options?: { signal?: AbortSignal }
 ): Promise<FeedbackResponse | null> {
-    const token = import.meta.env.VITE_API_TOKEN
+    const token = getApiToken()
 
     let res: Response
     try {
@@ -161,7 +162,13 @@ export async function postFeedback(
 
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
-        const message = (errorData as { error?: { message?: string } })?.error?.message
+        const errorAny = errorData as unknown as { error?: unknown }
+        const message =
+            typeof errorAny.error === 'string'
+                ? errorAny.error
+                : typeof (errorAny.error as { message?: unknown } | undefined)?.message === 'string'
+                    ? (errorAny.error as { message: string }).message
+                    : undefined
         const retryAfterRaw = res.headers.get('Retry-After')
         const retryAfterParsed = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : undefined
         const retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined

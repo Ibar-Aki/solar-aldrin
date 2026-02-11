@@ -28,7 +28,7 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
     },
 
     commitWorkItem: () => {
-        const { session, currentWorkItem } = get()
+        const { session, currentWorkItem, messages, addMessage } = get()
         if (!session) return
 
         // 仕様: 危険は最大2件まで（3件目以降は保存しない）
@@ -76,6 +76,26 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
             error: null,
             errorSource: null,
         })
+
+        // UX保険: 2件目が保存されたら、AI文言に依存せず「行動目標」入力へ誘導する。
+        if (nextWorkItems.length >= 2) {
+            const lastAssistantNextAction = (() => {
+                for (let i = messages.length - 1; i >= 0; i -= 1) {
+                    const msg = messages[i]
+                    if (msg.role === 'assistant' && msg.extractedData?.nextAction) {
+                        return msg.extractedData.nextAction
+                    }
+                }
+                return undefined
+            })()
+            if (lastAssistantNextAction !== 'ask_goal') {
+                addMessage(
+                    'assistant',
+                    '了解です。次に、今日の行動目標を短く1つだけ教えてください。',
+                    { nextAction: 'ask_goal' }
+                )
+            }
+        }
     },
 
     startNewWorkItem: () => {

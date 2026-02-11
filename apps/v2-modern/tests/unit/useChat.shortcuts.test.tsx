@@ -48,7 +48,13 @@ describe('useChat shortcuts', () => {
         expect(msgs.at(-1)?.extractedData?.nextAction).toBe('ask_countermeasure')
     })
 
-    it('KY完了の表記ゆれでも、API無しで行動目標フェーズへスキップできる', async () => {
+    it.each([
+        ['ky 完了'],
+        ['KY完了。'],
+        ['ＫＹ完了'],
+        ['ｋｙ完了'],
+        ['  ｋｙ　完了！  '],
+    ])('KY完了の表記ゆれでも、API無しで行動目標フェーズへスキップできる (%s)', async (input) => {
         const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
 
         // 1件目を保存済みにする
@@ -69,7 +75,7 @@ describe('useChat shortcuts', () => {
         const { result } = renderHook(() => useChat())
 
         await act(async () => {
-            await result.current.sendMessage('ky 完了')
+            await result.current.sendMessage(input)
         })
 
         expect(vi.mocked(postChat)).not.toHaveBeenCalled()
@@ -77,9 +83,8 @@ describe('useChat shortcuts', () => {
 
         const msgs = useKYStore.getState().messages
         expect(msgs.at(-2)?.role).toBe('user')
-        expect(msgs.at(-2)?.content).toBe('ky 完了')
+        expect(msgs.at(-2)?.content).toBe(input.trim())
         expect(msgs.at(-1)?.role).toBe('assistant')
         expect(msgs.at(-1)?.extractedData?.nextAction).toBe('ask_goal')
     })
 })
-

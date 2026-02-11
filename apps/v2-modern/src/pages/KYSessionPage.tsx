@@ -119,6 +119,15 @@ export function KYSessionPage() {
         currentRiskLevel: currentWorkItem.riskLevel,
     })
     const kyBoardIndex = Math.min(2, workItemCount + 1)
+    const hasActionGoal = Boolean((session.actionGoal ?? '').trim())
+    const canShowCompleteButton =
+        workItemCount > 0 &&
+        !hasCurrentWork &&
+        (
+            lastAssistantNextAction === 'completed' ||
+            status === 'confirmation' ||
+            (status === 'action_goal' && hasActionGoal)
+        )
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -221,7 +230,7 @@ export function KYSessionPage() {
                 )}
 
                 {/* 完了ボタン（AIが完了を促した時のみ表示） */}
-                {workItemCount > 0 && lastAssistantNextAction === 'completed' && !hasCurrentWork && (
+                {canShowCompleteButton && (
                     <div className="px-4 py-2 border-b">
                         <div className="max-w-4xl mx-auto">
                             <Button onClick={handleComplete} className="w-full" data-testid="button-complete-session">

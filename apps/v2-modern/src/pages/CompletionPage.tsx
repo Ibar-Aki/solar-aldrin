@@ -14,6 +14,7 @@ import { postFeedback } from '@/lib/api'
 import { getClientId } from '@/lib/clientId'
 import { RecentRiskBadge } from '@/components/RecentRiskBadge'
 import { getRecentRiskMatches, type RecentRiskMatch } from '@/lib/historyUtils'
+import { getApiToken } from '@/lib/apiToken'
 
 const FALLBACK_FEEDBACK = {
     praise: '今日のKYは要点が押さえられていて良い取り組みです。',
@@ -107,9 +108,9 @@ export function CompletionPage() {
         }
 
         const requireAuth = import.meta.env.VITE_REQUIRE_API_TOKEN === '1'
-        const hasToken = Boolean(import.meta.env.VITE_API_TOKEN)
+        const hasToken = Boolean(getApiToken())
         if (requireAuth && !hasToken) {
-            setFeedbackError('APIトークンが設定されていません')
+            setFeedbackError('APIトークンが設定されていません（ホーム画面の「APIトークン設定」を確認してください）')
             feedbackAttemptedRef.current = session.id
             setFeedbackLoading(false)
             applyFallback()
