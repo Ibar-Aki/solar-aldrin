@@ -521,7 +521,30 @@ if (-not $SkipChat) {
         $chatAuthHeaders.Authorization = "Bearer $ApiToken"
     }
 
-    $chatAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/chat" -Headers $chatAuthHeaders -Body $chatBody
+    $chatAuth = $null
+    $chatMaxAttempts = 3
+    for ($attempt = 1; $attempt -le $chatMaxAttempts; $attempt++) {
+        $chatAuth = Invoke-HttpRequest -Method 'POST' -Url "$apiRoot/api/chat" -Headers $chatAuthHeaders -Body $chatBody
+        if ($chatAuth.StatusCode -eq 200) {
+            break
+        }
+
+        $chatAuthJson = Try-ParseJsonBody -Body $chatAuth.Body
+        $chatCode = if ($chatAuthJson) { [string]$chatAuthJson.code } else { '' }
+        $chatRetriable = if ($chatAuthJson) { [bool]$chatAuthJson.retriable } else { $false }
+        $isRetryableStatus = ($chatAuth.StatusCode -eq 429) -or ($chatAuth.StatusCode -ge 500)
+        $shouldRetry = ($attempt -lt $chatMaxAttempts) -and ($isRetryableStatus -or $chatRetriable -or ($chatCode -eq 'AI_UPSTREAM_ERROR'))
+
+        if ($shouldRetry) {
+            $sleepSec = [Math]::Min(6, $attempt * 2)
+            Write-Host "[WARN] chat preflight retry ($attempt/$chatMaxAttempts): status=$($chatAuth.StatusCode) code=$chatCode sleep=${sleepSec}s"
+            Start-Sleep -Seconds $sleepSec
+            continue
+        }
+
+        break
+    }
+
     if ($chatAuth.StatusCode -ne 200) {
         $chatAuthJson = Try-ParseJsonBody -Body $chatAuth.Body
         $chatCode = $chatAuthJson.code

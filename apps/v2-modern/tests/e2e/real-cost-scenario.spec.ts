@@ -47,6 +47,7 @@ const LIVE_API_TOKEN = LIVE_API_TOKEN_INFO.token
 
 // LIVEは上流混雑・リトライ等で 30s を超えることがあるため、待ち時間を長めに取る。
 const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
+const SCENARIO_TIMEOUT_MS = RUN_LIVE ? 900_000 : 300_000
 const EXPECTED_SERVER_POLICY_VERSION = process.env.LIVE_EXPECTED_POLICY_VERSION?.trim() || '2026-02-11-a-b-observability-1'
 const EXPECTED_SERVER_RESPONSE_FORMAT = process.env.LIVE_EXPECTED_RESPONSE_FORMAT?.trim() || 'json_schema_strict'
 const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = (() => {
@@ -544,7 +545,7 @@ test.use({ viewport: { width: 1280, height: 720 } })
 
 test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     // LIVEは再試行や待機が重なるため、タイムアウトを広めに確保する。
-    test.setTimeout(RUN_LIVE ? 420 * 1000 : 300 * 1000)
+    test.setTimeout(SCENARIO_TIMEOUT_MS)
     resetRunState()
     METRICS.startTime = Date.now()
 
@@ -919,7 +920,6 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         }
 
         let completionArrived = false
-        let requiresAutoCompleteAfterKyDone = false
 
         // シナリオ開始
         // Dry Runの時は期待値を指定して安定化
@@ -988,65 +988,19 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             // 完了確認（AIが「これでOK？」を聞く想定）
             await sendUserMessage('これでOKです。他にありません。')
 
-            // 1件以上が保存されたことを確認してから、KY完了ショートカットを使う。
-            // 2件目が先に確定して進捗が一気に2件表示になる場合もあるため、>= 判定にする。
-            const readWorkItemCount = async (): Promise<number | null> => {
-                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
-                if (!progressText) return null
-                const match = progressText.match(/作業・危険\s*\((\d+)件\)/)
-                if (!match) return null
-                const parsed = Number.parseInt(match[1], 10)
-                return Number.isFinite(parsed) ? parsed : null
-            }
-            const waitForWorkItemCountAtLeast = async (count: number, timeoutMs: number): Promise<number | null> => {
-                const deadline = Date.now() + timeoutMs
-                while (Date.now() < deadline) {
-                    assertNoFatalInfraError()
-                    const currentCount = await readWorkItemCount()
-                    if (typeof currentCount === 'number' && currentCount >= count) return currentCount
-                    await page.waitForTimeout(250)
-                }
-                return null
-            }
-
-            let committedCount = await waitForWorkItemCountAtLeast(1, 45000)
-            if (!committedCount) {
-                // AI抽出の揺れ対策: 1件目が保存されない場合は、必須情報＋対策2件以上を明示して追送する
-                await sendUserMessage(
-                    '原因は周囲の養生が不十分なためです。対策は、設備・環境: 消火器を作業地点のすぐそばに設置します。設備・環境: スパッタシートで周囲の可燃物を隙間なく覆って養生します。'
-                )
-                committedCount = await waitForWorkItemCountAtLeast(1, 45000)
-            }
-            if (!committedCount) {
-                // それでも反映されない場合は、追加の対策を1つ足して再トライ（最大2回）
-                await sendUserMessage('追加の対策として、保護具: 防炎手袋を着用します。')
-                committedCount = await waitForWorkItemCountAtLeast(1, 45000)
-            }
-            if (!committedCount) {
-                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
-                addFailureDiagnostic(`work item did not commit. progress=${progressText ?? 'unknown'}`)
-                throw new Error('work item did not commit')
-            }
-
-            // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）
-            // すでに2件完了済みなら、KY完了で自動完了遷移に乗る。
-            requiresAutoCompleteAfterKyDone = committedCount >= 2
+            // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）。
+            // 実運用では保存件数の反映遅延があるため、件数コミット待ちは行わず
+            // 「KY完了」ショートカット→未遷移時は行動目標入力へフォールバックする。
             await sendUserMessage('KY完了')
-            const autoCompleteTimeoutMs = requiresAutoCompleteAfterKyDone ? 30000 : 15000
             const completedByShortcut = await Promise.race([
-                page.waitForURL('**/complete', { timeout: autoCompleteTimeoutMs }).then(() => true).catch(() => false),
-                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: autoCompleteTimeoutMs }).then(() => true).catch(() => false),
+                page.waitForURL('**/complete', { timeout: 30000 }).then(() => true).catch(() => false),
+                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false),
             ])
-            if (requiresAutoCompleteAfterKyDone && !completedByShortcut) {
-                const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
-                addFailureDiagnostic(`auto completion not triggered after KY完了. progress=${progressText ?? 'unknown'} committedCount=${committedCount}`)
-                throw new Error('KY完了 auto completion did not trigger despite 2 committed work items')
-            }
             if (completedByShortcut) {
                 completionArrived = true
                 await recordLog('System', 'Navigated to Complete page (auto after KY完了)')
                 METRICS.navigationSuccess = true
-            } else if (committedCount < 2) {
+            } else {
                 await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
             }
         }

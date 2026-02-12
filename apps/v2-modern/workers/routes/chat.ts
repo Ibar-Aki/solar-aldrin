@@ -38,8 +38,8 @@ const MAX_TOTAL_INPUT_LENGTH = USER_CONTENT_MAX_LENGTH * 10
 // 最大出力トークン数
 // Structured output が長文で切れると JSON 不正になりやすいため、少し余裕を持たせる。
 const MAX_TOKENS = 900
-const PARSE_RECOVERY_MAX_TOKENS = 1500
-const QUICK_PROFILE_MAX_TOKENS = 700
+const PARSE_RECOVERY_MAX_TOKENS = 2500
+const QUICK_PROFILE_MAX_TOKENS = 1000
 const QUICK_PROFILE_SOFT_TIMEOUT_MS = 16000
 const QUICK_PROFILE_HARD_TIMEOUT_MS = 24000
 const STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET = 10000
@@ -132,6 +132,7 @@ const CHAT_RESPONSE_JSON_SCHEMA = {
 } as const
 
 type AIProvider = 'openai' | 'gemini'
+type ChatResponseFormatType = 'json_schema_strict' | 'json_object'
 
 function resolveAIProvider(raw: string | undefined): AIProvider {
     const normalized = raw?.trim().toLowerCase()
@@ -157,6 +158,25 @@ function resolveProviderApiKey(provider: AIProvider, env: Bindings): string | un
         return env.GEMINI_API_KEY?.trim() || undefined
     }
     return env.OPENAI_API_KEY?.trim() || undefined
+}
+
+function resolveResponseFormat(provider: AIProvider): {
+    type: 'json_object'
+} | {
+    type: 'json_schema'
+    json_schema: typeof CHAT_RESPONSE_JSON_SCHEMA
+} {
+    if (provider === 'gemini') {
+        return { type: 'json_object' }
+    }
+    return {
+        type: 'json_schema',
+        json_schema: CHAT_RESPONSE_JSON_SCHEMA,
+    }
+}
+
+function resolveResponseFormatLabel(provider: AIProvider): ChatResponseFormatType {
+    return provider === 'gemini' ? 'json_object' : 'json_schema_strict'
 }
 
 function hasBannedWord(text: string): boolean {
@@ -977,6 +997,9 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     const aiProvider = resolveAIProvider(c.env.AI_PROVIDER)
     const aiModel = resolveAIModel(aiProvider, c.env)
     const apiKey = resolveProviderApiKey(aiProvider, c.env)
+    const fallbackProvider: AIProvider | null = aiProvider === 'gemini' ? 'openai' : null
+    const fallbackApiKey = fallbackProvider ? resolveProviderApiKey(fallbackProvider, c.env) : undefined
+    const fallbackModel = fallbackProvider ? resolveAIModel(fallbackProvider, c.env) : undefined
     if (!apiKey) {
         const missingCode = aiProvider === 'gemini' ? 'GEMINI_KEY_MISSING' : 'OPENAI_KEY_MISSING'
         const providerName = getProviderDisplayName(aiProvider)
@@ -1025,16 +1048,11 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const recoveryProfile = buildExecutionProfile('recovery', runtimeConfig)
 
         const requestBodyBase = {
-            model: aiModel,
             messages: [
                 { role: 'system', content: SOLO_KY_SYSTEM_PROMPT },
                 ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
                 ...limitedHistory,
             ],
-            response_format: {
-                type: 'json_schema' as const,
-                json_schema: CHAT_RESPONSE_JSON_SCHEMA,
-            },
         }
 
         let openaiRequestCount = 0
@@ -1048,16 +1066,23 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let timeoutSoftRecoveryCount = 0
         let timeoutHardFailureCount = 0
         let timeoutTier: 'none' | 'soft_recovered' | 'hard_timeout' = 'none'
+        let effectiveProvider: AIProvider = aiProvider
+        let effectiveModel = aiModel
+        let providerFallbackUsed = false
 
         const buildServerPolicyMeta = () => ({
             policyVersion: '2026-02-11-a-b-observability-1',
-            responseFormat: 'json_schema_strict',
+            responseFormat: resolveResponseFormatLabel(aiProvider),
             parseRecoveryEnabled: true,
             // Backward-compatible fields for existing preflight/e2e checks.
             openaiRetryCount,
             maxTokens: openaiMaxTokens,
             aiProvider,
             aiModel,
+            aiProviderEffective: effectiveProvider,
+            aiModelEffective: effectiveModel,
+            aiProviderFallbackUsed: providerFallbackUsed,
+            responseFormatEffective: resolveResponseFormatLabel(effectiveProvider),
             // Dynamic profile fields for observability.
             profileName: activeProfile.name,
             profileRetryCount: activeProfile.retryCount,
@@ -1071,9 +1096,13 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         const buildRequestBody = (
             profile: ChatExecutionProfile,
+            provider: AIProvider,
+            model: string,
             overrides?: Partial<Record<'max_tokens' | 'temperature', number>>
         ): Record<string, unknown> => ({
             ...requestBodyBase,
+            model,
+            response_format: resolveResponseFormat(provider),
             max_tokens: overrides?.max_tokens ?? profile.maxTokens,
             temperature: overrides?.temperature ?? profile.temperature,
         })
@@ -1082,17 +1111,22 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             body: Record<string, unknown>,
             profile: ChatExecutionProfile,
             timeoutMs: number,
-            retryCount: number
+            retryCount: number,
+            provider: AIProvider,
+            providerApiKey: string,
+            model: string
         ) => {
             activeProfile = profile
+            effectiveProvider = provider
+            effectiveModel = model
             openaiRequestCount += 1
             const responseData = await fetchOpenAICompletion({
-                apiKey,
+                apiKey: providerApiKey,
                 body,
                 reqId,
                 timeoutMs,
                 retryCount,
-                provider: aiProvider,
+                provider,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
@@ -1101,9 +1135,15 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             return responseData
         }
 
-        const callOpenAI = async (body: Record<string, unknown>, profile: ChatExecutionProfile) => {
+        const callOpenAI = async (
+            body: Record<string, unknown>,
+            profile: ChatExecutionProfile,
+            provider: AIProvider,
+            providerApiKey: string,
+            model: string
+        ) => {
             try {
-                return await callOpenAISingle(body, profile, profile.softTimeoutMs, profile.retryCount)
+                return await callOpenAISingle(body, profile, profile.softTimeoutMs, profile.retryCount, provider, providerApiKey, model)
             } catch (error) {
                 if (!(error instanceof Error) || error.message !== 'TIMEOUT') {
                     throw error
@@ -1116,7 +1156,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 timeoutSoftRecoveryCount += 1
                 timeoutTier = 'soft_recovered'
                 try {
-                    return await callOpenAISingle(body, profile, profile.hardTimeoutMs, 0)
+                    return await callOpenAISingle(body, profile, profile.hardTimeoutMs, 0, provider, providerApiKey, model)
                 } catch (hardTimeoutError) {
                     if (hardTimeoutError instanceof Error && hardTimeoutError.message === 'TIMEOUT') {
                         timeoutHardFailureCount += 1
@@ -1125,6 +1165,56 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                     }
                     throw hardTimeoutError
                 }
+            }
+        }
+
+        const isProviderFallbackError = (error: unknown): boolean => {
+            if (error instanceof OpenAIHTTPErrorWithDetails) {
+                return error.status === 429 || error.status >= 500
+            }
+            if (error instanceof Error) {
+                return error.message === 'TIMEOUT' || error.message === 'TIMEOUT_SOFT' || error.message === 'TIMEOUT_HARD'
+            }
+            return false
+        }
+
+        const callWithProviderFallback = async (
+            profile: ChatExecutionProfile,
+            overrides?: Partial<Record<'max_tokens' | 'temperature', number>>,
+            options?: { allowLengthFallback?: boolean }
+        ) => {
+            const allowLengthFallback = options?.allowLengthFallback === true
+            const primaryBody = buildRequestBody(profile, aiProvider, aiModel, overrides)
+            try {
+                const primaryResponse = await callOpenAI(primaryBody, profile, aiProvider, apiKey, aiModel)
+                const shouldFallbackForLengthCut =
+                    allowLengthFallback &&
+                    aiProvider === 'gemini' &&
+                    Boolean(fallbackApiKey) &&
+                    Boolean(fallbackModel) &&
+                    primaryResponse.meta.finishReason === 'length'
+
+                if (!shouldFallbackForLengthCut) {
+                    return primaryResponse
+                }
+
+                providerFallbackUsed = true
+                const fallbackBody = buildRequestBody(profile, 'openai', fallbackModel as string, overrides)
+                return await callOpenAI(fallbackBody, profile, 'openai', fallbackApiKey as string, fallbackModel as string)
+            } catch (error) {
+                const canFallback =
+                    aiProvider === 'gemini' &&
+                    Boolean(fallbackApiKey) &&
+                    Boolean(fallbackModel) &&
+                    isProviderFallbackError(error)
+
+                if (!canFallback) {
+                    throw error
+                }
+
+                providerFallbackUsed = true
+                const fallbackBody = buildRequestBody(profile, 'openai', fallbackModel as string, overrides)
+                return await callOpenAI(fallbackBody, profile, 'openai', fallbackApiKey as string, fallbackModel as string)
             }
         }
 
@@ -1155,18 +1245,15 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         const requestParseRecovery = async () => {
             parseRetryAttempted = true
-            return callOpenAI(
-                buildRequestBody(recoveryProfile, {
-                    // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
-                    max_tokens: PARSE_RECOVERY_MAX_TOKENS,
-                    temperature: recoveryProfile.temperature,
-                }),
-                recoveryProfile
-            )
+            return callWithProviderFallback(recoveryProfile, {
+                // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
+                max_tokens: PARSE_RECOVERY_MAX_TOKENS,
+                temperature: recoveryProfile.temperature,
+            }, { allowLengthFallback: true })
         }
 
         // 会話フェーズ別プロファイル（quick / standard / recovery）を適用。
-        let responseData = await callOpenAI(buildRequestBody(initialProfile), initialProfile)
+        let responseData = await callWithProviderFallback(initialProfile)
         let evaluation = evaluateModelOutput(responseData.content)
 
         if (evaluation.parseFailed && openaiLastFinishReason === 'length') {

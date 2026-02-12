@@ -103,17 +103,136 @@ describe('Chat API Integration Flow', () => {
                 server?: {
                     aiProvider?: string
                     aiModel?: string
+                    responseFormat?: string
                 }
             }
         }
 
         expect(body.meta?.server?.aiProvider).toBe('gemini')
-        expect(body.meta?.server?.aiModel).toBe('gemini-2.5-flash')
+        expect(body.meta?.server?.responseFormat).toBe('json_object')
 
         const [url, init] = vi.mocked(fetch).mock.calls[0] ?? []
         expect(String(url)).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
-        const requestBody = JSON.parse(String((init as RequestInit).body)) as { model?: string }
-        expect(requestBody.model).toBe('gemini-2.5-flash')
+        const requestBody = JSON.parse(String((init as RequestInit).body)) as {
+            model?: string
+            response_format?: { type?: string }
+        }
+        expect(typeof requestBody.model).toBe('string')
+        expect(requestBody.model?.startsWith('gemini-')).toBe(true)
+        expect(requestBody.response_format?.type).toBe('json_object')
+        expect(body.meta?.server?.aiModel).toBe(requestBody.model)
+    })
+
+    it('Geminiのfinish_reason=lengthでもJSONが妥当なら、即時フォールバックを発生させない', async () => {
+        const mockResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '了解しました。',
+                        extracted: { nextAction: 'ask_hazard' },
+                    }),
+                },
+                finish_reason: 'length',
+            }],
+            usage: { total_tokens: 88 },
+        }
+
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => mockResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'openai-key',
+            GEMINI_API_KEY: 'gemini-key',
+            AI_PROVIDER: 'gemini',
+            OPENAI_RETRY_COUNT: '0',
+        })
+
+        expect(res.status).toBe(200)
+        expect(vi.mocked(fetch).mock.calls.length).toBe(1)
+    })
+
+    it('Gemini失敗時のOpenAIフォールバックでは、OpenAI向けjson_schema形式で再実行する', async () => {
+        vi.mocked(fetch)
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                headers: new Headers(),
+                text: async () => JSON.stringify({ error: { message: 'upstream unavailable' } }),
+            } as Response)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    choices: [{
+                        message: {
+                            content: JSON.stringify({
+                                reply: 'フォールバックで応答しました。',
+                                extracted: { nextAction: 'ask_hazard' },
+                            }),
+                        },
+                        finish_reason: 'stop',
+                    }],
+                    usage: { total_tokens: 91 },
+                }),
+                text: async () => '',
+            } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'openai-key',
+            GEMINI_API_KEY: 'gemini-key',
+            AI_PROVIDER: 'gemini',
+            OPENAI_RETRY_COUNT: '0',
+        })
+
+        expect(res.status).toBe(200)
+
+        const calls = vi.mocked(fetch).mock.calls
+        expect(calls.length).toBeGreaterThanOrEqual(2)
+        const firstCall = calls[0]
+        const fallbackCall = calls.find((call) => String(call[0]) === 'https://api.openai.com/v1/chat/completions')
+        expect(String(firstCall?.[0])).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+        expect(fallbackCall).toBeTruthy()
+
+        const firstBody = JSON.parse(String((firstCall?.[1] as RequestInit).body)) as {
+            response_format?: { type?: string }
+        }
+        const fallbackBody = JSON.parse(String((fallbackCall?.[1] as RequestInit).body)) as {
+            response_format?: { type?: string; json_schema?: { strict?: boolean } }
+        }
+        expect(firstBody.response_format?.type).toBe('json_object')
+        expect(fallbackBody.response_format?.type).toBe('json_schema')
+        expect(fallbackBody.response_format?.json_schema?.strict).toBe(true)
+
+        const body = await res.json() as {
+            meta?: {
+                server?: {
+                    aiProviderFallbackUsed?: boolean
+                    aiProviderEffective?: string
+                    responseFormatEffective?: string
+                }
+            }
+        }
+        expect(body.meta?.server?.aiProviderFallbackUsed).toBe(true)
+        expect(body.meta?.server?.aiProviderEffective).toBe('openai')
+        expect(body.meta?.server?.responseFormatEffective).toBe('json_schema_strict')
     })
 
     it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
@@ -588,13 +707,13 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.maxTokens).toBe(1500)
         expect(body.meta?.server?.profileName).toBe('quick')
         expect(body.meta?.server?.profileRetryCount).toBe(0)
-        expect(body.meta?.server?.profileMaxTokens).toBe(700)
+        expect(body.meta?.server?.profileMaxTokens).toBe(1000)
         expect(body.meta?.server?.profileSoftTimeoutMs).toBe(16000)
         expect(body.meta?.server?.profileHardTimeoutMs).toBe(24000)
 
         const init = vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit
         const requestBody = JSON.parse(String(init.body)) as { max_tokens?: number; temperature?: number }
-        expect(requestBody.max_tokens).toBe(700)
+        expect(requestBody.max_tokens).toBe(1000)
         expect(requestBody.temperature).toBe(0.2)
     })
 
