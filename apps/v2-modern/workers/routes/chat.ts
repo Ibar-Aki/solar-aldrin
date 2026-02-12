@@ -147,7 +147,7 @@ function resolveAIModel(provider: AIProvider, env: Bindings): string {
     const common = env.AI_MODEL?.trim()
     if (common) return common
     if (provider === 'gemini') {
-        return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
+        return env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash'
     }
     return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
 }
