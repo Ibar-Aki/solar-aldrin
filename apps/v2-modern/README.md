@@ -4,6 +4,7 @@
 更新日: 2026-02-11（E2E: 危険度ボタンはAPIなし、PDF visualスナップショット更新手順を追記／APIトークン: バンドル埋め込みを避け、localStorage運用に変更）
 更新日: 2026-02-11（実費テストの認証系トラブルを即時判別できるよう改善。VITE_API_TOKEN 未設定時は .dev.vars の API_TOKEN をフォールバック）
 更新日: 2026-02-11（HomePageの進行中セッション画面でもAPIトークン設定を可能化／PagesデプロイスクリプトでVITE_API_TOKENをビルド前に明示解除）
+更新日: 2026-02-12（AIプロバイダ切替を追加: OpenAI/Gemini を `AI_PROVIDER` で切替、Gemini OpenAI互換エンドポイントに対応）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -15,7 +16,7 @@ Phase 2の音声KYアシスタントアプリ。
 - **音声**: Web Speech API（音声認識 / 読み上げ）
 - **PDF**: @react-pdf/renderer
 - **バックエンド**: Hono（Cloudflare Workers）
-- **AI**: OpenAI Chat Completions API（gpt-4o-mini）
+- **AI**: OpenAI Chat Completions API / Gemini（OpenAI互換エンドポイント）
 - **データベース**: Supabase（未接続・将来対応予定）
 
 ## 開発
@@ -30,7 +31,7 @@ npm run dev
 
 ブラウザで `http://localhost:5173/` を開く。
 
-### Workers開発サーバー起動（OpenAI API）
+### Workers開発サーバー起動（OpenAI / Gemini）
 
 #### 初回セットアップ
 
@@ -40,18 +41,24 @@ Workersの開発には`.dev.vars`ファイルが必要です：
 # .dev.vars.example をコピー
 cp .dev.vars.example .dev.vars
 
-# .dev.vars を編集してOpenAI APIキーを設定
+# .dev.vars を編集してAIプロバイダとAPIキーを設定
 ```
 
 > [!IMPORTANT]
 > `.dev.vars`には実際のAPIキーなどの機密情報が含まれるため、**絶対にGitにコミットしないでください**。
 > このファイルは既に`.gitignore`に含まれています。
 
-OpenAI APIキーの取得方法：
+APIキーの取得方法：
 
 1. <https://platform.openai.com/api-keys> にアクセス
 2. 「Create new secret key」をクリック
 3. 生成されたキーを`.dev.vars`の`OPENAI_API_KEY`に設定
+
+Geminiを使う場合：
+
+1. <https://ai.google.dev/> にアクセス
+2. APIキーを作成
+3. `.dev.vars` で `AI_PROVIDER=gemini` と `GEMINI_API_KEY` を設定
 
 #### Workersサーバー起動
 
@@ -61,7 +68,12 @@ npm run dev:workers
 
 #### Workers環境変数
 
-- 必須: `OPENAI_API_KEY`
+- 切替: `AI_PROVIDER`（`openai` / `gemini`。未設定時は `openai`）
+- 必須（`AI_PROVIDER=openai`）: `OPENAI_API_KEY`
+- 必須（`AI_PROVIDER=gemini`）: `GEMINI_API_KEY`
+- 任意: `AI_MODEL`（設定時は最優先）
+- 任意: `OPENAI_MODEL`（既定: `gpt-4o-mini`）
+- 任意: `GEMINI_MODEL`（既定: `gemini-2.5-flash`）
 - 本番必須: `API_TOKEN`（`REQUIRE_API_TOKEN=1` または `SENTRY_ENV/ENVIRONMENT=production` の場合）
 - 任意: `REQUIRE_API_TOKEN`（`1` で常時必須化、`0` で常時任意）
 - 任意: `STRICT_CORS`（`1` で厳格CORS、`0` で開発許可を有効）
@@ -79,9 +91,10 @@ npm run dev:workers
 - JSONパース失敗（LLM出力がJSONとして不正）: `502` / `code=AI_RESPONSE_INVALID_JSON` / `retriable=true`
 - 成功レスポンスには、実費テスト解析向けに観測用フィールドを付与します（フロントの型検証では未使用ですが、E2Eレポートで採取します）
 - 観測用フィールド: `usage.totalTokens`
-- 観測用フィールド: `meta.openai.requestCount`（/api/chat 内での OpenAI 呼び出し回数）
-- 観測用フィールド: `meta.openai.httpAttempts`（OpenAI HTTP 試行回数。内部リトライ込み）
-- 観測用フィールド: `meta.openai.durationMs`（OpenAI 呼び出しの合計時間）
+- 観測用フィールド: `meta.openai.requestCount`（/api/chat 内での AI 呼び出し回数。後方互換キー名）
+- 観測用フィールド: `meta.openai.httpAttempts`（AI HTTP 試行回数。内部リトライ込み）
+- 観測用フィールド: `meta.openai.durationMs`（AI 呼び出しの合計時間）
+- 観測用フィールド: `meta.server.aiProvider` / `meta.server.aiModel`
 - 観測用フィールド: `meta.parseRetry.attempted` / `meta.parseRetry.succeeded`（JSONパース再試行の有無と結果）
 
 ### ビルド
@@ -145,7 +158,7 @@ npm run test:cost:ops
 - `test:cost:ops` は `preflight` -> `Mobile Safari 実費E2E` -> `性能サマリ再生成` を連続実行します。
 - `RUN_LIVE_TESTS=1` は `test:cost:live` 内で自動設定されます。
 - `VITE_API_TOKEN` が未設定の場合、`test:cost:preflight` と `test:cost:live` は `.dev.vars` の `API_TOKEN` を自動利用します。
-- `AUTH_INVALID`（API_TOKEN不一致）または `OPENAI_AUTH_ERROR`（WorkerのOpenAIキー不正）を検知した場合は、テストを即時失敗させて原因を明示します。
+- `AUTH_INVALID`（API_TOKEN不一致）または `OPENAI_AUTH_ERROR` / `GEMINI_AUTH_ERROR`（WorkerのAIキー不正）を検知した場合は、テストを即時失敗させて原因を明示します。
 
 #### レポート整理（履歴圧縮）
 
@@ -182,7 +195,7 @@ apps/v2-modern/
 - [x] プロジェクトスキャフォールド
 - [x] Tailwind CSS + shadcn/ui セットアップ
 - [x] Zustand状態管理
-- [x] Honoバックエンド（OpenAI API連携）
+- [x] Honoバックエンド（OpenAI / Gemini API連携）
 - [x] 音声認識（Web Speech API）
 - [x] 音声読み上げ（Web Speech API）
 - [x] PDF出力（@react-pdf/renderer）

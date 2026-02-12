@@ -11,6 +11,11 @@ import { shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } 
 
 type Bindings = {
     OPENAI_API_KEY: string
+    GEMINI_API_KEY?: string
+    AI_PROVIDER?: string
+    AI_MODEL?: string
+    GEMINI_MODEL?: string
+    OPENAI_MODEL?: string
     SUPABASE_URL: string
     SUPABASE_ANON_KEY: string
     WEATHER_API_BASE_URL: string

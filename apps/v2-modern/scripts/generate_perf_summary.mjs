@@ -109,6 +109,7 @@ function detectAuthConfigIssue(diagnostics) {
         /\bAUTH_INVALID\b/i,
         /\bAUTH_CONFIG_MISSING\b/i,
         /\bOPENAI_AUTH_ERROR\b/i,
+        /\bGEMINI_AUTH_ERROR\b/i,
         /\bUnauthorized\b/i,
         /Incorrect API key/i,
         /preflight/i,
@@ -356,7 +357,7 @@ function buildSummary(dayKey, stats, existingMeta) {
 
 | 分類 | 全体 | LIVEのみ | 判定ルール |
 |---|---|---|---|
-| 運用/設定系 | ${stats.authConfigIssueReportCount}件 | ${stats.live.authConfigIssueReportCount}件 | preflight未達、AUTH_REQUIRED/AUTH_INVALID/OPENAI_AUTH_ERROR 等 |
+| 運用/設定系 | ${stats.authConfigIssueReportCount}件 | ${stats.live.authConfigIssueReportCount}件 | preflight未達、AUTH_REQUIRED/AUTH_INVALID/OPENAI_AUTH_ERROR/GEMINI_AUTH_ERROR 等 |
 | 実行時品質系 | ${stats.runtimeQualityIssueReportCount}件 | ${stats.live.runtimeQualityIssueReportCount}件 | AI_RESPONSE_INVALID_JSON/SCHEMA、TIMEOUT、待機>15s、Retry多発 |
 | ポリシー不一致 | ${stats.policyMismatchIssueReportCount}件 | ${stats.live.policyMismatchIssueReportCount}件 | meta.server mismatch / preflightガード違反 |
 
@@ -556,7 +557,7 @@ function main() {
 - **OpenAI HTTP Attempts P50/P95**: 各レポートの \`OpenAI HTTP Attempts\` を集計対象として算出。P50/P95 は **Nearest Rank** 方式
 - **エラー率**: \`Errors (AI/System)\` が 1 以上のレポート比率
 - **再試行率**: \`Result=FAIL\` または \`Nav Success=No\` または \`Errors>0\` の比率
-- **設定/認証系発生率**: Failure Diagnostics に preflight未達 / 認証系コード（AUTH_REQUIRED, AUTH_INVALID, OPENAI_AUTH_ERROR 等）が含まれる比率
+- **設定/認証系発生率**: Failure Diagnostics に preflight未達 / 認証系コード（AUTH_REQUIRED, AUTH_INVALID, OPENAI_AUTH_ERROR, GEMINI_AUTH_ERROR 等）が含まれる比率
 - **実行時品質系発生率**: JSON/Schema不整合、TIMEOUT、待機>15秒、Retry多発など実行時品質問題が含まれる比率
 - **ポリシー不一致発生率**: \`meta.server mismatch\` や preflightガード違反が含まれる比率
 - **JSONパース再試行率**: \`Parse Retry Used\` が 1 以上のレポート比率

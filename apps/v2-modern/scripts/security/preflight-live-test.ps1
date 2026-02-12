@@ -528,6 +528,9 @@ if (-not $SkipChat) {
         if ($chatAuth.StatusCode -eq 502 -and $chatCode -eq 'OPENAI_AUTH_ERROR') {
             throw "chat authenticated failed. expected=200 actual=502 code=OPENAI_AUTH_ERROR. Hint: OPENAI_API_KEY configured on the target Worker is invalid/expired. body=$($chatAuth.Body)"
         }
+        if ($chatAuth.StatusCode -eq 502 -and $chatCode -eq 'GEMINI_AUTH_ERROR') {
+            throw "chat authenticated failed. expected=200 actual=502 code=GEMINI_AUTH_ERROR. Hint: GEMINI_API_KEY configured on the target Worker is invalid/expired. body=$($chatAuth.Body)"
+        }
     }
     Assert-StatusCode -Label 'chat authenticated' -Expected 200 -Actual $chatAuth.StatusCode -Body $chatAuth.Body
 

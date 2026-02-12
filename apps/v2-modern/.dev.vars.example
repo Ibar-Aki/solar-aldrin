@@ -1,10 +1,23 @@
 # Cloudflare Workers用の.dev.varsサンプルファイル
 # 実際の値は .dev.vars に設定してください（.dev.varsはGitにコミットされません）
 
-# OpenAI API Key (必須)
+# AIプロバイダ設定（openai / gemini）
+# 既定: openai
+AI_PROVIDER="openai"
+
+# OpenAI API Key（AI_PROVIDER=openai のとき必須）
 # https://platform.openai.com/api-keys から取得
-# NOTE: サンプルに実キーっぽい文字列を載せると誤検知やコピペ事故の原因になるため、プレースホルダにしています。
 OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
+
+# Gemini API Key（AI_PROVIDER=gemini のとき必須）
+# https://ai.google.dev/ から取得
+GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
+
+# モデル指定（必要時のみ）
+# AI_MODEL を設定すると、プロバイダに関係なく最優先で使用されます。
+# AI_MODEL=""
+# OPENAI_MODEL="gpt-4o-mini"
+# GEMINI_MODEL="gemini-2.5-flash"
 
 # Supabase設定（Phase 3以降で使用予定）
 SUPABASE_URL=""

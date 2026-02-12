@@ -12,6 +12,11 @@ interface KVNamespace {
 
 type Bindings = {
     OPENAI_API_KEY: string
+    GEMINI_API_KEY?: string
+    AI_PROVIDER?: string
+    AI_MODEL?: string
+    GEMINI_MODEL?: string
+    OPENAI_MODEL?: string
     ENABLE_FEEDBACK?: string
     FEEDBACK_KV?: KVNamespace
 }
@@ -43,6 +48,24 @@ type StoredSession = {
 
 const responseCache = new Map<string, { value: CachedFeedback; expiresAt: number }>()
 const sessionStore = new Map<string, { value: StoredSession; expiresAt: number }>()
+
+type AIProvider = 'openai' | 'gemini'
+
+function resolveAIProvider(raw: string | undefined): AIProvider {
+    return raw?.trim().toLowerCase() === 'gemini' ? 'gemini' : 'openai'
+}
+
+function resolveProviderApiKey(provider: AIProvider, env: Bindings): string | undefined {
+    if (provider === 'gemini') return env.GEMINI_API_KEY?.trim() || undefined
+    return env.OPENAI_API_KEY?.trim() || undefined
+}
+
+function resolveFeedbackModel(provider: AIProvider, env: Bindings): string {
+    const common = env.AI_MODEL?.trim()
+    if (common) return common
+    if (provider === 'gemini') return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
+    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+}
 
 async function loadCachedResponse(c: { env: Bindings }, key: string): Promise<CachedFeedback | null> {
     if (c.env.FEEDBACK_KV) {
@@ -182,12 +205,14 @@ feedback.post(
             return c.body(null, 204)
         }
 
-        const apiKey = c.env.OPENAI_API_KEY
+        const aiProvider = resolveAIProvider(c.env.AI_PROVIDER)
+        const apiKey = resolveProviderApiKey(aiProvider, c.env)
         if (!apiKey) {
+            const providerName = aiProvider === 'gemini' ? 'Gemini' : 'OpenAI'
             return c.json({
                 error: {
                     code: 'INTERNAL_ERROR',
-                    message: 'OpenAI API key not configured',
+                    message: `${providerName} API key not configured`,
                     retriable: false,
                     requestId: reqId,
                 }
@@ -234,7 +259,7 @@ feedback.post(
         })
 
         const requestBody = {
-            model: 'gpt-4o-mini',
+            model: resolveFeedbackModel(aiProvider, c.env),
             messages: [
                 { role: 'system', content: FEEDBACK_SYSTEM_PROMPT },
                 { role: 'user', content: userMessage },
@@ -250,6 +275,7 @@ feedback.post(
                 body: requestBody,
                 timeoutMs: FEEDBACK_TIMEOUT_MS,
                 reqId,
+                provider: aiProvider,
             })
 
             let parsed: unknown
@@ -341,8 +367,9 @@ feedback.post(
             }
             if (error instanceof OpenAIHTTPErrorWithDetails) {
                 // UX優先: フィードバックは必須ではないため、上流エラー時はフォールバックを返す。
-                logWarn('feedback_openai_upstream_error', {
+                logWarn('feedback_ai_upstream_error', {
                     reqId,
+                    provider: error.provider,
                     status: error.status,
                     upstreamCode: error.upstreamCode,
                     upstreamType: error.upstreamType,

@@ -63,6 +63,59 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.maxTokens).toBe(900)
     })
 
+    it('AI_PROVIDER=gemini のとき Gemini OpenAI互換エンドポイントと既定モデルを使用する', async () => {
+        const mockResponse = {
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: '了解です。',
+                        extracted: { nextAction: 'ask_hazard' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 42 },
+        }
+
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => mockResponse,
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'unused-openai-key',
+            GEMINI_API_KEY: 'gemini-key',
+            AI_PROVIDER: 'gemini',
+        })
+
+        expect(res.status).toBe(200)
+        const body = await res.json() as {
+            meta?: {
+                server?: {
+                    aiProvider?: string
+                    aiModel?: string
+                }
+            }
+        }
+
+        expect(body.meta?.server?.aiProvider).toBe('gemini')
+        expect(body.meta?.server?.aiModel).toBe('gemini-2.5-flash')
+
+        const [url, init] = vi.mocked(fetch).mock.calls[0] ?? []
+        expect(String(url)).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+        const requestBody = JSON.parse(String((init as RequestInit).body)) as { model?: string }
+        expect(requestBody.model).toBe('gemini-2.5-flash')
+    })
+
     it('should generate a facilitative fallback reply when reply is empty or generic', async () => {
         // reply が空の場合、Workers側のフォールバックで nextAction に応じた質問文を返すこと
         const mockOpenAIResponse = {

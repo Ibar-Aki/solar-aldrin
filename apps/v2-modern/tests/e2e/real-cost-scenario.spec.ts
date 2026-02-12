@@ -161,7 +161,7 @@ function escapeTableText(value: string): string {
     return value.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
 }
 
-const AUTH_FAILURE_CODES = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'OPENAI_AUTH_ERROR'])
+const AUTH_FAILURE_CODES = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'OPENAI_AUTH_ERROR', 'GEMINI_AUTH_ERROR'])
 const RUNTIME_QUALITY_CODES = new Set(['AI_RESPONSE_INVALID_JSON', 'AI_RESPONSE_INVALID_SCHEMA', 'AI_TIMEOUT', 'AI_UPSTREAM_ERROR'])
 
 function classifyFailure(entry: ApiTraceEntry): FailureClass {
@@ -384,8 +384,12 @@ async function recordApiTrace(response: Response) {
         if (RUN_LIVE && entry.status === 401 && entry.code === 'AUTH_INVALID') {
             setFatalInfraError(`LIVE認証エラー（AUTH_INVALID, requestId=${entry.requestId ?? '-'}）。VITE_API_TOKEN と Worker API_TOKEN の不一致の可能性があります。`)
         }
-        if (RUN_LIVE && entry.status === 502 && entry.code === 'OPENAI_AUTH_ERROR') {
-            setFatalInfraError(`OpenAI認証エラー（OPENAI_AUTH_ERROR, requestId=${entry.requestId ?? '-'}）。Worker側の OPENAI_API_KEY が無効または期限切れの可能性があります。`)
+        if (RUN_LIVE && entry.status === 502 && (entry.code === 'OPENAI_AUTH_ERROR' || entry.code === 'GEMINI_AUTH_ERROR')) {
+            if (entry.code === 'GEMINI_AUTH_ERROR') {
+                setFatalInfraError(`Gemini認証エラー（GEMINI_AUTH_ERROR, requestId=${entry.requestId ?? '-'}）。Worker側の GEMINI_API_KEY が無効または期限切れの可能性があります。`)
+            } else {
+                setFatalInfraError(`OpenAI認証エラー（OPENAI_AUTH_ERROR, requestId=${entry.requestId ?? '-'}）。Worker側の OPENAI_API_KEY が無効または期限切れの可能性があります。`)
+            }
         }
     }
 }

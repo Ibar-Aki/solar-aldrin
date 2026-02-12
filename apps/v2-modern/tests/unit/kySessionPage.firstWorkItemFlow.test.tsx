@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { KYSessionPage } from '@/pages/KYSessionPage'
 import { useKYStore } from '@/stores/kyStore'
 
@@ -89,5 +89,23 @@ describe('KYSessionPage first work item flow', () => {
 
         expect(screen.getByTestId('button-complete-first-work-item')).toBeInTheDocument()
         expect(screen.queryByPlaceholderText('メッセージを入力...')).not.toBeInTheDocument()
+    })
+
+    it('KYボードのサイズ切替は拡大を初期値にし、縮小/拡大を切り替えできる', () => {
+        render(<KYSessionPage />)
+
+        expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'expanded')
+        expect(screen.getByTestId('ky-board-scale-expanded')).toHaveAttribute('aria-pressed', 'true')
+        expect(screen.getByTestId('ky-board-scale-compact')).toHaveAttribute('aria-pressed', 'false')
+
+        fireEvent.click(screen.getByTestId('ky-board-scale-compact'))
+        expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'compact')
+        expect(screen.getByTestId('ky-board-scale-expanded')).toHaveAttribute('aria-pressed', 'false')
+        expect(screen.getByTestId('ky-board-scale-compact')).toHaveAttribute('aria-pressed', 'true')
+
+        fireEvent.click(screen.getByTestId('ky-board-scale-expanded'))
+        expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'expanded')
+        expect(screen.getByTestId('ky-board-scale-expanded')).toHaveAttribute('aria-pressed', 'true')
+        expect(screen.getByTestId('ky-board-scale-compact')).toHaveAttribute('aria-pressed', 'false')
     })
 })

@@ -34,6 +34,7 @@ describe('fetchOpenAICompletion - OpenAI HTTP errors', () => {
         })).rejects.toMatchObject({
             name: 'OpenAIHTTPError',
             status: 400,
+            provider: 'openai',
             upstreamMessage: expect.stringContaining('does not exist'),
             upstreamCode: 'model_not_found',
             upstreamType: 'invalid_request_error',
@@ -65,5 +66,37 @@ describe('fetchOpenAICompletion - OpenAI HTTP errors', () => {
             expect(err.retryAfterSec).toBe(7)
         }
     })
-})
 
+    it('supports Gemini via OpenAI-compatible endpoint when provider=gemini', async () => {
+        const fetchSpy = vi.fn(async () => new Response(JSON.stringify({
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        reply: 'はい',
+                        extracted: { nextAction: 'ask_work' },
+                    }),
+                },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 12 },
+        }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+        }))
+        globalThis.fetch = fetchSpy as unknown as typeof fetch
+
+        const result = await fetchOpenAICompletion({
+            apiKey: 'gemini-test-key',
+            reqId: 'req_test',
+            provider: 'gemini',
+            body: { model: 'gemini-2.5-flash', messages: [] },
+            timeoutMs: 1000,
+            retryCount: 0,
+        })
+
+        expect(result.content).toContain('reply')
+        expect(result.meta.provider).toBe('gemini')
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+        expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+    })
+})

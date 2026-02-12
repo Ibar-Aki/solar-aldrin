@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test'
 
 const RUN_LIVE = process.env.RUN_LIVE_TESTS === '1'
+const AI_PROVIDER = (process.env.AI_PROVIDER ?? 'openai').toLowerCase()
 const HAS_OPENAI_KEY = Boolean(process.env.OPENAI_API_KEY)
+const HAS_GEMINI_KEY = Boolean(process.env.GEMINI_API_KEY)
+const HAS_PROVIDER_KEY = AI_PROVIDER === 'gemini' ? HAS_GEMINI_KEY : HAS_OPENAI_KEY
 
-test.skip(!RUN_LIVE || !HAS_OPENAI_KEY, 'Set RUN_LIVE_TESTS=1 and OPENAI_API_KEY to run live API tests.')
+test.skip(!RUN_LIVE || !HAS_PROVIDER_KEY, 'Set RUN_LIVE_TESTS=1 and the provider API key (OPENAI_API_KEY or GEMINI_API_KEY) to run live API tests.')
 
 // タイムアウトを延長（AIの応答待ちのため）
 test.setTimeout(60000)

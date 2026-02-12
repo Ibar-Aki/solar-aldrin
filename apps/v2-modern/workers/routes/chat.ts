@@ -1,6 +1,6 @@
 /**
  * チャットAPIルート
- * OpenAI GPT-4o mini を使用
+ * OpenAI / Gemini (OpenAI互換) を使用
  */
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
@@ -13,6 +13,11 @@ import { isNonAnswerText } from '../../src/lib/nonAnswer'
 
 type Bindings = {
     OPENAI_API_KEY: string
+    GEMINI_API_KEY?: string
+    AI_PROVIDER?: string
+    AI_MODEL?: string
+    GEMINI_MODEL?: string
+    OPENAI_MODEL?: string
     ENABLE_CONTEXT_INJECTION?: string
     OPENAI_TIMEOUT_MS?: string
     OPENAI_RETRY_COUNT?: string
@@ -125,6 +130,34 @@ const CHAT_RESPONSE_JSON_SCHEMA = {
         },
     },
 } as const
+
+type AIProvider = 'openai' | 'gemini'
+
+function resolveAIProvider(raw: string | undefined): AIProvider {
+    const normalized = raw?.trim().toLowerCase()
+    if (normalized === 'gemini') return 'gemini'
+    return 'openai'
+}
+
+function getProviderDisplayName(provider: AIProvider): string {
+    return provider === 'gemini' ? 'Gemini' : 'OpenAI'
+}
+
+function resolveAIModel(provider: AIProvider, env: Bindings): string {
+    const common = env.AI_MODEL?.trim()
+    if (common) return common
+    if (provider === 'gemini') {
+        return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
+    }
+    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+}
+
+function resolveProviderApiKey(provider: AIProvider, env: Bindings): string | undefined {
+    if (provider === 'gemini') {
+        return env.GEMINI_API_KEY?.trim() || undefined
+    }
+    return env.OPENAI_API_KEY?.trim() || undefined
+}
 
 function hasBannedWord(text: string): boolean {
     return BANNED_WORDS.some(word => text.includes(word))
@@ -336,18 +369,23 @@ function summarizeSchemaValidationError(error: unknown, maxIssues: number = 5): 
     }
 }
 
-function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { message: string; code: string; retriable: boolean; status: number } {
+function formatUpstreamAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { message: string; code: string; retriable: boolean; status: number } {
     // Upstream errors are almost always server-side misconfig or temporary service issues.
     // We keep the message short, avoid echoing request payload, and include upstream message if present.
     const upstreamMsg = error.upstreamMessage?.trim()
     const status = error.status
+    const provider = error.provider ?? 'openai'
+    const providerName = getProviderDisplayName(provider)
+    const authCode = provider === 'gemini' ? 'GEMINI_AUTH_ERROR' : 'OPENAI_AUTH_ERROR'
+    const badRequestCode = provider === 'gemini' ? 'GEMINI_BAD_REQUEST' : 'OPENAI_BAD_REQUEST'
+    const upstreamErrorCode = provider === 'gemini' ? 'GEMINI_UPSTREAM_ERROR' : 'OPENAI_UPSTREAM_ERROR'
 
     if (status === 401 || status === 403) {
         return {
             message: upstreamMsg
-                ? `AI認証エラーです（OpenAI）。設定を確認してください。詳細: ${upstreamMsg}`
-                : 'AI認証エラーです（OpenAI）。設定を確認してください。',
-            code: 'OPENAI_AUTH_ERROR',
+                ? `AI認証エラーです（${providerName}）。設定を確認してください。詳細: ${upstreamMsg}`
+                : `AI認証エラーです（${providerName}）。設定を確認してください。`,
+            code: authCode,
             retriable: false,
             status: 502,
         }
@@ -356,9 +394,9 @@ function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { 
     if (status === 400 || status === 404 || status === 409 || status === 422) {
         return {
             message: upstreamMsg
-                ? `AIリクエストが拒否されました（OpenAI）。詳細: ${upstreamMsg}`
-                : 'AIリクエストが拒否されました（OpenAI）。設定/入力/モデル指定を確認してください。',
-            code: 'OPENAI_BAD_REQUEST',
+                ? `AIリクエストが拒否されました（${providerName}）。詳細: ${upstreamMsg}`
+                : `AIリクエストが拒否されました（${providerName}）。設定/入力/モデル指定を確認してください。`,
+            code: badRequestCode,
             retriable: false,
             status: 502,
         }
@@ -367,8 +405,8 @@ function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { 
     if (status === 429) {
         return {
             message: upstreamMsg
-                ? `AIサービスが混雑しています（OpenAI）。詳細: ${upstreamMsg}`
-                : 'AIサービスが混雑しています（OpenAI）。少し待ってから再送してください。',
+                ? `AIサービスが混雑しています（${providerName}）。詳細: ${upstreamMsg}`
+                : `AIサービスが混雑しています（${providerName}）。少し待ってから再送してください。`,
             code: 'AI_UPSTREAM_ERROR',
             retriable: true,
             status: 429,
@@ -378,8 +416,8 @@ function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { 
     if (status >= 500) {
         return {
             message: upstreamMsg
-                ? `AIサービス側でエラーが発生しました（OpenAI）。詳細: ${upstreamMsg}`
-                : 'AIサービス側でエラーが発生しました（OpenAI）。少し待ってから再送してください。',
+                ? `AIサービス側でエラーが発生しました（${providerName}）。詳細: ${upstreamMsg}`
+                : `AIサービス側でエラーが発生しました（${providerName}）。少し待ってから再送してください。`,
             code: 'AI_UPSTREAM_ERROR',
             retriable: true,
             status: 503,
@@ -388,9 +426,9 @@ function formatUpstreamOpenAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { 
 
     return {
         message: upstreamMsg
-            ? `AI呼び出しに失敗しました（OpenAI）。詳細: ${upstreamMsg}`
-            : 'AI呼び出しに失敗しました（OpenAI）。',
-        code: 'OPENAI_UPSTREAM_ERROR',
+            ? `AI呼び出しに失敗しました（${providerName}）。詳細: ${upstreamMsg}`
+            : `AI呼び出しに失敗しました（${providerName}）。`,
+        code: upstreamErrorCode,
         retriable: false,
         status: 502,
     }
@@ -936,9 +974,13 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         return c.json({ error: 'Validation Error', code: 'VALIDATION_ERROR', details: result.error }, 400)
     }
 }), async (c) => {
-    const apiKey = c.env.OPENAI_API_KEY
+    const aiProvider = resolveAIProvider(c.env.AI_PROVIDER)
+    const aiModel = resolveAIModel(aiProvider, c.env)
+    const apiKey = resolveProviderApiKey(aiProvider, c.env)
     if (!apiKey) {
-        return c.json({ error: 'OpenAI API key not configured', code: 'OPENAI_KEY_MISSING', requestId: c.get('reqId') }, 500)
+        const missingCode = aiProvider === 'gemini' ? 'GEMINI_KEY_MISSING' : 'OPENAI_KEY_MISSING'
+        const providerName = getProviderDisplayName(aiProvider)
+        return c.json({ error: `${providerName} API key not configured`, code: missingCode, requestId: c.get('reqId') }, 500)
     }
 
     const { messages, sessionContext, contextInjection, conversationSummary } = c.req.valid('json')
@@ -983,7 +1025,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         const recoveryProfile = buildExecutionProfile('recovery', runtimeConfig)
 
         const requestBodyBase = {
-            model: 'gpt-4o-mini',
+            model: aiModel,
             messages: [
                 { role: 'system', content: SOLO_KY_SYSTEM_PROMPT },
                 ...(referenceMessage ? [{ role: 'user', content: referenceMessage }] : []),
@@ -1014,6 +1056,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             // Backward-compatible fields for existing preflight/e2e checks.
             openaiRetryCount,
             maxTokens: openaiMaxTokens,
+            aiProvider,
+            aiModel,
             // Dynamic profile fields for observability.
             profileName: activeProfile.name,
             profileRetryCount: activeProfile.retryCount,
@@ -1048,6 +1092,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 reqId,
                 timeoutMs,
                 retryCount,
+                provider: aiProvider,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
             openaiHttpAttempts += responseData.meta.httpAttempts
@@ -1256,7 +1301,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         }
 
         if (error instanceof OpenAIHTTPErrorWithDetails) {
-            const mapped = formatUpstreamOpenAIErrorMessage(error)
+            const mapped = formatUpstreamAIErrorMessage(error)
             // Prefer upstream Retry-After if present (especially for 429), but keep a conservative default.
             if (mapped.retriable) {
                 const retryAfter = typeof error.retryAfterSec === 'number' && error.retryAfterSec > 0

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,6 +15,7 @@ import { isNonAnswerText } from '@/lib/nonAnswer'
 export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const [kyBoardScale, setKyBoardScale] = useState<'expanded' | 'compact'>('expanded')
 
     const WAIT_NOTICE_AFTER_MS = (() => {
         const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
@@ -238,7 +239,12 @@ export function KYSessionPage() {
                 {status === 'work_items' && (
                     <div className="bg-gray-50 border-b px-4 py-1">
                         <div className="max-w-4xl mx-auto w-full">
-                            <KYBoardCard currentWorkItem={currentWorkItem} workItemIndex={kyBoardIndex} />
+                            <KYBoardCard
+                                currentWorkItem={currentWorkItem}
+                                workItemIndex={kyBoardIndex}
+                                boardScale={kyBoardScale}
+                                onBoardScaleChange={setKyBoardScale}
+                            />
                         </div>
                     </div>
                 )}

@@ -3,8 +3,15 @@ import { render, screen } from '@testing-library/react'
 import { KYBoardCard } from '@/components/KYBoardCard'
 import type { WorkItem } from '@/types/ky'
 
-function renderCard(item: Partial<WorkItem>, workItemIndex = 1) {
-    return render(<KYBoardCard currentWorkItem={item} workItemIndex={workItemIndex} />)
+function renderCard(item: Partial<WorkItem>, workItemIndex = 1, boardScale: 'expanded' | 'compact' = 'expanded') {
+    return render(
+        <KYBoardCard
+            currentWorkItem={item}
+            workItemIndex={workItemIndex}
+            boardScale={boardScale}
+            onBoardScaleChange={() => undefined}
+        />
+    )
 }
 
 describe('KYBoardCard', () => {
@@ -46,36 +53,78 @@ describe('KYBoardCard', () => {
     })
 
     it('具体性バーは何をする時の文字数で小中大に変化する', () => {
-        const { rerender } = render(<KYBoardCard currentWorkItem={{ workDescription: '12345' }} workItemIndex={1} />)
+        const { rerender } = render(
+            <KYBoardCard
+                currentWorkItem={{ workDescription: '12345' }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
 
         expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('小')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-red-500')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-6')
 
-        rerender(<KYBoardCard currentWorkItem={{ workDescription: '123456' }} workItemIndex={1} />)
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{ workDescription: '123456' }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('中')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-amber-500')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-10')
 
-        rerender(<KYBoardCard currentWorkItem={{ workDescription: '1234567890' }} workItemIndex={1} />)
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{ workDescription: '1234567890' }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('大')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-emerald-500')
         expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-14')
     })
 
     it('詳細度バーは何が原因での文字数で小中大に変化する', () => {
-        const { rerender } = render(<KYBoardCard currentWorkItem={{ whyDangerous: ['12345'] }} workItemIndex={1} />)
+        const { rerender } = render(
+            <KYBoardCard
+                currentWorkItem={{ whyDangerous: ['12345'] }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
 
         expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('小')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-red-500')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-6')
 
-        rerender(<KYBoardCard currentWorkItem={{ whyDangerous: ['123456'] }} workItemIndex={1} />)
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{ whyDangerous: ['123456'] }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('中')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-amber-500')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-10')
 
-        rerender(<KYBoardCard currentWorkItem={{ whyDangerous: ['1234567890'] }} workItemIndex={1} />)
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{ whyDangerous: ['1234567890'] }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('大')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-emerald-500')
         expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-14')
@@ -114,19 +163,50 @@ describe('KYBoardCard', () => {
         const workBar = screen.getByTestId('segment-work-description-bar')
         expect(workLabel.parentElement?.firstElementChild).toBe(workLabel)
         expect(workLabel.parentElement?.lastElementChild).toBe(workBar)
+        expect(workLabel.parentElement).toHaveClass('mt-px')
 
         const whyLabel = screen.getByTestId('segment-why-dangerous-label')
         const whyBar = screen.getByTestId('segment-why-dangerous-bar')
         expect(whyLabel.parentElement?.firstElementChild).toBe(whyLabel)
         expect(whyLabel.parentElement?.lastElementChild).toBe(whyBar)
+        expect(whyLabel.parentElement).toHaveClass('mt-px')
     })
 
     it('どうなるに入力がある時のみ右下に丸付きチェックを表示する', () => {
-        const { rerender } = render(<KYBoardCard currentWorkItem={{ hazardDescription: '転落する' }} workItemIndex={1} />)
+        const { rerender } = render(
+            <KYBoardCard
+                currentWorkItem={{ hazardDescription: '転落する' }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.getByTestId('segment-hazard-description-check')).toBeInTheDocument()
 
-        rerender(<KYBoardCard currentWorkItem={{ hazardDescription: '' }} workItemIndex={1} />)
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{ hazardDescription: '' }}
+                workItemIndex={1}
+                boardScale="expanded"
+                onBoardScaleChange={() => undefined}
+            />
+        )
         expect(screen.queryByTestId('segment-hazard-description-check')).not.toBeInTheDocument()
+    })
+
+    it('サイズ指定に応じてdata-scale属性を切り替える', () => {
+        const { rerender } = renderCard({}, 1, 'expanded')
+        expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'expanded')
+
+        rerender(
+            <KYBoardCard
+                currentWorkItem={{}}
+                workItemIndex={1}
+                boardScale="compact"
+                onBoardScaleChange={() => undefined}
+            />
+        )
+        expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'compact')
     })
 
     it('初期表示では想定される危険の4行のみを表示し、対策表は表示しない', () => {

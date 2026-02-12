@@ -6,6 +6,8 @@ interface OpenAIRequestOptions {
     timeoutMs?: number
     reqId: string
     retryCount?: number
+    provider?: 'openai' | 'gemini'
+    endpoint?: string
 }
 
 export type OpenAIResponseMeta = {
@@ -13,6 +15,7 @@ export type OpenAIResponseMeta = {
     httpRetries: number
     durationMs: number
     finishReason?: string | null
+    provider: 'openai' | 'gemini'
 }
 
 interface OpenAIResponse {
@@ -66,6 +69,7 @@ export type OpenAIHTTPErrorDetails = {
     upstreamCode?: string
     upstreamParam?: string
     bodySnippet?: string
+    provider: 'openai' | 'gemini'
 }
 
 export class OpenAIHTTPErrorWithDetails extends Error {
@@ -76,6 +80,7 @@ export class OpenAIHTTPErrorWithDetails extends Error {
     upstreamCode?: string
     upstreamParam?: string
     bodySnippet?: string
+    provider: 'openai' | 'gemini'
 
     constructor(message: string, details: OpenAIHTTPErrorDetails) {
         super(message)
@@ -87,6 +92,7 @@ export class OpenAIHTTPErrorWithDetails extends Error {
         this.upstreamCode = details.upstreamCode
         this.upstreamParam = details.upstreamParam
         this.bodySnippet = details.bodySnippet
+        this.provider = details.provider
     }
 }
 
@@ -94,7 +100,17 @@ export class OpenAIHTTPErrorWithDetails extends Error {
  * OpenAI APIを呼び出し、JSONパース（Markdown除去含む）を実行する
  */
 export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Promise<OpenAIResponse> {
-    const { apiKey, body, timeoutMs = DEFAULT_TIMEOUT, reqId, retryCount = MAX_RETRIES } = options
+    const {
+        apiKey,
+        body,
+        timeoutMs = DEFAULT_TIMEOUT,
+        reqId,
+        retryCount = MAX_RETRIES,
+        provider = 'openai',
+        endpoint = provider === 'gemini'
+            ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+            : 'https://api.openai.com/v1/chat/completions',
+    } = options
 
     const startedAt = Date.now()
     let httpAttempts = 0
@@ -102,7 +118,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
     const performRequest = async (currentRetry: number, attempt: number = 0): Promise<Response> => {
         try {
             httpAttempts += 1
-            const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+            const response = await fetchWithTimeout(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -114,7 +130,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             // Retryable errors (5xx, 429)
             if (!response.ok && (response.status >= 500 || response.status === 429) && currentRetry > 0) {
                 const delayMs = getRetryDelayMs(attempt)
-                logWarn('openai_retry', { reqId, status: response.status, delayMs, attempt: attempt + 1 })
+                logWarn('ai_retry', { reqId, provider, status: response.status, delayMs, attempt: attempt + 1 })
                 await sleep(delayMs)
                 return performRequest(currentRetry - 1, attempt + 1)
             }
@@ -124,7 +140,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             // Retry on timeout/network error
             if (currentRetry > 0) {
                 const delayMs = getRetryDelayMs(attempt)
-                logWarn('openai_network_retry', { reqId, error: String(error), delayMs, attempt: attempt + 1 })
+                logWarn('ai_network_retry', { reqId, provider, error: String(error), delayMs, attempt: attempt + 1 })
                 await sleep(delayMs)
                 return performRequest(currentRetry - 1, attempt + 1)
             }
@@ -164,15 +180,17 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             // ignore json parse
         }
 
-        logError('openai_api_error', {
+        logError('ai_api_error', {
             reqId,
+            provider,
             status: response.status,
             body: bodySnippet,
         })
 
+        const providerLabel = provider === 'gemini' ? 'Gemini' : 'OpenAI'
         const composedMessage = upstreamMessage
-            ? `OpenAI API Error: ${response.status} (${upstreamMessage.slice(0, 200)})`
-            : `OpenAI API Error: ${response.status}`
+            ? `${providerLabel} API Error: ${response.status} (${upstreamMessage.slice(0, 200)})`
+            : `${providerLabel} API Error: ${response.status}`
 
         // Throw a typed error so routes can map it into user-visible, non-leaky messages.
         throw new OpenAIHTTPErrorWithDetails(composedMessage, {
@@ -183,6 +201,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             upstreamCode,
             upstreamParam,
             bodySnippet,
+            provider,
         })
     }
 
@@ -227,6 +246,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
             httpRetries: Math.max(0, httpAttempts - 1),
             durationMs: Date.now() - startedAt,
             finishReason: firstChoice?.finish_reason ?? null,
+            provider,
         },
     }
 }
