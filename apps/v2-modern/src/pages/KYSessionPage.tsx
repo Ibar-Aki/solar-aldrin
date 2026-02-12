@@ -192,21 +192,21 @@ export function KYSessionPage() {
                     <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
                         <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
                             <span className={`px-2 py-1 rounded ${status === 'work_items' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                作業・危険 ({workItemCount}件)
+                                KY活動
                             </span>
                             <span className="text-gray-300">→</span>
                             <span className={`px-2 py-1 rounded ${status === 'action_goal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                行動目標
+                                安全確認
                             </span>
                             <span className="text-gray-300">→</span>
                             <span className={`px-2 py-1 rounded ${status === 'confirmation' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                確認
+                                総括
                             </span>
                         </div>
                         <Button
                             asChild
                             size="sm"
-                            className="shrink-0 font-semibold shadow-sm"
+                            className="shrink-0 h-8 px-2.5 text-xs font-semibold shadow-sm"
                             data-testid="button-reference-info"
                         >
                             <a

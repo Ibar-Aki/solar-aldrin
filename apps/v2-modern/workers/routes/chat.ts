@@ -1178,12 +1178,16 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 issueCount: schemaSummary?.issueCount ?? 0,
                 issues: schemaSummary?.issues ?? [],
             } as const
+            const schemaIssuesPreview = schemaDetails.issues
+                .map((issue) => `${issue.path}:${issue.code}`)
+                .slice(0, 5)
+                .join('|')
 
             logError('response_schema_validation_error', {
                 reqId: c.get('reqId'),
                 finishReason: openaiLastFinishReason ?? null,
                 issueCount: schemaDetails.issueCount,
-                issues: schemaDetails.issues,
+                issuesPreview: schemaIssuesPreview || null,
             })
             // UX: 再送で回復する可能性があるため、短い待機を推奨する
             c.header('Retry-After', '1')

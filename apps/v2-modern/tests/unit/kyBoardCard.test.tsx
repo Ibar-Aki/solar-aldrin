@@ -36,6 +36,99 @@ describe('KYBoardCard', () => {
         expect(screen.queryByText('例）バランスを崩して墜落し、頭部を負傷する')).not.toBeInTheDocument()
     })
 
+    it('未入力時は具体性/詳細度バーを灰色の未評価表示にする', () => {
+        renderCard({})
+
+        expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('未')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-slate-300')
+        expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('未')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-slate-300')
+    })
+
+    it('具体性バーは何をする時の文字数で小中大に変化する', () => {
+        const { rerender } = render(<KYBoardCard currentWorkItem={{ workDescription: '12345' }} workItemIndex={1} />)
+
+        expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('小')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-red-500')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-6')
+
+        rerender(<KYBoardCard currentWorkItem={{ workDescription: '123456' }} workItemIndex={1} />)
+        expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('中')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-amber-500')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-10')
+
+        rerender(<KYBoardCard currentWorkItem={{ workDescription: '1234567890' }} workItemIndex={1} />)
+        expect(screen.getByTestId('segment-work-description-label')).toHaveTextContent('大')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('bg-emerald-500')
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-14')
+    })
+
+    it('詳細度バーは何が原因での文字数で小中大に変化する', () => {
+        const { rerender } = render(<KYBoardCard currentWorkItem={{ whyDangerous: ['12345'] }} workItemIndex={1} />)
+
+        expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('小')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-red-500')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-6')
+
+        rerender(<KYBoardCard currentWorkItem={{ whyDangerous: ['123456'] }} workItemIndex={1} />)
+        expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('中')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-amber-500')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-10')
+
+        rerender(<KYBoardCard currentWorkItem={{ whyDangerous: ['1234567890'] }} workItemIndex={1} />)
+        expect(screen.getByTestId('segment-why-dangerous-label')).toHaveTextContent('大')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('bg-emerald-500')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-14')
+    })
+
+    it('未入力時のバー長は短縮した未評価サイズを使う', () => {
+        renderCard({})
+
+        expect(screen.getByTestId('segment-work-description-bar')).toHaveClass('w-8')
+        expect(screen.getByTestId('segment-why-dangerous-bar')).toHaveClass('w-8')
+    })
+
+    it('セグメントバーとチェックを左列に表示する', () => {
+        renderCard({
+            workDescription: '脚立作業',
+            whyDangerous: ['足元が滑る'],
+            hazardDescription: '転落する',
+        })
+
+        const workLabelCell = screen.getByText('何をする時').parentElement
+        const whyLabelCell = screen.getByText('何が原因で').parentElement
+        const hazardLabelCell = screen.getByText('どうなる').parentElement
+
+        expect(workLabelCell).toContainElement(screen.getByTestId('segment-work-description'))
+        expect(whyLabelCell).toContainElement(screen.getByTestId('segment-why-dangerous'))
+        expect(hazardLabelCell).toContainElement(screen.getByTestId('segment-hazard-description-check'))
+    })
+
+    it('小中大のラベルをバーの左側に表示する', () => {
+        renderCard({
+            workDescription: '1234567890',
+            whyDangerous: ['1234567890'],
+        })
+
+        const workLabel = screen.getByTestId('segment-work-description-label')
+        const workBar = screen.getByTestId('segment-work-description-bar')
+        expect(workLabel.parentElement?.firstElementChild).toBe(workLabel)
+        expect(workLabel.parentElement?.lastElementChild).toBe(workBar)
+
+        const whyLabel = screen.getByTestId('segment-why-dangerous-label')
+        const whyBar = screen.getByTestId('segment-why-dangerous-bar')
+        expect(whyLabel.parentElement?.firstElementChild).toBe(whyLabel)
+        expect(whyLabel.parentElement?.lastElementChild).toBe(whyBar)
+    })
+
+    it('どうなるに入力がある時のみ右下に丸付きチェックを表示する', () => {
+        const { rerender } = render(<KYBoardCard currentWorkItem={{ hazardDescription: '転落する' }} workItemIndex={1} />)
+        expect(screen.getByTestId('segment-hazard-description-check')).toBeInTheDocument()
+
+        rerender(<KYBoardCard currentWorkItem={{ hazardDescription: '' }} workItemIndex={1} />)
+        expect(screen.queryByTestId('segment-hazard-description-check')).not.toBeInTheDocument()
+    })
+
     it('初期表示では想定される危険の4行のみを表示し、対策表は表示しない', () => {
         renderCard({
             workDescription: '足場の上で配管を固定する',

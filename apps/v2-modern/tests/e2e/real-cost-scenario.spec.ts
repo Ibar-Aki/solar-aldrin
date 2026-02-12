@@ -923,10 +923,14 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             await sendUserMessage('配管の溶接作業を行います', '溶接作業ですね')
             await sendUserMessage('火花が飛散して周囲の可燃物に引火する危険があります', '火花による引火')
             await sendUserMessage('周囲に養生が不十分なためです。危険度は一番高い5です', '設備・環境')
-            await sendUserMessage(
-                '設備・環境: 消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します。人配置・行動: 火気監視を1人つけます。',
-                '2件目'
-            )
+            await sendUserMessage('設備・環境: 消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します。人配置・行動: 火気監視を1人つけます。')
+
+            // 現行仕様: 1件目は「1件目完了」ボタン押下でのみ確定する。
+            const completeFirstWorkItemButton = page.getByTestId('button-complete-first-work-item')
+            await expect(completeFirstWorkItemButton).toBeVisible({ timeout: 15000 })
+            await expect(completeFirstWorkItemButton).toBeEnabled({ timeout: 15000 })
+            await completeFirstWorkItemButton.click()
+            await recordLog('User', '(Clicked 1件目完了)')
 
             // 1件目が保存されていること（作業・危険の件数）が増えることで検証
             await expect(page.locator('text=/作業・危険 \\(1件\\)/').first()).toBeVisible({ timeout: 15000 })

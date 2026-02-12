@@ -19,6 +19,57 @@ const FIRST_WORK_ITEM_PLACEHOLDERS = {
     hazardDescription: '例）バランスを崩して墜落し、頭部を負傷する',
 } as const
 
+type SegmentLevel = 'unrated' | 'small' | 'medium' | 'large'
+
+type SegmentVisual = {
+    level: SegmentLevel
+    label: '未' | '小' | '中' | '大'
+    barWidthClass: string
+    barColorClass: string
+    labelColorClass: string
+}
+
+function resolveSegmentVisual(rawValue: string | null | undefined): SegmentVisual {
+    const source = rawValue ?? ''
+    const trimmed = source.trim()
+    if (!trimmed) {
+        return {
+            level: 'unrated',
+            label: '未',
+            barWidthClass: 'w-8',
+            barColorClass: 'bg-slate-300',
+            labelColorClass: 'text-slate-500',
+        }
+    }
+
+    const length = source.length
+    if (length <= 5) {
+        return {
+            level: 'small',
+            label: '小',
+            barWidthClass: 'w-6',
+            barColorClass: 'bg-red-500',
+            labelColorClass: 'text-red-600',
+        }
+    }
+    if (length <= 9) {
+        return {
+            level: 'medium',
+            label: '中',
+            barWidthClass: 'w-10',
+            barColorClass: 'bg-amber-500',
+            labelColorClass: 'text-amber-600',
+        }
+    }
+    return {
+        level: 'large',
+        label: '大',
+        barWidthClass: 'w-14',
+        barColorClass: 'bg-emerald-500',
+        labelColorClass: 'text-emerald-600',
+    }
+}
+
 function formatMultiline(values: Array<string | null | undefined> | null | undefined): string {
     const lines = (values ?? [])
         .map((v) => (typeof v === 'string' ? v.trim() : ''))
@@ -51,6 +102,9 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
     const workDescriptionText = (currentWorkItem.workDescription ?? '').trim()
     const whyDangerousText = whyText.trim()
     const hazardDescriptionText = (currentWorkItem.hazardDescription ?? '').trim()
+    const workSpecificity = resolveSegmentVisual(currentWorkItem.workDescription)
+    const whyDetail = resolveSegmentVisual((currentWorkItem.whyDangerous ?? []).join('\n'))
+    const hasHazardDescription = hazardDescriptionText.length > 0
 
     return (
         <Card className="border-slate-200 bg-white/90 py-0 shadow-sm">
@@ -73,8 +127,23 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
 
                     {/* Hazard rows */}
                     <div className="grid grid-cols-12 border-t border-slate-800">
-                        <div className="col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
+                        <div className="relative col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
                             何をする時
+                            <div className="absolute bottom-0.5 right-1.5 text-right" data-testid="segment-work-description">
+                                <div className="text-[10px] leading-none text-slate-500">具体性</div>
+                                <div className="mt-0.5 flex items-center justify-end gap-1">
+                                    <span
+                                        className={`text-[10px] font-semibold leading-none ${workSpecificity.labelColorClass}`}
+                                        data-testid="segment-work-description-label"
+                                    >
+                                        {workSpecificity.label}
+                                    </span>
+                                    <span
+                                        className={`h-1.5 rounded-full ${workSpecificity.barWidthClass} ${workSpecificity.barColorClass}`}
+                                        data-testid="segment-work-description-bar"
+                                    />
+                                </div>
+                            </div>
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
                             {workDescriptionText || (
@@ -83,8 +152,23 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
                         </div>
                     </div>
                     <div className="grid grid-cols-12 border-t border-slate-800">
-                        <div className="col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
+                        <div className="relative col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
                             何が原因で
+                            <div className="absolute bottom-0.5 right-1.5 text-right" data-testid="segment-why-dangerous">
+                                <div className="text-[10px] leading-none text-slate-500">詳細度</div>
+                                <div className="mt-0.5 flex items-center justify-end gap-1">
+                                    <span
+                                        className={`text-[10px] font-semibold leading-none ${whyDetail.labelColorClass}`}
+                                        data-testid="segment-why-dangerous-label"
+                                    >
+                                        {whyDetail.label}
+                                    </span>
+                                    <span
+                                        className={`h-1.5 rounded-full ${whyDetail.barWidthClass} ${whyDetail.barColorClass}`}
+                                        data-testid="segment-why-dangerous-bar"
+                                    />
+                                </div>
+                            </div>
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
                             {whyDangerousText || (
@@ -93,8 +177,17 @@ export function KYBoardCard({ currentWorkItem, workItemIndex }: Props) {
                         </div>
                     </div>
                     <div className="grid grid-cols-12 border-t border-slate-800">
-                        <div className="col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
+                        <div className="relative col-span-5 sm:col-span-4 px-1.5 py-0.5 sm:px-2 sm:py-1 bg-slate-50 border-r border-slate-800 text-[13px] sm:text-sm font-medium">
                             どうなる
+                            {hasHazardDescription && (
+                                <span
+                                    className="absolute bottom-0.5 right-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white"
+                                    data-testid="segment-hazard-description-check"
+                                    aria-label="どうなる入力済み"
+                                >
+                                    ✓
+                                </span>
+                            )}
                         </div>
                         <div className="col-span-7 sm:col-span-8 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[13px] sm:text-sm whitespace-pre-wrap break-words min-h-6">
                             {hazardDescriptionText || (
