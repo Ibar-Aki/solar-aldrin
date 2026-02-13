@@ -2,18 +2,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { logInfo, sanitizeLogContext } from '../observability/logger'
+import type { AnalyticsEngineDataset, Bindings } from '../types'
 
-export type AnalyticsEngineDataset = {
-    writeDataPoint: (data: {
-        indexes?: string[]
-        doubles?: number[]
-        blobs?: string[]
-    }) => void
-}
-
-type Bindings = {
-    ANALYTICS_DATASET?: AnalyticsEngineDataset
-}
+export type { AnalyticsEngineDataset }
 
 const metrics = new Hono<{ Bindings: Bindings }>()
 

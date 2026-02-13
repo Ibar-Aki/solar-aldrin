@@ -1,39 +1,14 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { chat } from './routes/chat'
-import { rateLimit, type KVNamespace } from './middleware/rateLimit'
+import { rateLimit } from './middleware/rateLimit'
 import { withSentry } from '@sentry/cloudflare'
-import { metrics, type AnalyticsEngineDataset } from './routes/metrics'
+import { metrics } from './routes/metrics'
 import { feedback } from './routes/feedback'
 import { logError, logInfo } from './observability/logger'
 import { captureException } from './observability/sentry'
 import { shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } from './lib/securityMode'
-
-type Bindings = {
-    OPENAI_API_KEY: string
-    GEMINI_API_KEY?: string
-    AI_PROVIDER?: string
-    AI_MODEL?: string
-    GEMINI_MODEL?: string
-    OPENAI_MODEL?: string
-    SUPABASE_URL: string
-    SUPABASE_ANON_KEY: string
-    WEATHER_API_BASE_URL: string
-    RATE_LIMIT_KV?: KVNamespace
-    FEEDBACK_KV?: KVNamespace
-    ASSETS?: { fetch: (request: Request) => Promise<Response> }
-    API_TOKEN?: string
-    ALLOWED_ORIGINS?: string
-    SENTRY_DSN?: string
-    SENTRY_ENV?: string
-    SENTRY_RELEASE?: string
-    ANALYTICS_DATASET?: AnalyticsEngineDataset
-    ENABLE_FEEDBACK?: string
-    ENVIRONMENT?: string
-    REQUIRE_API_TOKEN?: string
-    REQUIRE_RATE_LIMIT_KV?: string
-    STRICT_CORS?: string
-}
+import type { Bindings } from './types'
 
 const app = new Hono<{
     Bindings: Bindings

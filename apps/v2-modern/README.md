@@ -5,6 +5,7 @@
 更新日: 2026-02-11（実費テストの認証系トラブルを即時判別できるよう改善。VITE_API_TOKEN 未設定時は .dev.vars の API_TOKEN をフォールバック）
 更新日: 2026-02-11（HomePageの進行中セッション画面でもAPIトークン設定を可能化／PagesデプロイスクリプトでVITE_API_TOKENをビルド前に明示解除）
 更新日: 2026-02-12（AIプロバイダ切替を追加: OpenAI/Gemini を `AI_PROVIDER` で切替、Gemini OpenAI互換エンドポイントに対応）
+更新日: 2026-02-13（Gemini最適化: フォールバック時のOpenAIモデル固定、Gemini専用 `GEMINI_*` 実行設定、429フォールバックのフラグ制御、`meta.ai` 追加）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -74,6 +75,9 @@ npm run dev:workers
 - 任意: `AI_MODEL`（設定時は最優先）
 - 任意: `OPENAI_MODEL`（既定: `gpt-4o-mini`）
 - 任意: `GEMINI_MODEL`（既定: `gemini-2.5-flash`）
+- 任意: `OPENAI_TIMEOUT_MS` / `OPENAI_RETRY_COUNT` / `OPENAI_MAX_TOKENS`
+- 任意: `GEMINI_TIMEOUT_MS` / `GEMINI_RETRY_COUNT` / `GEMINI_MAX_TOKENS`（既定: `18000ms / 0 / 700`）
+- 任意: `ENABLE_PROVIDER_FALLBACK`（`1` で Gemini 429 でも OpenAI フォールバックを許可。既定 `0`）
 - 本番必須: `API_TOKEN`（`REQUIRE_API_TOKEN=1` または `SENTRY_ENV/ENVIRONMENT=production` の場合）
 - 任意: `REQUIRE_API_TOKEN`（`1` で常時必須化、`0` で常時任意）
 - 任意: `STRICT_CORS`（`1` で厳格CORS、`0` で開発許可を有効）
@@ -91,10 +95,12 @@ npm run dev:workers
 - JSONパース失敗（LLM出力がJSONとして不正）: `502` / `code=AI_RESPONSE_INVALID_JSON` / `retriable=true`
 - 成功レスポンスには、実費テスト解析向けに観測用フィールドを付与します（フロントの型検証では未使用ですが、E2Eレポートで採取します）
 - 観測用フィールド: `usage.totalTokens`
+- 観測用フィールド: `meta.ai.requestCount` / `meta.ai.httpAttempts` / `meta.ai.durationMs`
 - 観測用フィールド: `meta.openai.requestCount`（/api/chat 内での AI 呼び出し回数。後方互換キー名）
 - 観測用フィールド: `meta.openai.httpAttempts`（AI HTTP 試行回数。内部リトライ込み）
 - 観測用フィールド: `meta.openai.durationMs`（AI 呼び出しの合計時間）
 - 観測用フィールド: `meta.server.aiProvider` / `meta.server.aiModel`
+- 観測用フィールド: `meta.server.aiRetryCount`（`meta.server.openaiRetryCount` は後方互換）
 - 観測用フィールド: `meta.parseRetry.attempted` / `meta.parseRetry.succeeded`（JSONパース再試行の有無と結果）
 
 ### ビルド

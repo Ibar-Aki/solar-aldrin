@@ -19,6 +19,20 @@ GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
 # OPENAI_MODEL="gpt-4o-mini"
 # GEMINI_MODEL="gemini-2.5-flash"
 
+# 実行パラメータ（必要時のみ）
+# OpenAI向け（未設定時: timeout=25000ms / retry=1 / max_tokens=900）
+# OPENAI_TIMEOUT_MS="25000"
+# OPENAI_RETRY_COUNT="1"
+# OPENAI_MAX_TOKENS="900"
+
+# Gemini向け（未設定時: timeout=18000ms / retry=0 / max_tokens=700）
+# GEMINI_TIMEOUT_MS="18000"
+# GEMINI_RETRY_COUNT="0"
+# GEMINI_MAX_TOKENS="700"
+
+# Gemini→OpenAI フォールバック（既定: 無効）
+# ENABLE_PROVIDER_FALLBACK="0"
+
 # Supabase設定（Phase 3以降で使用予定）
 SUPABASE_URL=""
 SUPABASE_ANON_KEY=""

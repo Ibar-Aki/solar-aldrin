@@ -4,22 +4,7 @@ import { FeedbackRequestSchema, FeedbackResponseSchema, type FeedbackRequest, ty
 import { FEEDBACK_SYSTEM_PROMPT } from '../prompts/feedbackKY'
 import { logError, logWarn } from '../observability/logger'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
-
-interface KVNamespace {
-    get(key: string): Promise<string | null>
-    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>
-}
-
-type Bindings = {
-    OPENAI_API_KEY: string
-    GEMINI_API_KEY?: string
-    AI_PROVIDER?: string
-    AI_MODEL?: string
-    GEMINI_MODEL?: string
-    OPENAI_MODEL?: string
-    ENABLE_FEEDBACK?: string
-    FEEDBACK_KV?: KVNamespace
-}
+import type { Bindings } from '../types'
 
 const feedback = new Hono<{
     Bindings: Bindings

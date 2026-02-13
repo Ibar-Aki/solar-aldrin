@@ -49,7 +49,7 @@ const LIVE_API_TOKEN = LIVE_API_TOKEN_INFO.token
 const CHAT_WAIT_TIMEOUT_MS = RUN_LIVE ? 90_000 : 30_000
 const SCENARIO_TIMEOUT_MS = RUN_LIVE ? 900_000 : 300_000
 const EXPECTED_SERVER_POLICY_VERSION = process.env.LIVE_EXPECTED_POLICY_VERSION?.trim() || '2026-02-11-a-b-observability-1'
-const EXPECTED_SERVER_RESPONSE_FORMAT = process.env.LIVE_EXPECTED_RESPONSE_FORMAT?.trim() || 'json_schema_strict'
+const LIVE_EXPECTED_RESPONSE_FORMAT_OVERRIDE = process.env.LIVE_EXPECTED_RESPONSE_FORMAT?.trim() || ''
 const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = (() => {
     const raw = process.env.LIVE_EXPECTED_PARSE_RECOVERY_ENABLED?.trim().toLowerCase()
     if (!raw) return true
@@ -67,6 +67,10 @@ const EXPECTED_SERVER_MAX_TOKENS = (() => {
     const parsed = Number.parseInt(raw, 10)
     return Number.isFinite(parsed) ? parsed : null
 })()
+
+function expectedResponseFormatByProvider(provider: string | undefined): 'json_object' | 'json_schema_strict' {
+    return provider === 'gemini' ? 'json_object' : 'json_schema_strict'
+}
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
 test.skip(SHOULD_SKIP, 'Set RUN_LIVE_TESTS=1 (real) or DRY_RUN=1 (mock) to run this test.')
@@ -124,14 +128,19 @@ interface ApiTraceEntry {
     error?: string
     details?: string
     usageTotalTokens?: number
+    aiRequestCount?: number
+    aiHttpAttempts?: number
+    aiDurationMs?: number
     openaiRequestCount?: number
     openaiHttpAttempts?: number
     openaiDurationMs?: number
     parseRetryAttempted?: boolean
     parseRetrySucceeded?: boolean
     serverPolicyVersion?: string
+    serverAiProvider?: string
     serverResponseFormat?: string
     serverParseRecoveryEnabled?: boolean
+    serverAiRetryCount?: number
     serverOpenaiRetryCount?: number
     serverMaxTokens?: number
     serverPolicyViolation?: boolean
@@ -266,12 +275,15 @@ async function recordApiTrace(response: Response) {
             details?: unknown
             usage?: { totalTokens?: number }
             meta?: {
+                ai?: { requestCount?: number; httpAttempts?: number; durationMs?: number }
                 openai?: { requestCount?: number; httpAttempts?: number; durationMs?: number }
                 parseRetry?: { attempted?: boolean; succeeded?: boolean }
                 server?: {
                     policyVersion?: string
+                    aiProvider?: string
                     responseFormat?: string
                     parseRecoveryEnabled?: boolean
+                    aiRetryCount?: number
                     openaiRetryCount?: number
                     maxTokens?: number
                     profileName?: string
@@ -294,15 +306,34 @@ async function recordApiTrace(response: Response) {
         entry.replyLen = typeof replyValue === 'string' ? replyValue.length : undefined
 
         entry.usageTotalTokens = typeof payload.usage?.totalTokens === 'number' ? payload.usage.totalTokens : undefined
-        entry.openaiRequestCount = typeof payload.meta?.openai?.requestCount === 'number' ? payload.meta.openai.requestCount : undefined
-        entry.openaiHttpAttempts = typeof payload.meta?.openai?.httpAttempts === 'number' ? payload.meta.openai.httpAttempts : undefined
-        entry.openaiDurationMs = typeof payload.meta?.openai?.durationMs === 'number' ? payload.meta.openai.durationMs : undefined
+        entry.aiRequestCount = typeof payload.meta?.ai?.requestCount === 'number'
+            ? payload.meta.ai.requestCount
+            : undefined
+        entry.aiHttpAttempts = typeof payload.meta?.ai?.httpAttempts === 'number'
+            ? payload.meta.ai.httpAttempts
+            : undefined
+        entry.aiDurationMs = typeof payload.meta?.ai?.durationMs === 'number'
+            ? payload.meta.ai.durationMs
+            : undefined
+        entry.openaiRequestCount = entry.aiRequestCount ?? (
+            typeof payload.meta?.openai?.requestCount === 'number' ? payload.meta.openai.requestCount : undefined
+        )
+        entry.openaiHttpAttempts = entry.aiHttpAttempts ?? (
+            typeof payload.meta?.openai?.httpAttempts === 'number' ? payload.meta.openai.httpAttempts : undefined
+        )
+        entry.openaiDurationMs = entry.aiDurationMs ?? (
+            typeof payload.meta?.openai?.durationMs === 'number' ? payload.meta.openai.durationMs : undefined
+        )
         entry.parseRetryAttempted = typeof payload.meta?.parseRetry?.attempted === 'boolean' ? payload.meta.parseRetry.attempted : undefined
         entry.parseRetrySucceeded = typeof payload.meta?.parseRetry?.succeeded === 'boolean' ? payload.meta.parseRetry.succeeded : undefined
         entry.serverPolicyVersion = typeof payload.meta?.server?.policyVersion === 'string' ? payload.meta.server.policyVersion : undefined
+        entry.serverAiProvider = typeof payload.meta?.server?.aiProvider === 'string' ? payload.meta.server.aiProvider : undefined
         entry.serverResponseFormat = typeof payload.meta?.server?.responseFormat === 'string' ? payload.meta.server.responseFormat : undefined
         entry.serverParseRecoveryEnabled = typeof payload.meta?.server?.parseRecoveryEnabled === 'boolean'
             ? payload.meta.server.parseRecoveryEnabled
+            : undefined
+        entry.serverAiRetryCount = typeof payload.meta?.server?.aiRetryCount === 'number'
+            ? payload.meta.server.aiRetryCount
             : undefined
         entry.serverOpenaiRetryCount = typeof payload.meta?.server?.openaiRetryCount === 'number'
             ? payload.meta.server.openaiRetryCount
@@ -332,17 +363,24 @@ async function recordApiTrace(response: Response) {
 
         if (shouldValidateServerPolicy) {
             const mismatchReasons: string[] = []
+            const expectedResponseFormat = LIVE_EXPECTED_RESPONSE_FORMAT_OVERRIDE
+                || expectedResponseFormatByProvider(entry.serverAiProvider)
+            const expectedResponseFormatSource = LIVE_EXPECTED_RESPONSE_FORMAT_OVERRIDE
+                ? 'env(LIVE_EXPECTED_RESPONSE_FORMAT)'
+                : `auto(provider=${entry.serverAiProvider ?? 'openai'})`
+            const expectedRetryCount = EXPECTED_SERVER_OPENAI_RETRY_COUNT
+            const actualRetryCount = entry.serverAiRetryCount ?? entry.serverOpenaiRetryCount
             if (entry.serverPolicyVersion !== EXPECTED_SERVER_POLICY_VERSION) {
                 mismatchReasons.push(`policyVersion expected=${EXPECTED_SERVER_POLICY_VERSION} actual=${entry.serverPolicyVersion ?? 'missing'}`)
             }
-            if (entry.serverResponseFormat !== EXPECTED_SERVER_RESPONSE_FORMAT) {
-                mismatchReasons.push(`responseFormat expected=${EXPECTED_SERVER_RESPONSE_FORMAT} actual=${entry.serverResponseFormat ?? 'missing'}`)
+            if (entry.serverResponseFormat !== expectedResponseFormat) {
+                mismatchReasons.push(`responseFormat expected=${expectedResponseFormat} source=${expectedResponseFormatSource} actual=${entry.serverResponseFormat ?? 'missing'}`)
             }
             if (entry.serverParseRecoveryEnabled !== EXPECTED_SERVER_PARSE_RECOVERY_ENABLED) {
                 mismatchReasons.push(`parseRecoveryEnabled expected=${EXPECTED_SERVER_PARSE_RECOVERY_ENABLED} actual=${entry.serverParseRecoveryEnabled ?? 'missing'}`)
             }
-            if (entry.serverOpenaiRetryCount !== EXPECTED_SERVER_OPENAI_RETRY_COUNT) {
-                mismatchReasons.push(`openaiRetryCount expected=${EXPECTED_SERVER_OPENAI_RETRY_COUNT} actual=${entry.serverOpenaiRetryCount ?? 'missing'}`)
+            if (actualRetryCount !== expectedRetryCount) {
+                mismatchReasons.push(`aiRetryCount expected=${expectedRetryCount} actual=${actualRetryCount ?? 'missing'}`)
             }
             if (EXPECTED_SERVER_MAX_TOKENS !== null && entry.serverMaxTokens !== EXPECTED_SERVER_MAX_TOKENS) {
                 mismatchReasons.push(`maxTokens expected=${EXPECTED_SERVER_MAX_TOKENS} actual=${entry.serverMaxTokens ?? 'missing'}`)
@@ -431,8 +469,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const chatCount = apiTrace.length
     const totalTokens = apiTrace.reduce((sum, entry) => sum + (entry.usageTotalTokens ?? 0), 0)
     const avgTokensPerChat = chatCount > 0 ? Math.round(totalTokens / chatCount) : null
-    const openaiRequests = apiTrace.reduce((sum, entry) => sum + (entry.openaiRequestCount ?? 0), 0)
-    const openaiHttpAttempts = apiTrace.reduce((sum, entry) => sum + (entry.openaiHttpAttempts ?? 0), 0)
+    const aiRequests = apiTrace.reduce((sum, entry) => sum + (entry.aiRequestCount ?? entry.openaiRequestCount ?? 0), 0)
+    const aiHttpAttempts = apiTrace.reduce((sum, entry) => sum + (entry.aiHttpAttempts ?? entry.openaiHttpAttempts ?? 0), 0)
     const parseRetryUsed = apiTrace.reduce((sum, entry) => sum + (entry.parseRetryAttempted ? 1 : 0), 0)
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
     const serverPolicyViolations = apiTrace.reduce((sum, entry) => sum + (entry.serverPolicyViolation ? 1 : 0), 0)
@@ -467,12 +505,12 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
                 ? (entry.parseRetrySucceeded ? 'attempted:yes (ok)' : 'attempted:yes (failed)')
                 : '-'
             const serverMetaLabel = entry.serverPolicyVersion
-                ? `policy=${entry.serverPolicyVersion} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverOpenaiRetryCount ?? '-'} maxTokens=${entry.serverMaxTokens ?? '-'} profile=${entry.serverProfileName ?? '-'} profileRetry=${entry.serverProfileRetryCount ?? '-'} profileMaxTokens=${entry.serverProfileMaxTokens ?? '-'} softTimeout=${entry.serverProfileSoftTimeoutMs ?? '-'} hardTimeout=${entry.serverProfileHardTimeoutMs ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
+                ? `policy=${entry.serverPolicyVersion} provider=${entry.serverAiProvider ?? '-'} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverAiRetryCount ?? entry.serverOpenaiRetryCount ?? '-'} maxTokens=${entry.serverMaxTokens ?? '-'} profile=${entry.serverProfileName ?? '-'} profileRetry=${entry.serverProfileRetryCount ?? '-'} profileMaxTokens=${entry.serverProfileMaxTokens ?? '-'} softTimeout=${entry.serverProfileSoftTimeoutMs ?? '-'} hardTimeout=${entry.serverProfileHardTimeoutMs ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
                 : (entry.serverPolicyViolation ? 'missing mismatch' : '-')
             const failureClass = entry.status >= 400 || entry.serverPolicyViolation
                 ? (entry.failureClass ?? classifyFailure(entry))
                 : '-'
-            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${failureClass} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.openaiRequestCount ?? '-'} | ${entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
+            return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${failureClass} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.aiRequestCount ?? entry.openaiRequestCount ?? '-'} | ${entry.aiHttpAttempts ?? entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
         }).join('\n')
         : '| - | - | - | - | - | - | - | - | - | - | - | - | - |'
 
@@ -502,8 +540,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **Nav Success** | ${METRICS.navigationSuccess ? 'Yes' : 'No'} | Yes | ${METRICS.navigationSuccess ? '🟢' : '🔴'} |
 | **Total Tokens** | ${totalTokens} | - | ℹ️ |
 | **Avg Tokens / Chat** | ${avgTokensPerChat ?? 'N/A'} | - | ℹ️ |
-| **OpenAI Requests** | ${openaiRequests} | - | ℹ️ |
-| **OpenAI HTTP Attempts** | ${openaiHttpAttempts} | - | ℹ️ |
+| **AI Requests** | ${aiRequests} | - | ℹ️ |
+| **AI HTTP Attempts** | ${aiHttpAttempts} | - | ℹ️ |
 | **Parse Retry Used** | ${parseRetryUsed} | 0 | ${parseRetryUsed === 0 ? '🟢' : '🟡'} |
 | **Parse Retry Succeeded** | ${parseRetrySucceeded} | - | ℹ️ |
 | **Server Policy Violations** | ${serverPolicyViolations} | 0 | ${serverPolicyViolations === 0 ? '🟢' : '🔴'} |
@@ -520,7 +558,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 ${conversationLog.map(log => `| ${log.time} | **${log.speaker}** | ${log.message.replace(/\n/g, '<br>').slice(0, 100)}${log.message.length > 100 ? '...' : ''} |`).join('\n')}
 
 ## API Trace (/api/chat)
-| Time | Method | Status | Code | Failure Class | Request ID | Latency ms | Tokens | OpenAI Req | HTTP Attempts | ParseRetry | ServerMeta | Note |
+| Time | Method | Status | Code | Failure Class | Request ID | Latency ms | Tokens | AI Req | HTTP Attempts | ParseRetry | ServerMeta | Note |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 ${apiTraceRows}
 

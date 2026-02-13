@@ -1,4 +1,5 @@
 # Gemini API への切り替えガイド
+更新日: 2026-02-13（Gemini専用実行パラメータとフォールバック制御を追記）
 
 現在のシステムは既に Gemini API に対応しており、コードの書き換えなしで設定変更のみで切り替えが可能です。
 以下の手順に従って設定を行ってください。
@@ -21,10 +22,17 @@
 AI_PROVIDER="gemini"
 GEMINI_API_KEY="ここにコピーしたAIzaから始まるキーを貼り付け"
 
-# モデル指定（推奨: gemini-2.0-flash または gemini-1.5-flash）
-# ※省略時のデフォルトはコード上で `gemini-2.5-flash` となっていますが、
-#   まだ存在しない可能性があるため明示的な指定を推奨します。
-GEMINI_MODEL="gemini-2.0-flash"
+# モデル指定（推奨）
+GEMINI_MODEL="gemini-2.5-flash"
+
+# Gemini専用 実行パラメータ（任意）
+GEMINI_TIMEOUT_MS="18000"
+GEMINI_RETRY_COUNT="0"
+GEMINI_MAX_TOKENS="700"
+
+# 既定では Gemini 429 は OpenAIへフォールバックしません。
+# 必要時のみ有効化してください。
+ENABLE_PROVIDER_FALLBACK="0"
 ```
 
 ### 動作確認
@@ -53,7 +61,7 @@ npx wrangler secret put GEMINI_API_KEY
 ```toml
 [vars]
 AI_PROVIDER = "gemini"
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 ```
 
 その後、デプロイを実行します。
@@ -69,7 +77,7 @@ npm run deploy:workers
 3. **Add** をクリックして以下を追加します。
    - `GEMINI_API_KEY`: (取得したキー) ※ **Encrypt** ボタンを押して暗号化する
    - `AI_PROVIDER`: `gemini`
-   - `GEMINI_MODEL`: `gemini-2.0-flash`
+   - `GEMINI_MODEL`: `gemini-2.5-flash`
 4. **Deploy** (または再デプロイ) して設定を反映させます。
 
 ## Q&A
@@ -79,6 +87,7 @@ A. `AI_PROVIDER="openai"` に変更するか、`AI_PROVIDER` の行を削除/コ
 
 **Q. どのモデルが良い？**
 
-- `gemini-2.0-flash`: 最新で高速。性能も高い。（推奨）
+- `gemini-2.5-flash`: 現行推奨。高速でバランスが良い。
+- `gemini-2.0-flash`: 既存運用との互換を優先する場合に選択肢。
 - `gemini-1.5-flash`: 安定版。非常に高速で安価。
 - `gemini-1.5-pro`: 高性能だが少し遅い。複雑な指示が必要な場合に。

@@ -4,24 +4,14 @@
  */
 import type { Context, Next } from 'hono'
 import { shouldRequireRateLimitKV } from '../lib/securityMode'
+import type { KVNamespace, Bindings } from '../types'
 
-// シンプルなKV型定義（ライブラリ依存回避）
-export interface KVNamespace {
-    get(key: string, options?: unknown): Promise<string | null>;
-    put(key: string, value: string, options?: unknown): Promise<void>;
-}
+export type { KVNamespace }
 
 interface RateLimitConfig {
     windowMs: number      // ウィンドウ時間（ミリ秒）
     maxRequests: number   // 最大リクエスト数
     keyPrefix: string     // KVキーのプレフィックス
-}
-
-type Bindings = {
-    RATE_LIMIT_KV?: KVNamespace
-    SENTRY_ENV?: string
-    ENVIRONMENT?: string
-    REQUIRE_RATE_LIMIT_KV?: string
 }
 
 const defaultConfig: RateLimitConfig = {

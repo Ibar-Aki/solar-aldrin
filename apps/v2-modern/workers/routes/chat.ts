@@ -10,19 +10,7 @@ import type { Countermeasure, CountermeasureCategory, ExtractedData } from '../.
 import { logError } from '../observability/logger'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import { isNonAnswerText } from '../../src/lib/nonAnswer'
-
-type Bindings = {
-    OPENAI_API_KEY: string
-    GEMINI_API_KEY?: string
-    AI_PROVIDER?: string
-    AI_MODEL?: string
-    GEMINI_MODEL?: string
-    OPENAI_MODEL?: string
-    ENABLE_CONTEXT_INJECTION?: string
-    OPENAI_TIMEOUT_MS?: string
-    OPENAI_RETRY_COUNT?: string
-    OPENAI_MAX_TOKENS?: string
-}
+import type { Bindings } from '../types'
 
 const chat = new Hono<{
     Bindings: Bindings
@@ -45,6 +33,16 @@ const QUICK_PROFILE_HARD_TIMEOUT_MS = 24000
 const STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET = 10000
 const RECOVERY_PROFILE_SOFT_TIMEOUT_MS = 32000
 const RECOVERY_PROFILE_HARD_TIMEOUT_MS = 45000
+const GEMINI_DEFAULT_TIMEOUT_MS = 18000
+const GEMINI_DEFAULT_RETRY_COUNT = 0
+const GEMINI_DEFAULT_MAX_TOKENS = 700
+const GEMINI_PARSE_RECOVERY_MAX_TOKENS = 1800
+const GEMINI_QUICK_PROFILE_MAX_TOKENS = 700
+const GEMINI_QUICK_PROFILE_SOFT_TIMEOUT_MS = 12000
+const GEMINI_QUICK_PROFILE_HARD_TIMEOUT_MS = 18000
+const GEMINI_STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET = 7000
+const GEMINI_RECOVERY_PROFILE_SOFT_TIMEOUT_MS = 22000
+const GEMINI_RECOVERY_PROFILE_HARD_TIMEOUT_MS = 30000
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
@@ -144,12 +142,16 @@ function getProviderDisplayName(provider: AIProvider): string {
     return provider === 'gemini' ? 'Gemini' : 'OpenAI'
 }
 
-function resolveAIModel(provider: AIProvider, env: Bindings): string {
+function resolvePrimaryAIModel(provider: AIProvider, env: Bindings): string {
     const common = env.AI_MODEL?.trim()
     if (common) return common
     if (provider === 'gemini') {
-        return env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash'
+        return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
     }
+    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+}
+
+function resolveFallbackOpenAIModel(env: Bindings): string {
     return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
 }
 
@@ -183,6 +185,29 @@ function hasBannedWord(text: string): boolean {
     return BANNED_WORDS.some(word => text.includes(word))
 }
 
+function parseOptionalInt(raw: string | undefined): number | undefined {
+    const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
+    return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function resolveTimeoutMs(raw: string | undefined, defaultValue: number): number {
+    const parsed = parseOptionalInt(raw)
+    if (parsed !== undefined && parsed >= 1000 && parsed <= 120000) return parsed
+    return defaultValue
+}
+
+function resolveRetryCount(raw: string | undefined, defaultValue: number): number {
+    const parsed = parseOptionalInt(raw)
+    if (parsed !== undefined && parsed >= 0 && parsed <= 2) return parsed
+    return defaultValue
+}
+
+function resolveMaxTokens(raw: string | undefined, defaultValue: number): number {
+    const parsed = parseOptionalInt(raw)
+    if (parsed !== undefined && parsed >= 300 && parsed <= 4000) return parsed
+    return defaultValue
+}
+
 function resolveOpenAITimeoutMs(raw: string | undefined): number {
     const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
     // LIVEでは10sだと普通に超えるため、デフォルトは25sに上げる（E2E側は90s待てる設計）
@@ -204,6 +229,18 @@ function resolveOpenAIMaxTokens(raw: string | undefined): number {
     return MAX_TOKENS
 }
 
+function resolveGeminiTimeoutMs(raw: string | undefined): number {
+    return resolveTimeoutMs(raw, GEMINI_DEFAULT_TIMEOUT_MS)
+}
+
+function resolveGeminiRetryCount(raw: string | undefined): number {
+    return resolveRetryCount(raw, GEMINI_DEFAULT_RETRY_COUNT)
+}
+
+function resolveGeminiMaxTokens(raw: string | undefined): number {
+    return resolveMaxTokens(raw, GEMINI_DEFAULT_MAX_TOKENS)
+}
+
 function getErrorStatus(error: unknown): number | undefined {
     if (!error || typeof error !== 'object') return undefined
     const status = (error as { status?: unknown }).status
@@ -219,6 +256,7 @@ type SchemaIssueSummary = {
 type ChatExecutionProfileName = 'quick' | 'standard' | 'recovery'
 
 type RuntimeConfig = {
+    provider: AIProvider
     timeoutMs: number
     retryCount: number
     maxTokens: number
@@ -235,6 +273,29 @@ type ChatExecutionProfile = {
 
 function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value))
+}
+
+function resolveRuntimeConfig(provider: AIProvider, env: Bindings): RuntimeConfig {
+    if (provider === 'gemini') {
+        return {
+            provider,
+            timeoutMs: resolveGeminiTimeoutMs(env.GEMINI_TIMEOUT_MS),
+            retryCount: resolveGeminiRetryCount(env.GEMINI_RETRY_COUNT),
+            maxTokens: resolveGeminiMaxTokens(env.GEMINI_MAX_TOKENS),
+        }
+    }
+
+    return {
+        provider,
+        timeoutMs: resolveOpenAITimeoutMs(env.OPENAI_TIMEOUT_MS),
+        retryCount: resolveOpenAIRetryCount(env.OPENAI_RETRY_COUNT),
+        maxTokens: resolveOpenAIMaxTokens(env.OPENAI_MAX_TOKENS),
+    }
+}
+
+function isTruthyFlag(raw: string | undefined): boolean {
+    const normalized = raw?.trim().toLowerCase()
+    return normalized === '1' || normalized === 'true'
 }
 
 function getLastUserMessage(
@@ -291,11 +352,20 @@ function isQuickInteraction(
 }
 
 function buildExecutionProfile(name: ChatExecutionProfileName, runtime: RuntimeConfig): ChatExecutionProfile {
+    const isGemini = runtime.provider === 'gemini'
+    const quickProfileMaxTokens = isGemini ? GEMINI_QUICK_PROFILE_MAX_TOKENS : QUICK_PROFILE_MAX_TOKENS
+    const quickProfileSoftTimeoutMs = isGemini ? GEMINI_QUICK_PROFILE_SOFT_TIMEOUT_MS : QUICK_PROFILE_SOFT_TIMEOUT_MS
+    const quickProfileHardTimeoutMs = isGemini ? GEMINI_QUICK_PROFILE_HARD_TIMEOUT_MS : QUICK_PROFILE_HARD_TIMEOUT_MS
+    const parseRecoveryMaxTokens = isGemini ? GEMINI_PARSE_RECOVERY_MAX_TOKENS : PARSE_RECOVERY_MAX_TOKENS
+    const recoveryProfileSoftTimeoutMs = isGemini ? GEMINI_RECOVERY_PROFILE_SOFT_TIMEOUT_MS : RECOVERY_PROFILE_SOFT_TIMEOUT_MS
+    const recoveryProfileHardTimeoutMs = isGemini ? GEMINI_RECOVERY_PROFILE_HARD_TIMEOUT_MS : RECOVERY_PROFILE_HARD_TIMEOUT_MS
+    const standardHardTimeoutOffset = isGemini ? GEMINI_STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET : STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET
+
     if (name === 'quick') {
-        const maxTokens = clampNumber(Math.min(runtime.maxTokens, QUICK_PROFILE_MAX_TOKENS), 300, 4000)
-        const softTimeoutMs = clampNumber(Math.min(runtime.timeoutMs, QUICK_PROFILE_SOFT_TIMEOUT_MS), 1000, 120000)
+        const maxTokens = clampNumber(Math.min(runtime.maxTokens, quickProfileMaxTokens), 300, 4000)
+        const softTimeoutMs = clampNumber(Math.min(runtime.timeoutMs, quickProfileSoftTimeoutMs), 1000, 120000)
         const hardTimeoutMs = clampNumber(
-            Math.max(softTimeoutMs + 4000, QUICK_PROFILE_HARD_TIMEOUT_MS),
+            Math.max(softTimeoutMs + 4000, quickProfileHardTimeoutMs),
             softTimeoutMs,
             120000
         )
@@ -310,10 +380,10 @@ function buildExecutionProfile(name: ChatExecutionProfileName, runtime: RuntimeC
     }
 
     if (name === 'recovery') {
-        const maxTokens = clampNumber(Math.max(runtime.maxTokens, PARSE_RECOVERY_MAX_TOKENS), 300, 4000)
-        const softTimeoutMs = clampNumber(Math.max(runtime.timeoutMs, RECOVERY_PROFILE_SOFT_TIMEOUT_MS), 1000, 120000)
+        const maxTokens = clampNumber(Math.max(runtime.maxTokens, parseRecoveryMaxTokens), 300, 4000)
+        const softTimeoutMs = clampNumber(Math.max(runtime.timeoutMs, recoveryProfileSoftTimeoutMs), 1000, 120000)
         const hardTimeoutMs = clampNumber(
-            Math.max(softTimeoutMs + 5000, RECOVERY_PROFILE_HARD_TIMEOUT_MS),
+            Math.max(softTimeoutMs + 5000, recoveryProfileHardTimeoutMs),
             softTimeoutMs,
             120000
         )
@@ -329,7 +399,7 @@ function buildExecutionProfile(name: ChatExecutionProfileName, runtime: RuntimeC
 
     const softTimeoutMs = clampNumber(runtime.timeoutMs, 1000, 120000)
     const hardTimeoutMs = clampNumber(
-        Math.max(softTimeoutMs + 3000, softTimeoutMs + STANDARD_PROFILE_HARD_TIMEOUT_MS_OFFSET),
+        Math.max(softTimeoutMs + 3000, softTimeoutMs + standardHardTimeoutOffset),
         softTimeoutMs,
         120000
     )
@@ -423,6 +493,21 @@ function formatUpstreamAIErrorMessage(error: OpenAIHTTPErrorWithDetails): { mess
     }
 
     if (status === 429) {
+        const quotaLikeSignal = provider === 'gemini' && (
+            (error.upstreamCode?.toLowerCase().includes('quota') ?? false) ||
+            (error.upstreamCode?.toLowerCase().includes('resource_exhausted') ?? false) ||
+            (error.upstreamType?.toLowerCase().includes('quota') ?? false) ||
+            (upstreamMsg?.toLowerCase().includes('quota') ?? false) ||
+            (upstreamMsg?.toLowerCase().includes('resource exhausted') ?? false)
+        )
+        if (quotaLikeSignal) {
+            return {
+                message: `Geminiの利用上限に達しました。運用設定（課金・クォータ）を確認してください。`,
+                code: 'GEMINI_QUOTA_EXCEEDED',
+                retriable: false,
+                status: 429,
+            }
+        }
         return {
             message: upstreamMsg
                 ? `AIサービスが混雑しています（${providerName}）。詳細: ${upstreamMsg}`
@@ -995,11 +1080,12 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
     }
 }), async (c) => {
     const aiProvider = resolveAIProvider(c.env.AI_PROVIDER)
-    const aiModel = resolveAIModel(aiProvider, c.env)
+    const aiModel = resolvePrimaryAIModel(aiProvider, c.env)
     const apiKey = resolveProviderApiKey(aiProvider, c.env)
+    const providerFallbackEnabled = isTruthyFlag(c.env.ENABLE_PROVIDER_FALLBACK)
     const fallbackProvider: AIProvider | null = aiProvider === 'gemini' ? 'openai' : null
     const fallbackApiKey = fallbackProvider ? resolveProviderApiKey(fallbackProvider, c.env) : undefined
-    const fallbackModel = fallbackProvider ? resolveAIModel(fallbackProvider, c.env) : undefined
+    const fallbackModel = fallbackProvider ? resolveFallbackOpenAIModel(c.env) : undefined
     if (!apiKey) {
         const missingCode = aiProvider === 'gemini' ? 'GEMINI_KEY_MISSING' : 'OPENAI_KEY_MISSING'
         const providerName = getProviderDisplayName(aiProvider)
@@ -1033,14 +1119,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
     try {
         const reqId = c.get('reqId')
-        const openaiTimeoutMs = resolveOpenAITimeoutMs(c.env.OPENAI_TIMEOUT_MS)
-        const openaiRetryCount = resolveOpenAIRetryCount(c.env.OPENAI_RETRY_COUNT)
-        const openaiMaxTokens = resolveOpenAIMaxTokens(c.env.OPENAI_MAX_TOKENS)
-        const runtimeConfig: RuntimeConfig = {
-            timeoutMs: openaiTimeoutMs,
-            retryCount: openaiRetryCount,
-            maxTokens: openaiMaxTokens,
-        }
+        const runtimeConfig = resolveRuntimeConfig(aiProvider, c.env)
+        const aiRetryCount = runtimeConfig.retryCount
+        const aiMaxTokens = runtimeConfig.maxTokens
+        const parseRecoveryMaxTokens = aiProvider === 'gemini' ? GEMINI_PARSE_RECOVERY_MAX_TOKENS : PARSE_RECOVERY_MAX_TOKENS
         const initialProfileName: ChatExecutionProfileName = isQuickInteraction(limitedHistory, sessionContext)
             ? 'quick'
             : 'standard'
@@ -1055,10 +1137,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             ],
         }
 
-        let openaiRequestCount = 0
-        let openaiHttpAttempts = 0
-        let openaiDurationMs = 0
-        let openaiLastFinishReason: string | null | undefined = null
+        let aiRequestCount = 0
+        let aiHttpAttempts = 0
+        let aiDurationMs = 0
+        let aiLastFinishReason: string | null | undefined = null
         let totalTokens = 0
         let parseRetryAttempted = false
         let parseRetrySucceeded = false
@@ -1075,13 +1157,15 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             responseFormat: resolveResponseFormatLabel(aiProvider),
             parseRecoveryEnabled: true,
             // Backward-compatible fields for existing preflight/e2e checks.
-            openaiRetryCount,
-            maxTokens: openaiMaxTokens,
+            openaiRetryCount: aiRetryCount,
+            aiRetryCount,
+            maxTokens: aiMaxTokens,
             aiProvider,
             aiModel,
             aiProviderEffective: effectiveProvider,
             aiModelEffective: effectiveModel,
             aiProviderFallbackUsed: providerFallbackUsed,
+            providerFallbackEnabled,
             responseFormatEffective: resolveResponseFormatLabel(effectiveProvider),
             // Dynamic profile fields for observability.
             profileName: activeProfile.name,
@@ -1092,6 +1176,13 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             timeoutSoftRecoveryCount,
             timeoutHardFailureCount,
             timeoutTier,
+        })
+
+        const buildAiUsageMeta = () => ({
+            requestCount: aiRequestCount,
+            httpAttempts: aiHttpAttempts,
+            durationMs: aiDurationMs,
+            finishReason: aiLastFinishReason ?? null,
         })
 
         const buildRequestBody = (
@@ -1119,7 +1210,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             activeProfile = profile
             effectiveProvider = provider
             effectiveModel = model
-            openaiRequestCount += 1
+            aiRequestCount += 1
             const responseData = await fetchOpenAICompletion({
                 apiKey: providerApiKey,
                 body,
@@ -1129,9 +1220,9 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 provider,
             })
             totalTokens += responseData.usage?.total_tokens ?? 0
-            openaiHttpAttempts += responseData.meta.httpAttempts
-            openaiDurationMs += responseData.meta.durationMs
-            openaiLastFinishReason = responseData.meta.finishReason
+            aiHttpAttempts += responseData.meta.httpAttempts
+            aiDurationMs += responseData.meta.durationMs
+            aiLastFinishReason = responseData.meta.finishReason
             return responseData
         }
 
@@ -1170,7 +1261,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         const isProviderFallbackError = (error: unknown): boolean => {
             if (error instanceof OpenAIHTTPErrorWithDetails) {
-                return error.status === 429 || error.status >= 500
+                if (error.status === 429) {
+                    return providerFallbackEnabled
+                }
+                return error.status >= 500
             }
             if (error instanceof Error) {
                 return error.message === 'TIMEOUT' || error.message === 'TIMEOUT_SOFT' || error.message === 'TIMEOUT_HARD'
@@ -1180,27 +1274,11 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
         const callWithProviderFallback = async (
             profile: ChatExecutionProfile,
-            overrides?: Partial<Record<'max_tokens' | 'temperature', number>>,
-            options?: { allowLengthFallback?: boolean }
+            overrides?: Partial<Record<'max_tokens' | 'temperature', number>>
         ) => {
-            const allowLengthFallback = options?.allowLengthFallback === true
             const primaryBody = buildRequestBody(profile, aiProvider, aiModel, overrides)
             try {
-                const primaryResponse = await callOpenAI(primaryBody, profile, aiProvider, apiKey, aiModel)
-                const shouldFallbackForLengthCut =
-                    allowLengthFallback &&
-                    aiProvider === 'gemini' &&
-                    Boolean(fallbackApiKey) &&
-                    Boolean(fallbackModel) &&
-                    primaryResponse.meta.finishReason === 'length'
-
-                if (!shouldFallbackForLengthCut) {
-                    return primaryResponse
-                }
-
-                providerFallbackUsed = true
-                const fallbackBody = buildRequestBody(profile, 'openai', fallbackModel as string, overrides)
-                return await callOpenAI(fallbackBody, profile, 'openai', fallbackApiKey as string, fallbackModel as string)
+                return await callOpenAI(primaryBody, profile, aiProvider, apiKey, aiModel)
             } catch (error) {
                 const canFallback =
                     aiProvider === 'gemini' &&
@@ -1247,16 +1325,16 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             parseRetryAttempted = true
             return callWithProviderFallback(recoveryProfile, {
                 // Structured output が length で切れた時は、出力枠を増やして1回だけ再生成する。
-                max_tokens: PARSE_RECOVERY_MAX_TOKENS,
+                max_tokens: parseRecoveryMaxTokens,
                 temperature: recoveryProfile.temperature,
-            }, { allowLengthFallback: true })
+            })
         }
 
         // 会話フェーズ別プロファイル（quick / standard / recovery）を適用。
         let responseData = await callWithProviderFallback(initialProfile)
         let evaluation = evaluateModelOutput(responseData.content)
 
-        if (evaluation.parseFailed && openaiLastFinishReason === 'length') {
+        if (evaluation.parseFailed && aiLastFinishReason === 'length') {
             responseData = await requestParseRecovery()
             evaluation = evaluateModelOutput(responseData.content)
             parseRetrySucceeded = !evaluation.parseFailed && Boolean(evaluation.validation?.success)
@@ -1266,7 +1344,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             const preview = evaluation.preview ?? '[missing_preview]'
             logError('json_parse_failed_strict_schema', {
                 reqId,
-                finishReason: openaiLastFinishReason ?? null,
+                finishReason: aiLastFinishReason ?? null,
                 preview,
             })
             c.header('Retry-After', '1')
@@ -1276,16 +1354,12 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 requestId: reqId,
                 retriable: true,
                 details: {
-                    finishReason: openaiLastFinishReason ?? null,
+                    finishReason: aiLastFinishReason ?? null,
                     preview,
                 },
                 meta: {
-                    openai: {
-                        requestCount: openaiRequestCount,
-                        httpAttempts: openaiHttpAttempts,
-                        durationMs: openaiDurationMs,
-                        finishReason: openaiLastFinishReason ?? null,
-                    },
+                    ai: buildAiUsageMeta(),
+                    openai: buildAiUsageMeta(),
                     parseRetry: {
                         attempted: parseRetryAttempted,
                         succeeded: parseRetrySucceeded,
@@ -1295,7 +1369,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             }, 502)
         }
 
-        if (!evaluation.validation?.success && !parseRetryAttempted && openaiLastFinishReason === 'length') {
+        if (!evaluation.validation?.success && !parseRetryAttempted && aiLastFinishReason === 'length') {
             responseData = await requestParseRecovery()
             evaluation = evaluateModelOutput(responseData.content)
             parseRetrySucceeded = !evaluation.parseFailed && Boolean(evaluation.validation?.success)
@@ -1306,7 +1380,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             const schemaSummary = summarizeSchemaValidationError(finalValidation?.error)
             const schemaDetails = {
                 reason: 'schema_validation_failed',
-                finishReason: openaiLastFinishReason ?? null,
+                finishReason: aiLastFinishReason ?? null,
                 issueCount: schemaSummary?.issueCount ?? 0,
                 issues: schemaSummary?.issues ?? [],
             } as const
@@ -1317,7 +1391,7 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
 
             logError('response_schema_validation_error', {
                 reqId: c.get('reqId'),
-                finishReason: openaiLastFinishReason ?? null,
+                finishReason: aiLastFinishReason ?? null,
                 issueCount: schemaDetails.issueCount,
                 issuesPreview: schemaIssuesPreview || null,
             })
@@ -1330,12 +1404,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 retriable: true,
                 details: schemaDetails,
                 meta: {
-                    openai: {
-                        requestCount: openaiRequestCount,
-                        httpAttempts: openaiHttpAttempts,
-                        durationMs: openaiDurationMs,
-                        finishReason: openaiLastFinishReason ?? null,
-                    },
+                    ai: buildAiUsageMeta(),
+                    openai: buildAiUsageMeta(),
                     parseRetry: {
                         attempted: parseRetryAttempted,
                         succeeded: parseRetrySucceeded,
@@ -1355,12 +1425,8 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
                 totalTokens,
             },
             meta: {
-                openai: {
-                    requestCount: openaiRequestCount,
-                    httpAttempts: openaiHttpAttempts,
-                    durationMs: openaiDurationMs,
-                    finishReason: openaiLastFinishReason ?? null,
-                },
+                ai: buildAiUsageMeta(),
+                openai: buildAiUsageMeta(),
                 parseRetry: {
                     attempted: parseRetryAttempted,
                     succeeded: parseRetrySucceeded,
