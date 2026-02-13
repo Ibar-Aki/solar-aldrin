@@ -10,6 +10,7 @@ type TestEnv = {
     REQUIRE_API_TOKEN?: string
     REQUIRE_RATE_LIMIT_KV?: string
     STRICT_CORS?: string
+    ALLOW_DEV_ORIGIN_WILDCARDS?: string
     ALLOWED_ORIGINS?: string
     SENTRY_ENV?: string
 }
@@ -151,6 +152,49 @@ describe('security middleware integration', () => {
                 headers: {
                     Authorization: 'Bearer token123',
                     Origin: 'https://26541138.voice-ky-v2.pages.dev',
+                },
+            }),
+            env
+        )
+        expect(res.status).toBe(200)
+    })
+
+    it('dev wildcard無効時は workers.dev Origin を拒否する', async () => {
+        const env: TestEnv = {
+            ...baseEnv,
+            SENTRY_ENV: 'development',
+            REQUIRE_API_TOKEN: '1',
+            REQUIRE_RATE_LIMIT_KV: '0',
+            STRICT_CORS: '0',
+            API_TOKEN: 'token123',
+        }
+        const res = await appWithRoutes.fetch(
+            metricsRequest({
+                headers: {
+                    Authorization: 'Bearer token123',
+                    Origin: 'https://demo-app.workers.dev',
+                },
+            }),
+            env
+        )
+        expect(res.status).toBe(403)
+    })
+
+    it('ALLOW_DEV_ORIGIN_WILDCARDS=1 のとき workers.dev Origin を許可する', async () => {
+        const env: TestEnv = {
+            ...baseEnv,
+            SENTRY_ENV: 'development',
+            REQUIRE_API_TOKEN: '1',
+            REQUIRE_RATE_LIMIT_KV: '0',
+            STRICT_CORS: '0',
+            ALLOW_DEV_ORIGIN_WILDCARDS: '1',
+            API_TOKEN: 'token123',
+        }
+        const res = await appWithRoutes.fetch(
+            metricsRequest({
+                headers: {
+                    Authorization: 'Bearer token123',
+                    Origin: 'https://demo-app.workers.dev',
                 },
             }),
             env

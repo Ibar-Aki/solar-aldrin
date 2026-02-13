@@ -7,7 +7,7 @@ import { metrics } from './routes/metrics'
 import { feedback } from './routes/feedback'
 import { logError, logInfo } from './observability/logger'
 import { captureException } from './observability/sentry'
-import { shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } from './lib/securityMode'
+import { shouldAllowDevOriginWildcards, shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } from './lib/securityMode'
 import type { Bindings } from './types'
 
 const app = new Hono<{
@@ -45,7 +45,12 @@ function fingerprintToken(token: string): string {
     return `tk_${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
-function isAllowedOrigin(origin: string | null | undefined, envOrigins: string | undefined, strictMode: boolean): boolean {
+function isAllowedOrigin(
+    origin: string | null | undefined,
+    envOrigins: string | undefined,
+    strictMode: boolean,
+    allowDevOriginWildcards: boolean
+): boolean {
     if (!origin) return true
 
     const isPrivateIpv4 = (hostname: string): boolean => {
@@ -88,9 +93,11 @@ function isAllowedOrigin(origin: string | null | undefined, envOrigins: string |
     }
 
     if (DEV_ALLOWED_ORIGINS.includes(origin)) return true
-    if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
-    if (origin.endsWith('.workers.dev')) return true
-    if (origin.endsWith('.ngrok-free.dev')) return true
+    if (allowDevOriginWildcards) {
+        if (origin.endsWith('.voice-ky-assistant.pages.dev')) return true
+        if (origin.endsWith('.workers.dev')) return true
+        if (origin.endsWith('.ngrok-free.dev')) return true
+    }
     if (origin.startsWith('http://localhost:')) return true
     if (parsed) {
         if (isLocalHost(parsed.hostname)) return true
@@ -134,7 +141,8 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
     const origin = c.req.header('Origin')
     const strictCors = shouldUseStrictCors(c.env)
-    if (!isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors)) {
+    const allowDevOriginWildcards = shouldAllowDevOriginWildcards(c.env)
+    if (!isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors, allowDevOriginWildcards)) {
         return c.json({ error: 'Forbidden origin', requestId: c.get('reqId') }, 403)
     }
     return next()
@@ -154,9 +162,10 @@ app.onError((err, c) => {
 // CORS設定
 app.use('*', async (c, next) => {
     const strictCors = shouldUseStrictCors(c.env)
+    const allowDevOriginWildcards = shouldAllowDevOriginWildcards(c.env)
     const corsMiddleware = cors({
         origin: (origin) => {
-            if (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors)) {
+            if (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS, strictCors, allowDevOriginWildcards)) {
                 return origin ?? ''
             }
             return ''

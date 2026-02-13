@@ -4,322 +4,36 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useKYStore } from '@/stores/kyStore'
-import { ApiError, postChat, type ChatErrorType } from '@/lib/api'
+import { postChat } from '@/lib/api'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
-import type { Countermeasure, ExtractedData, WorkItem } from '@/types/ky'
+import type { ExtractedData } from '@/types/ky'
 import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
 import { getTimeGreeting } from '@/lib/greeting'
 import { getApiToken } from '@/lib/apiToken'
-import { shouldEnableSilentRetryClient, shouldRequireApiTokenClient } from '@/lib/envFlags'
-import { isNonAnswerText } from '@/lib/nonAnswer'
+import { shouldRequireApiTokenClient } from '@/lib/envFlags'
 import { isWorkItemComplete } from '@/lib/validation'
+import { extractActionGoalFromText, hasCompletionIntent, normalizeActionGoalText } from '@/hooks/chat/actionGoal'
+import {
+    computeSilentRetryDelayMs,
+    MAX_SILENT_RETRIES,
+    normalizeChatError,
+    type NormalizedChatError,
+    shouldSilentRetry,
+    sleep,
+} from '@/hooks/chat/errorHandling'
+import { buildRequestMessages, CONVERSATION_SUMMARY_MIN_MESSAGES } from '@/hooks/chat/requestPayload'
+import {
+    countValidCountermeasures,
+    isFirstWorkItemCompletionPending,
+    isMoveToSecondKyIntent,
+    limitCountermeasuresToThree,
+} from '@/hooks/chat/workItemUtils'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
-const ENABLE_SILENT_RETRY = shouldEnableSilentRetryClient()
-const MAX_SILENT_RETRIES = (() => {
-    const raw = import.meta.env.VITE_SILENT_RETRY_MAX
-    const parsed = typeof raw === 'string' ? Number.parseInt(raw.trim(), 10) : NaN
-    // サーバー主導の再試行に寄せるため既定は0。必要時のみ環境変数で明示的に有効化する。
-    if (!Number.isFinite(parsed)) return 0
-    return Math.max(0, Math.min(parsed, 2))
-})()
 
 type RetrySource = 'none' | 'manual' | 'silent'
-const MAX_CLIENT_HISTORY_MESSAGES = 12
-const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
-const ACTION_GOAL_MAX_LENGTH = 120
-
-type NormalizedChatError = {
-    message: string
-    errorType: ChatErrorType
-    code?: string
-    status?: number
-    retriable: boolean
-    retryAfterSec?: number
-    canRetry: boolean
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function toApiError(error: unknown): ApiError {
-    if (error instanceof ApiError) {
-        return error
-    }
-
-    if (error instanceof Error) {
-        const ext = error as Error & {
-            status?: number
-            retriable?: boolean
-            retryAfterSec?: number
-            code?: string
-        }
-        const lower = error.message.toLowerCase()
-
-        let inferredType: ChatErrorType | undefined
-        if (typeof ext.status === 'number') {
-            if (ext.status === 401) inferredType = 'auth'
-            else if (ext.status === 429) inferredType = 'rate_limit'
-            else if (ext.status === 504) inferredType = 'timeout'
-            else if (ext.status >= 500) inferredType = 'server'
-        } else if (error.message.includes('タイムアウト') || lower.includes('timeout')) {
-            inferredType = 'timeout'
-        } else if (error.message.includes('通信') || lower.includes('network')) {
-            inferredType = 'network'
-        }
-
-        return new ApiError(error.message, {
-            status: ext.status,
-            retriable: Boolean(ext.retriable),
-            retryAfterSec: ext.retryAfterSec,
-            errorType: inferredType,
-            code: typeof ext.code === 'string' ? ext.code : undefined,
-        })
-    }
-
-    return new ApiError('通信が不安定です。電波の良い場所で再送してください。', {
-        errorType: 'network',
-        retriable: false,
-    })
-}
-
-function normalizeChatError(error: unknown): NormalizedChatError {
-    const apiError = toApiError(error)
-    const retryAfterSec = apiError.retryAfterSec
-    const requireAuth = shouldRequireApiTokenClient()
-
-    switch (apiError.errorType) {
-        case 'auth':
-            return {
-                message: requireAuth
-                    ? '認証エラーです。ホーム画面の「APIトークン設定」から設定するか、管理者に確認してください。'
-                    : '認証エラーです。サーバー側の認証設定を確認してください。',
-                errorType: 'auth',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                canRetry: false,
-            }
-        case 'network':
-            return {
-                message: '通信が不安定です。電波の良い場所で再送してください。',
-                errorType: 'network',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                // UX: 通信エラーも「もう一度試す」で回復することがあるため、手動リトライは許可する。
-                canRetry: true,
-            }
-        case 'timeout':
-            return {
-                message: 'AI応答が遅れています。少し待ってから再送してください。',
-                errorType: 'timeout',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                canRetry: true,
-            }
-        case 'rate_limit':
-            return {
-                message: retryAfterSec
-                    ? `混雑中です。${retryAfterSec}秒ほど待ってから再送してください。`
-                    : '混雑中です。少し待ってから再送してください。',
-                errorType: 'rate_limit',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                canRetry: true,
-            }
-        case 'server':
-            if (apiError.code === 'AI_RESPONSE_INVALID_SCHEMA') {
-                return {
-                    message: 'AI応答の形式チェックに失敗しました。再送してください。',
-                    errorType: 'server',
-                    code: apiError.code,
-                    status: apiError.status,
-                    retriable: apiError.retriable,
-                    retryAfterSec,
-                    canRetry: apiError.retriable,
-                }
-            }
-            if (apiError.code === 'AI_RESPONSE_INVALID_JSON') {
-                return {
-                    message: 'AI応答のJSON復元に失敗しました。再送してください。',
-                    errorType: 'server',
-                    code: apiError.code,
-                    status: apiError.status,
-                    retriable: apiError.retriable,
-                    retryAfterSec,
-                    canRetry: apiError.retriable,
-                }
-            }
-            return {
-                message: apiError.retriable
-                    ? 'AIサービスが混雑しています。少し待ってから再送してください。'
-                    : 'システムエラーが発生しました。時間をおいて再送してください。',
-                errorType: 'server',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                canRetry: apiError.retriable,
-            }
-        case 'unknown':
-        default:
-            return {
-                message: apiError.message || '通信エラーが発生しました。再送してください。',
-                errorType: 'unknown',
-                code: apiError.code,
-                status: apiError.status,
-                retriable: apiError.retriable,
-                retryAfterSec,
-                canRetry: Boolean(apiError.retriable),
-            }
-    }
-}
-
-function shouldSilentRetry(error: NormalizedChatError): boolean {
-    if (!ENABLE_SILENT_RETRY || MAX_SILENT_RETRIES <= 0) return false
-    // 429のときのみ限定的に自動再送を許可。その他は手動リトライへ誘導する。
-    if (error.errorType === 'rate_limit' && error.retriable) return true
-    return false
-}
-
-function computeSilentRetryDelayMs(error: NormalizedChatError): number {
-    const retryAfterSec = error.retryAfterSec
-    if (typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
-        // 平均応答時間が増えすぎないよう、上限を設ける（UX優先: 即時連打を避ける）
-        return Math.min(10, retryAfterSec) * 1000
-    }
-
-    const jitter = Math.floor(Math.random() * 400)
-    if (error.errorType === 'rate_limit') return 2000 + jitter
-    if (error.errorType === 'timeout') return 1200 + jitter
-    if (error.errorType === 'server') return 1200 + jitter
-    return 0
-}
-
-function normalizeActionGoalText(value: string): string {
-    return value
-        .replace(/\s+/g, ' ')
-        .replace(/^[「『"\s]+/, '')
-        .replace(/[」』"\s]+$/, '')
-        .trim()
-        .slice(0, ACTION_GOAL_MAX_LENGTH)
-}
-
-function isLikelyActionGoalPhrase(value: string): boolean {
-    if (!value) return false
-    const normalized = normalizeActionGoalText(value)
-    if (!normalized) return false
-    if (isNonAnswerText(normalized)) return false
-    if (normalized.length > 40) return false
-    if (/^(はい|了解|ok|okay|お願いします|大丈夫です)$/i.test(normalized)) return false
-    return /(よし|ヨシ|確認|徹底|厳守|実施)/.test(normalized)
-}
-
-function extractActionGoalFromText(text: string): string | null {
-    const normalizedInput = text
-        .replace(/\r?\n/g, ' ')
-        .trim()
-
-    if (!normalizedInput) return null
-
-    const quotedMatches = [...normalizedInput.matchAll(/[「『"]([^「」『"\n]{2,120})[」』"]/g)]
-    for (const match of quotedMatches) {
-        const candidate = normalizeActionGoalText(match[1] ?? '')
-        if (candidate && !isNonAnswerText(candidate)) {
-            return candidate
-        }
-    }
-
-    const prefixed = normalizedInput.match(
-        /(?:行動目標|目標)\s*(?:は|を|:|：)?\s*([^。.!！?？\n]+?)(?:です|にします|とします|にする|とする)?(?:$|。|!|！|\?|？)/
-    )
-    if (prefixed?.[1]) {
-        const candidate = normalizeActionGoalText(
-            prefixed[1].replace(/(?:これで.*|内容を.*|終了.*|完了.*)$/u, '').trim()
-        )
-        if (candidate && !isNonAnswerText(candidate)) {
-            return candidate
-        }
-    }
-
-    if (isLikelyActionGoalPhrase(normalizedInput)) {
-        return normalizeActionGoalText(normalizedInput)
-    }
-
-    return null
-}
-
-function hasCompletionIntent(text: string): boolean {
-    const normalized = text
-        .normalize('NFKC')
-        .replace(/\s+/g, '')
-        .toLowerCase()
-    if (!normalized) return false
-    return (
-        normalized.includes('確定') ||
-        normalized.includes('終了') ||
-        normalized.includes('完了') ||
-        normalized.includes('終わり') ||
-        normalized.includes('これでok') ||
-        normalized.includes('これで大丈夫') ||
-        normalized.includes('finish') ||
-        normalized.includes('done')
-    )
-}
-
-function countValidCountermeasures(countermeasures: Countermeasure[] | undefined): number {
-    if (!countermeasures || countermeasures.length === 0) return 0
-    return countermeasures
-        .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
-        .filter((text) => text.length > 0 && !isNonAnswerText(text))
-        .length
-}
-
-function limitCountermeasuresToThree(countermeasures: Countermeasure[] | undefined): Countermeasure[] {
-    if (!countermeasures || countermeasures.length === 0) return []
-    return countermeasures
-        .map((cm) => ({ ...cm, text: typeof cm.text === 'string' ? cm.text.trim() : '' }))
-        .filter((cm) => cm.text.length > 0 && !isNonAnswerText(cm.text))
-        .slice(0, 3)
-}
-
-function isFirstWorkItemCompletionPending(
-    status: string,
-    workItemCount: number,
-    currentWorkItem: Partial<WorkItem>
-): boolean {
-    return status === 'work_items' && workItemCount === 0 && isWorkItemComplete(currentWorkItem)
-}
-
-function isMoveToSecondKyIntent(text: string): boolean {
-    const normalized = text
-        .normalize('NFKC')
-        .trim()
-        .replace(/[\s\u3000]+/g, '')
-        .toLowerCase()
-
-    if (!normalized) return false
-
-    return (
-        (normalized.includes('2件目') && (normalized.includes('移') || normalized.includes('次'))) ||
-        normalized.includes('次へ') ||
-        normalized.includes('移ります') ||
-        normalized.includes('移動します') ||
-        normalized.includes('他にありません') ||
-        normalized.includes('これで十分') ||
-        normalized.includes('これで完了')
-    )
-}
 
 export function useChat() {
     const {
@@ -576,29 +290,6 @@ export function useChat() {
                 return
             }
 
-            const buildRequestMessages = (shouldSkipUserMessage: boolean) => {
-                const chatMessages = messages
-                    .filter(m => m.role !== 'system')
-                    .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
-
-                if (!shouldSkipUserMessage) {
-                    const combined = [...chatMessages, { role: 'user' as const, content: text }]
-                    return combined.slice(-MAX_CLIENT_HISTORY_MESSAGES)
-                }
-
-                // リトライ時は末尾のエラーメッセージを除去し、同じユーザー発言を末尾に置く
-                const sanitized = [...chatMessages]
-                const last = sanitized[sanitized.length - 1]
-                if (last && last.role === 'assistant' && last.content === RETRY_ASSISTANT_MESSAGE) {
-                    sanitized.pop()
-                }
-                const lastAfter = sanitized[sanitized.length - 1]
-                if (!lastAfter || lastAfter.role !== 'user' || lastAfter.content !== text) {
-                    sanitized.push({ role: 'user' as const, content: text })
-                }
-                return sanitized.slice(-MAX_CLIENT_HISTORY_MESSAGES)
-            }
-
             const contextEnabled = import.meta.env.VITE_ENABLE_CONTEXT_INJECTION !== '0'
             let contextInjection: string | undefined
 
@@ -623,7 +314,12 @@ export function useChat() {
             }
 
             const requestChat = async (shouldSkipUserMessage: boolean) => postChat({
-                messages: [...buildRequestMessages(shouldSkipUserMessage)],
+                messages: [...buildRequestMessages({
+                    messages,
+                    text,
+                    skipUserMessage: shouldSkipUserMessage,
+                    retryAssistantMessage: RETRY_ASSISTANT_MESSAGE,
+                })],
                 sessionContext: {
                     userName: session.userName,
                     siteName: session.siteName,

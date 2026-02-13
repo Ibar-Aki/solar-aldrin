@@ -20,8 +20,23 @@ Add-Type -AssemblyName System.Net.Http
 if ([string]::IsNullOrWhiteSpace($ExpectedPolicyVersion)) {
     $ExpectedPolicyVersion = '2026-02-11-a-b-observability-1'
 }
-if ([string]::IsNullOrWhiteSpace($ExpectedResponseFormat)) {
-    $ExpectedResponseFormat = 'json_schema_strict'
+
+function Resolve-ExpectedResponseFormat {
+    param(
+        [string]$ExplicitValue,
+        [string]$AiProvider
+    )
+
+    $explicit = if ([string]::IsNullOrWhiteSpace($ExplicitValue)) { '' } else { $ExplicitValue.Trim().ToLowerInvariant() }
+    if ($explicit -and $explicit -ne 'auto') {
+        return $explicit
+    }
+
+    $provider = if ([string]::IsNullOrWhiteSpace($AiProvider)) { 'openai' } else { $AiProvider.Trim().ToLowerInvariant() }
+    if ($provider -eq 'gemini') {
+        return 'json_object'
+    }
+    return 'json_schema_strict'
 }
 
 $expectedParseRecoveryEnabledValue = $true
@@ -185,13 +200,21 @@ function Assert-ChatServerPolicy {
     }
 
     $policyVersionProperty = $server.PSObject.Properties['policyVersion']
+    $aiProviderProperty = $server.PSObject.Properties['aiProvider']
     $responseFormatProperty = $server.PSObject.Properties['responseFormat']
     $parseRecoveryProperty = $server.PSObject.Properties['parseRecoveryEnabled']
     $retryCountProperty = $server.PSObject.Properties['openaiRetryCount']
     $maxTokensProperty = $server.PSObject.Properties['maxTokens']
 
     $actualPolicyVersion = if ($policyVersionProperty) { [string]$policyVersionProperty.Value } else { '' }
+    $actualAiProvider = if ($aiProviderProperty) { [string]$aiProviderProperty.Value } else { '' }
     $actualResponseFormat = if ($responseFormatProperty) { [string]$responseFormatProperty.Value } else { '' }
+    $expectedResponseFormatEffective = Resolve-ExpectedResponseFormat -ExplicitValue $ExpectedResponseFormatValue -AiProvider $actualAiProvider
+    $expectedResponseFormatSource = if ([string]::IsNullOrWhiteSpace($ExpectedResponseFormatValue) -or $ExpectedResponseFormatValue.Trim().ToLowerInvariant() -eq 'auto') {
+        "auto(provider=$($actualAiProvider.ToLowerInvariant()))"
+    } else {
+        'env(LIVE_EXPECTED_RESPONSE_FORMAT)'
+    }
 
     if (-not $parseRecoveryProperty -or $null -eq $parseRecoveryProperty.Value) {
         throw "chat authenticated response missing meta.server.parseRecoveryEnabled. body=$RawBody"
@@ -214,8 +237,8 @@ function Assert-ChatServerPolicy {
     if ($actualPolicyVersion -ne $ExpectedPolicyVersionValue) {
         $mismatches += "policyVersion expected=$ExpectedPolicyVersionValue actual=$actualPolicyVersion"
     }
-    if ($actualResponseFormat -ne $ExpectedResponseFormatValue) {
-        $mismatches += "responseFormat expected=$ExpectedResponseFormatValue actual=$actualResponseFormat"
+    if ($actualResponseFormat -ne $expectedResponseFormatEffective) {
+        $mismatches += "responseFormat expected=$expectedResponseFormatEffective source=$expectedResponseFormatSource actual=$actualResponseFormat"
     }
     if ($actualParseRecoveryEnabled -ne $ExpectedParseRecoveryEnabledValue) {
         $mismatches += "parseRecoveryEnabled expected=$ExpectedParseRecoveryEnabledValue actual=$actualParseRecoveryEnabled"

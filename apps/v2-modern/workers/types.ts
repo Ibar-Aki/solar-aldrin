@@ -63,6 +63,7 @@ export type Bindings = {
     REQUIRE_API_TOKEN?: string
     REQUIRE_RATE_LIMIT_KV?: string
     STRICT_CORS?: string
+    ALLOW_DEV_ORIGIN_WILDCARDS?: string
 
     // === Observability ===
     SENTRY_DSN?: string

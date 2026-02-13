@@ -4,6 +4,7 @@ type SecurityEnv = {
     REQUIRE_API_TOKEN?: string
     REQUIRE_RATE_LIMIT_KV?: string
     STRICT_CORS?: string
+    ALLOW_DEV_ORIGIN_WILDCARDS?: string
 }
 
 function parseBooleanFlag(value?: string): boolean | null {
@@ -37,4 +38,11 @@ export function shouldUseStrictCors(env: SecurityEnv): boolean {
     const explicit = parseBooleanFlag(env.STRICT_CORS)
     if (explicit !== null) return explicit
     return isProductionEnv(env)
+}
+
+export function shouldAllowDevOriginWildcards(env: SecurityEnv): boolean {
+    const explicit = parseBooleanFlag(env.ALLOW_DEV_ORIGIN_WILDCARDS)
+    if (explicit !== null) return explicit
+    // デフォルトは fail-closed。必要時のみ明示的に許可する。
+    return false
 }
