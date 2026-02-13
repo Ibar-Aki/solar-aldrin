@@ -4,6 +4,7 @@
  */
 import type { Context, Next } from 'hono'
 import { shouldRequireRateLimitKV } from '../lib/securityMode'
+import { logError, logWarn } from '../observability/logger'
 import type { KVNamespace, Bindings } from '../types'
 
 export type { KVNamespace }
@@ -12,15 +13,33 @@ interface RateLimitConfig {
     windowMs: number      // ウィンドウ時間（ミリ秒）
     maxRequests: number   // 最大リクエスト数
     keyPrefix: string     // KVキーのプレフィックス
+    memoryStoreMaxKeys: number // メモリフォールバック時の最大キー数
 }
 
 const defaultConfig: RateLimitConfig = {
     windowMs: 60000,    // 1分
     maxRequests: 30,    // 30回
     keyPrefix: 'rl:',
+    memoryStoreMaxKeys: 5000,
 }
 
 const memoryStore = new Map<string, { count: number; resetAt: number }>()
+
+function pruneExpiredMemoryStore(now: number): void {
+    for (const [storeKey, value] of memoryStore) {
+        if (value.resetAt < now) {
+            memoryStore.delete(storeKey)
+        }
+    }
+}
+
+function enforceMemoryStoreMaxKeys(maxKeys: number): void {
+    while (memoryStore.size > maxKeys) {
+        const oldestKey = memoryStore.keys().next().value
+        if (!oldestKey) break
+        memoryStore.delete(oldestKey)
+    }
+}
 
 /**
  * レート制限ミドルウェア（KV / メモリ ハイブリッド）
@@ -63,20 +82,28 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
             // KVがない場合（メモリフォールバック）
             else {
                 if (requireKv) {
-                    console.error('RATE_LIMIT_KV is required but not configured')
+                    logError('rate_limit_kv_required_missing', {
+                        path: c.req.path,
+                        method: c.req.method,
+                    })
                     c.header('Retry-After', '5')
                     return c.json(
                         { error: 'レート制限基盤が利用できません。管理者に連絡してください。' },
                         503
                     )
                 }
-                console.warn('RATE_LIMIT_KV not found. Using memory store (dev only).')
+                logWarn('rate_limit_memory_fallback_active', {
+                    path: c.req.path,
+                    method: c.req.method,
+                })
                 const now = Date.now()
+                pruneExpiredMemoryStore(now)
                 let record = memoryStore.get(key)
 
                 if (!record || record.resetAt < now) {
                     record = { count: 0, resetAt: now + cfg.windowMs }
                     memoryStore.set(key, record)
+                    enforceMemoryStoreMaxKeys(cfg.memoryStoreMaxKeys)
                 }
 
                 if (record.count >= cfg.maxRequests) {
@@ -94,7 +121,9 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
                 c.header('X-RateLimit-Remaining', String(cfg.maxRequests - record.count))
             }
         } catch (e) {
-            console.error('Rate limit error:', e)
+            logError('rate_limit_middleware_error', {
+                message: e instanceof Error ? e.message : String(e),
+            })
             if (shouldRequireRateLimitKV(c.env)) {
                 c.header('Retry-After', '5')
                 return c.json(
@@ -109,4 +138,3 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
 }
 
 // rateLimitMemory は廃止し、rateLimit に統合
-

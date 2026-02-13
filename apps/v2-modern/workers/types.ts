@@ -68,6 +68,7 @@ export type Bindings = {
     SENTRY_DSN?: string
     SENTRY_ENV?: string
     SENTRY_RELEASE?: string
+    AI_POLICY_VERSION?: string
     ENVIRONMENT?: string
 
     // === Feature Flags ===

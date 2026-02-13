@@ -5,6 +5,7 @@ import { FEEDBACK_SYSTEM_PROMPT } from '../prompts/feedbackKY'
 import { logError, logWarn } from '../observability/logger'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import type { Bindings } from '../types'
+import { DEFAULT_AI_MODELS, resolveAIProvider, resolveModelByProvider, resolveProviderApiKey } from '../lib/aiProvider'
 
 const feedback = new Hono<{
     Bindings: Bindings
@@ -18,6 +19,8 @@ const FEEDBACK_TIMEOUT_MS = 6000
 const MAX_POLISHED_GOAL_LENGTH = 20
 const CACHE_TTL_SECONDS = 60 * 5
 const STORE_TTL_SECONDS = 60 * 60 * 24
+const RESPONSE_CACHE_MAX_ENTRIES = 500
+const SESSION_STORE_MAX_ENTRIES = 1000
 
 type CachedFeedback = {
     response: FeedbackResponse
@@ -34,22 +37,20 @@ type StoredSession = {
 const responseCache = new Map<string, { value: CachedFeedback; expiresAt: number }>()
 const sessionStore = new Map<string, { value: StoredSession; expiresAt: number }>()
 
-type AIProvider = 'openai' | 'gemini'
-
-function resolveAIProvider(raw: string | undefined): AIProvider {
-    return raw?.trim().toLowerCase() === 'gemini' ? 'gemini' : 'openai'
+function pruneExpiredEntries<T>(store: Map<string, { value: T; expiresAt: number }>, now: number): void {
+    for (const [entryKey, entry] of store) {
+        if (entry.expiresAt < now) {
+            store.delete(entryKey)
+        }
+    }
 }
 
-function resolveProviderApiKey(provider: AIProvider, env: Bindings): string | undefined {
-    if (provider === 'gemini') return env.GEMINI_API_KEY?.trim() || undefined
-    return env.OPENAI_API_KEY?.trim() || undefined
-}
-
-function resolveFeedbackModel(provider: AIProvider, env: Bindings): string {
-    const common = env.AI_MODEL?.trim()
-    if (common) return common
-    if (provider === 'gemini') return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
-    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+function enforceMaxEntries<T>(store: Map<string, { value: T; expiresAt: number }>, maxEntries: number): void {
+    while (store.size > maxEntries) {
+        const oldestKey = store.keys().next().value
+        if (!oldestKey) break
+        store.delete(oldestKey)
+    }
 }
 
 async function loadCachedResponse(c: { env: Bindings }, key: string): Promise<CachedFeedback | null> {
@@ -64,9 +65,12 @@ async function loadCachedResponse(c: { env: Bindings }, key: string): Promise<Ca
         }
     }
 
+    const now = Date.now()
+    pruneExpiredEntries(responseCache, now)
+
     const record = responseCache.get(key)
     if (!record) return null
-    if (record.expiresAt < Date.now()) {
+    if (record.expiresAt < now) {
         responseCache.delete(key)
         return null
     }
@@ -79,7 +83,10 @@ async function saveCachedResponse(c: { env: Bindings }, key: string, response: F
         await c.env.FEEDBACK_KV.put(key, JSON.stringify(payload), { expirationTtl: CACHE_TTL_SECONDS })
         return
     }
-    responseCache.set(key, { value: payload, expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000 })
+    const now = Date.now()
+    pruneExpiredEntries(responseCache, now)
+    responseCache.set(key, { value: payload, expiresAt: now + CACHE_TTL_SECONDS * 1000 })
+    enforceMaxEntries(responseCache, RESPONSE_CACHE_MAX_ENTRIES)
 }
 
 async function loadStoredSession(c: { env: Bindings }, key: string): Promise<StoredSession | null> {
@@ -94,9 +101,12 @@ async function loadStoredSession(c: { env: Bindings }, key: string): Promise<Sto
         }
     }
 
+    const now = Date.now()
+    pruneExpiredEntries(sessionStore, now)
+
     const record = sessionStore.get(key)
     if (!record) return null
-    if (record.expiresAt < Date.now()) {
+    if (record.expiresAt < now) {
         sessionStore.delete(key)
         return null
     }
@@ -108,7 +118,10 @@ async function saveStoredSession(c: { env: Bindings }, key: string, value: Store
         await c.env.FEEDBACK_KV.put(key, JSON.stringify(value), { expirationTtl: STORE_TTL_SECONDS })
         return
     }
-    sessionStore.set(key, { value, expiresAt: Date.now() + STORE_TTL_SECONDS * 1000 })
+    const now = Date.now()
+    pruneExpiredEntries(sessionStore, now)
+    sessionStore.set(key, { value, expiresAt: now + STORE_TTL_SECONDS * 1000 })
+    enforceMaxEntries(sessionStore, SESSION_STORE_MAX_ENTRIES)
 }
 
 function sanitizeText(value: string): string {
@@ -244,7 +257,7 @@ feedback.post(
         })
 
         const requestBody = {
-            model: resolveFeedbackModel(aiProvider, c.env),
+            model: resolveModelByProvider(aiProvider, c.env, DEFAULT_AI_MODELS),
             messages: [
                 { role: 'system', content: FEEDBACK_SYSTEM_PROMPT },
                 { role: 'user', content: userMessage },

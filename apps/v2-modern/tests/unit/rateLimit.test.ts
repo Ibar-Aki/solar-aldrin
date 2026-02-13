@@ -65,4 +65,25 @@ describe('rateLimit middleware', () => {
         expect((await app.fetch(req(), env)).status).toBe(200)
         expect((await app.fetch(req(), env)).status).toBe(429)
     })
+
+    it('メモリフォールバック時にキー数上限を超えた古いキーは退避される', async () => {
+        const app = new Hono<{ Bindings: Env }>()
+        app.use('*', rateLimit({ maxRequests: 1, windowMs: 60_000, memoryStoreMaxKeys: 2 }))
+        app.get('/', (c) => c.text('ok'))
+
+        const env = {
+            SENTRY_ENV: 'local',
+            REQUIRE_RATE_LIMIT_KV: '0',
+        }
+
+        const req = (ip: string) => new Request('http://localhost/', {
+            headers: { 'cf-connecting-ip': ip },
+        })
+
+        expect((await app.fetch(req('10.0.0.1'), env)).status).toBe(200)
+        expect((await app.fetch(req('10.0.0.2'), env)).status).toBe(200)
+        expect((await app.fetch(req('10.0.0.3'), env)).status).toBe(200)
+        // 上限2件のため、最初のキーは退避され、再度200になる。
+        expect((await app.fetch(req('10.0.0.1'), env)).status).toBe(200)
+    })
 })

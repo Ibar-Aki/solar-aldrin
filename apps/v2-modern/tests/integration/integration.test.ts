@@ -64,6 +64,75 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.maxTokens).toBe(900)
     })
 
+    it('AI_POLICY_VERSION が設定されている場合は policyVersion に最優先で反映する', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{
+                    message: {
+                        content: JSON.stringify({
+                            reply: '了解しました。',
+                            extracted: { nextAction: 'ask_hazard' },
+                        }),
+                    },
+                }],
+                usage: { total_tokens: 30 },
+            }),
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'mock-key',
+            AI_POLICY_VERSION: 'policy-2026-02-14',
+            SENTRY_RELEASE: 'release-should-not-win',
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json() as { meta?: { server?: { policyVersion?: string } } }
+        expect(body.meta?.server?.policyVersion).toBe('policy-2026-02-14')
+    })
+
+    it('AI_POLICY_VERSION 未設定時は SENTRY_RELEASE を policyVersion として使う', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{
+                    message: {
+                        content: JSON.stringify({
+                            reply: '了解しました。',
+                            extracted: { nextAction: 'ask_hazard' },
+                        }),
+                    },
+                }],
+                usage: { total_tokens: 30 },
+            }),
+            text: async () => '',
+        } as Response)
+
+        const req = new Request('http://localhost/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+            }),
+        })
+
+        const res = await chat.fetch(req, {
+            OPENAI_API_KEY: 'mock-key',
+            SENTRY_RELEASE: 'release-2026-02-14',
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json() as { meta?: { server?: { policyVersion?: string } } }
+        expect(body.meta?.server?.policyVersion).toBe('release-2026-02-14')
+    })
+
     it('AI_PROVIDER=gemini のとき Gemini OpenAI互換エンドポイントと既定モデルを使用する', async () => {
         const mockResponse = {
             choices: [{

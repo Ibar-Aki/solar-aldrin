@@ -11,6 +11,13 @@ import { logError } from '../observability/logger'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import { isNonAnswerText } from '../../src/lib/nonAnswer'
 import type { Bindings } from '../types'
+import {
+    DEFAULT_AI_MODELS,
+    resolveAIProvider,
+    resolveModelByProvider,
+    resolveProviderApiKey,
+    type AIProvider,
+} from '../lib/aiProvider'
 
 const chat = new Hono<{
     Bindings: Bindings
@@ -45,6 +52,7 @@ const GEMINI_RECOVERY_PROFILE_SOFT_TIMEOUT_MS = 22000
 const GEMINI_RECOVERY_PROFILE_HARD_TIMEOUT_MS = 30000
 // 禁止語（最小セット）
 const BANNED_WORDS = ['殺す', '死ね', '爆弾', 'テロ']
+const DEFAULT_POLICY_VERSION = '2026-02-11-a-b-observability-1'
 const CONTEXT_INJECTION_MAX_LENGTH = 1200
 const CONTEXT_FIELD_MAX_LENGTH = 120
 const INSTRUCTION_LIKE_PATTERNS = [
@@ -129,37 +137,18 @@ const CHAT_RESPONSE_JSON_SCHEMA = {
     },
 } as const
 
-type AIProvider = 'openai' | 'gemini'
 type ChatResponseFormatType = 'json_schema_strict' | 'json_object'
-
-function resolveAIProvider(raw: string | undefined): AIProvider {
-    const normalized = raw?.trim().toLowerCase()
-    if (normalized === 'gemini') return 'gemini'
-    return 'openai'
-}
 
 function getProviderDisplayName(provider: AIProvider): string {
     return provider === 'gemini' ? 'Gemini' : 'OpenAI'
 }
 
 function resolvePrimaryAIModel(provider: AIProvider, env: Bindings): string {
-    const common = env.AI_MODEL?.trim()
-    if (common) return common
-    if (provider === 'gemini') {
-        return env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
-    }
-    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+    return resolveModelByProvider(provider, env, DEFAULT_AI_MODELS)
 }
 
 function resolveFallbackOpenAIModel(env: Bindings): string {
-    return env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
-}
-
-function resolveProviderApiKey(provider: AIProvider, env: Bindings): string | undefined {
-    if (provider === 'gemini') {
-        return env.GEMINI_API_KEY?.trim() || undefined
-    }
-    return env.OPENAI_API_KEY?.trim() || undefined
+    return env.OPENAI_MODEL?.trim() || DEFAULT_AI_MODELS.openai
 }
 
 function resolveResponseFormat(provider: AIProvider): {
@@ -296,6 +285,12 @@ function resolveRuntimeConfig(provider: AIProvider, env: Bindings): RuntimeConfi
 function isTruthyFlag(raw: string | undefined): boolean {
     const normalized = raw?.trim().toLowerCase()
     return normalized === '1' || normalized === 'true'
+}
+
+function resolvePolicyVersion(env: Bindings): string {
+    return env.AI_POLICY_VERSION?.trim()
+        || env.SENTRY_RELEASE?.trim()
+        || DEFAULT_POLICY_VERSION
 }
 
 function getLastUserMessage(
@@ -1151,9 +1146,10 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
         let effectiveProvider: AIProvider = aiProvider
         let effectiveModel = aiModel
         let providerFallbackUsed = false
+        const policyVersion = resolvePolicyVersion(c.env)
 
         const buildServerPolicyMeta = () => ({
-            policyVersion: '2026-02-11-a-b-observability-1',
+            policyVersion,
             responseFormat: resolveResponseFormatLabel(aiProvider),
             parseRecoveryEnabled: true,
             // Backward-compatible fields for existing preflight/e2e checks.
