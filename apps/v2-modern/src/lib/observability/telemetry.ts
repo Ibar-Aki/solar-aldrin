@@ -1,4 +1,4 @@
-import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+import { resolveRuntimeApiBase } from '@/lib/apiBase'
 import { getApiToken } from '@/lib/apiToken'
 
 export type TelemetryEventName =
@@ -22,8 +22,12 @@ export type TelemetryEvent = {
 
 function resolveApiBase(): string {
     // 空文字は「未指定扱い」として `/api/metrics` にフォールバックさせる
-    const normalized = normalizeApiBaseFromEnv(import.meta.env.VITE_API_BASE_URL, '')
-    return normalized
+    return resolveRuntimeApiBase({
+        envBase: import.meta.env.VITE_API_BASE_URL,
+        fallbackBase: '',
+        runtimeOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        productionApiBase: import.meta.env.VITE_PRODUCTION_API_BASE_URL,
+    })
 }
 
 const apiBase = resolveApiBase()

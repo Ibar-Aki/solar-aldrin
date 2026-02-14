@@ -185,4 +185,18 @@ export function computeSilentRetryDelayMs(error: NormalizedChatError): number {
     return 0
 }
 
+export function shouldLogChatErrorToConsole(error: NormalizedChatError): boolean {
+    const mode = import.meta.env.MODE
+    if (mode === 'test' || mode === 'vitest') return false
+
+    // 開発環境では観測性を優先する。
+    if (import.meta.env.DEV) return true
+
+    // 本番ではノイズを減らし、想定外/重大系に限定して出力する。
+    if (error.errorType === 'unknown') return true
+    if (error.errorType === 'auth') return true
+    if (error.errorType === 'server' && !error.retriable) return true
+    return false
+}
+
 export { MAX_SILENT_RETRIES }

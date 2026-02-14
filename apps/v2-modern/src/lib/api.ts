@@ -12,11 +12,16 @@ import {
     type FeedbackRequest,
     type FeedbackResponse,
 } from '@/lib/schema'
-import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+import { resolveRuntimeApiBase } from '@/lib/apiBase'
 import { getApiToken } from '@/lib/apiToken'
 
 function resolveApiBase(): string {
-    return normalizeApiBaseFromEnv(import.meta.env.VITE_API_BASE_URL, '/api')
+    return resolveRuntimeApiBase({
+        envBase: import.meta.env.VITE_API_BASE_URL,
+        fallbackBase: '/api',
+        runtimeOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        productionApiBase: import.meta.env.VITE_PRODUCTION_API_BASE_URL,
+    })
 }
 
 const API_BASE = resolveApiBase()

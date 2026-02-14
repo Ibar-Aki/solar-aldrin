@@ -20,6 +20,7 @@ import {
     MAX_SILENT_RETRIES,
     normalizeChatError,
     type NormalizedChatError,
+    shouldLogChatErrorToConsole,
     shouldSilentRetry,
     sleep,
 } from '@/hooks/chat/errorHandling'
@@ -485,7 +486,9 @@ export function useChat() {
                 e && typeof e === 'object' && 'errorType' in e
                     ? (e as NormalizedChatError)
                     : normalizeChatError(e)
-            console.error('Chat error:', normalizedError)
+            if (shouldLogChatErrorToConsole(normalizedError)) {
+                console.error('Chat error:', normalizedError)
+            }
             setError(normalizedError.message, 'chat')
             setCanRetry(Boolean(lastUserMessageRef.current) && normalizedError.canRetry)
 

@@ -16,6 +16,19 @@ function trimTrailingSlashes(value: string): string {
     return value.replace(/\/+$/g, '')
 }
 
+function parseUrlOrNull(value: string): URL | null {
+    try {
+        return new URL(value)
+    } catch {
+        return null
+    }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+    const normalized = hostname.trim().toLowerCase()
+    return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '[::1]'
+}
+
 export function normalizeApiBaseFromEnv(envBase: unknown, fallbackBase: string = '/api'): string {
     if (typeof envBase !== 'string') return fallbackBase
 
@@ -33,3 +46,39 @@ export function normalizeApiBaseFromEnv(envBase: unknown, fallbackBase: string =
     return noSlash
 }
 
+type ResolveRuntimeApiBaseOptions = {
+    envBase: unknown
+    fallbackBase?: string
+    runtimeOrigin?: string
+    productionApiBase?: unknown
+}
+
+export function resolveRuntimeApiBase(options: ResolveRuntimeApiBaseOptions): string {
+    const fallbackBase = options.fallbackBase ?? '/api'
+    const normalizedBase = normalizeApiBaseFromEnv(options.envBase, fallbackBase)
+    if (!isHttpUrl(normalizedBase)) return normalizedBase
+
+    const runtimeOrigin = typeof options.runtimeOrigin === 'string'
+        ? options.runtimeOrigin.trim()
+        : ''
+    if (!runtimeOrigin) return normalizedBase
+
+    const runtimeUrl = parseUrlOrNull(runtimeOrigin)
+    const apiUrl = parseUrlOrNull(normalizedBase)
+    if (!runtimeUrl || !apiUrl) return normalizedBase
+
+    // HTTPS配信中に localhost API が指定されている場合は、混在コンテンツで失敗するため補正する。
+    if (
+        runtimeUrl.protocol === 'https:' &&
+        !isLoopbackHostname(runtimeUrl.hostname) &&
+        isLoopbackHostname(apiUrl.hostname)
+    ) {
+        const productionApiBase = normalizeApiBaseFromEnv(
+            options.productionApiBase,
+            'https://voice-ky-v2.solar-aldrin-ky.workers.dev/api'
+        )
+        return productionApiBase
+    }
+
+    return normalizedBase
+}

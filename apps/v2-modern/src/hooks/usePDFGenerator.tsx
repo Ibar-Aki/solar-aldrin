@@ -1,9 +1,7 @@
 /**
  * PDF生成フック
  */
-import { useCallback, useState } from 'react'
-import { pdf } from '@react-pdf/renderer'
-import { KYSheetPDF } from '@/components/pdf/KYSheetPDF'
+import { createElement, useCallback, useState } from 'react'
 import type { SoloKYSession, FeedbackSummary, SupplementItem } from '@/types/ky'
 import type { RecentRiskMatch } from '@/lib/historyUtils'
 
@@ -12,6 +10,44 @@ type PDFOptions = {
     supplements?: SupplementItem[]
     actionGoalOverride?: string | null
     recentRisks?: RecentRiskMatch[]
+}
+
+let pdfDepsPromise:
+    | Promise<{
+        renderPdf: (document: ReturnType<typeof createElement>) => { toBlob: () => Promise<Blob> }
+        KYSheetPDF: (props: {
+            session: SoloKYSession
+            feedback?: FeedbackSummary | null
+            supplements?: SupplementItem[]
+            actionGoalOverride?: string | null
+            recentRisks?: RecentRiskMatch[]
+        }) => ReturnType<typeof createElement>
+    }>
+    | null = null
+
+async function loadPdfDependencies() {
+    if (!pdfDepsPromise) {
+        pdfDepsPromise = Promise.all([
+            import('@react-pdf/renderer'),
+            import('@/components/pdf/KYSheetPDF'),
+        ]).then(([renderer, pdfTemplate]) => ({
+            renderPdf: renderer.pdf,
+            KYSheetPDF: pdfTemplate.KYSheetPDF,
+        }))
+    }
+    return pdfDepsPromise
+}
+
+async function buildPdfBlob(session: SoloKYSession, options?: PDFOptions): Promise<Blob> {
+    const { renderPdf, KYSheetPDF } = await loadPdfDependencies()
+    const doc = createElement(KYSheetPDF, {
+        session,
+        feedback: options?.feedback ?? null,
+        supplements: options?.supplements ?? [],
+        actionGoalOverride: options?.actionGoalOverride ?? null,
+        recentRisks: options?.recentRisks ?? [],
+    })
+    return renderPdf(doc).toBlob()
 }
 
 export function usePDFGenerator() {
@@ -31,17 +67,7 @@ export function usePDFGenerator() {
         setError(null)
 
         try {
-            // PDFドキュメントを生成
-            const doc = (
-                <KYSheetPDF
-                    session={session}
-                    feedback={options?.feedback ?? null}
-                    supplements={options?.supplements ?? []}
-                    actionGoalOverride={options?.actionGoalOverride ?? null}
-                    recentRisks={options?.recentRisks ?? []}
-                />
-            )
-            const blob = await pdf(doc).toBlob()
+            const blob = await buildPdfBlob(session, options)
 
             // ファイル名を生成
             const date = new Date(session.createdAt)
@@ -81,16 +107,7 @@ export function usePDFGenerator() {
         setError(null)
 
         try {
-            const doc = (
-                <KYSheetPDF
-                    session={session}
-                    feedback={options?.feedback ?? null}
-                    supplements={options?.supplements ?? []}
-                    actionGoalOverride={options?.actionGoalOverride ?? null}
-                    recentRisks={options?.recentRisks ?? []}
-                />
-            )
-            const blob = await pdf(doc).toBlob()
+            const blob = await buildPdfBlob(session, options)
             return blob
         } catch (e) {
             console.error('PDF generation error:', e)

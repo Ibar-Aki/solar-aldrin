@@ -1123,10 +1123,27 @@ describe('Chat API Integration Flow', () => {
         expect(referenceMessage).toBeTruthy()
         expect(referenceMessage?.content).toContain('[instruction-like-text]')
         expect(referenceMessage?.content).toContain('session_context_json')
-        expect(referenceMessage?.content).toContain('"processPhase":"溶接前点検"')
-        expect(referenceMessage?.content).toContain('"healthCondition":"良好"')
         expect(referenceMessage?.content).toContain('conversation_summary_text')
         expect(referenceMessage?.content).toContain('足場組立')
+
+        const sessionContextMatch = referenceMessage?.content.match(/session_context_json:\n(\{[\s\S]*\})$/)
+        expect(sessionContextMatch?.[1]).toBeTruthy()
+        const parsedSessionContext = JSON.parse(sessionContextMatch?.[1] ?? '{}') as {
+            userName?: string
+            siteName?: string
+            weather?: string
+            processPhase?: string
+            healthCondition?: string
+            workItemCount?: number
+        }
+        expect(parsedSessionContext).toMatchObject({
+            userName: '現場太郎',
+            siteName: 'A工区',
+            weather: '雨',
+            processPhase: '溶接前点検',
+            healthCondition: '良好',
+            workItemCount: 2,
+        })
         expect(requestBody.response_format?.type).toBe('json_schema')
         expect(requestBody.response_format?.json_schema?.strict).toBe(true)
         expect(requestBody.response_format?.json_schema?.name).toBe('ky_chat_response')

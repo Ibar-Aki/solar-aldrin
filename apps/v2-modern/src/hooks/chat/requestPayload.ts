@@ -2,13 +2,17 @@ export const MAX_CLIENT_HISTORY_MESSAGES = 12
 export const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
 
 type ChatMessage = {
-    role: string
+    role: unknown
     content: string
 }
 
 type RequestMessage = {
     role: 'user' | 'assistant'
     content: string
+}
+
+function isRequestRole(role: unknown): role is RequestMessage['role'] {
+    return role === 'user' || role === 'assistant'
 }
 
 export function buildRequestMessages(params: {
@@ -19,9 +23,9 @@ export function buildRequestMessages(params: {
 }): RequestMessage[] {
     const { messages, text, skipUserMessage, retryAssistantMessage } = params
 
-    const chatMessages = messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    const chatMessages: RequestMessage[] = messages
+        .filter((message): message is RequestMessage => isRequestRole(message.role))
+        .map(message => ({ role: message.role, content: message.content }))
 
     if (!skipUserMessage) {
         const combined = [...chatMessages, { role: 'user' as const, content: text }]

@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { pdf } from '@react-pdf/renderer'
-import { KYSheetPDF } from '@/components/pdf/KYSheetPDF'
+import { createElement, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { SoloKYSession } from '@/types/ky'
 import { mockPDFSession, mockLongPDFSession } from './mockSession'
 
@@ -14,6 +12,10 @@ type PdfJsModule = typeof import('pdfjs-dist')
 type PdfJsWorkerModule = { default?: string } | string
 
 let pdfjsReady: Promise<{ pdfjs: PdfJsModule; workerSrc: string }> | null = null
+let pdfRendererReady: Promise<{
+    renderPdf: (document: ReturnType<typeof createElement>) => { toBlob: () => Promise<Blob> }
+    KYSheetPDF: (props: { session: SoloKYSession }) => ReturnType<typeof createElement>
+}> | null = null
 
 // react-pdf は内部でグローバルな FontStore / renderer を共有するため、
 // ブラウザ上で複数PDFを同時レンダリングするとレイアウトが不安定になり得る（E2Eがflaky化）。
@@ -65,10 +67,24 @@ async function loadPdfJs() {
     return pdfjsReady
 }
 
+async function loadPdfRenderer() {
+    if (!pdfRendererReady) {
+        pdfRendererReady = Promise.all([
+            import('@react-pdf/renderer'),
+            import('@/components/pdf/KYSheetPDF'),
+        ]).then(([renderer, template]) => ({
+            renderPdf: renderer.pdf,
+            KYSheetPDF: template.KYSheetPDF,
+        }))
+    }
+    return pdfRendererReady
+}
+
 async function renderPdfPagesInternal(container: HTMLDivElement, session: SoloKYSession) {
     await preloadPdfFonts()
-    const doc = <KYSheetPDF session={session} />
-    const blob = await pdf(doc).toBlob()
+    const { renderPdf, KYSheetPDF } = await loadPdfRenderer()
+    const doc = createElement(KYSheetPDF, { session })
+    const blob = await renderPdf(doc).toBlob()
     const bytes = new Uint8Array(await blob.arrayBuffer())
     const { pdfjs } = await loadPdfJs()
     const pdfDoc = await pdfjs.getDocument({ data: bytes }).promise

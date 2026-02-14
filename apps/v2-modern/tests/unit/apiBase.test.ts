@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeApiBaseFromEnv } from '@/lib/apiBase'
+import { normalizeApiBaseFromEnv, resolveRuntimeApiBase } from '@/lib/apiBase'
 
 describe('normalizeApiBaseFromEnv', () => {
     it('未指定は /api にフォールバックする', () => {
@@ -35,3 +35,24 @@ describe('normalizeApiBaseFromEnv', () => {
     })
 })
 
+describe('resolveRuntimeApiBase', () => {
+    it('https配信 + localhost API指定時は productionApiBase に補正する', () => {
+        const resolved = resolveRuntimeApiBase({
+            envBase: 'http://localhost:8787',
+            fallbackBase: '/api',
+            runtimeOrigin: 'https://voice-ky-v2.pages.dev',
+            productionApiBase: 'https://voice-ky-v2.solar-aldrin-ky.workers.dev',
+        })
+        expect(resolved).toBe('https://voice-ky-v2.solar-aldrin-ky.workers.dev/api')
+    })
+
+    it('ローカル開発（localhost配信）では localhost API を維持する', () => {
+        const resolved = resolveRuntimeApiBase({
+            envBase: 'http://localhost:8787',
+            fallbackBase: '/api',
+            runtimeOrigin: 'http://localhost:5173',
+            productionApiBase: 'https://voice-ky-v2.solar-aldrin-ky.workers.dev',
+        })
+        expect(resolved).toBe('http://localhost:8787/api')
+    })
+})
