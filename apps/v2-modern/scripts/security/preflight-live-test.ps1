@@ -39,6 +39,40 @@ function Resolve-ExpectedResponseFormat {
     return 'json_schema_strict'
 }
 
+function Resolve-ExpectedOpenAiRetryCount {
+    param(
+        [AllowNull()][Nullable[int]]$ExplicitValue,
+        [string]$AiProvider
+    )
+
+    if ($ExplicitValue -ne $null) {
+        return [int]$ExplicitValue
+    }
+
+    $provider = if ([string]::IsNullOrWhiteSpace($AiProvider)) { 'openai' } else { $AiProvider.Trim().ToLowerInvariant() }
+    if ($provider -eq 'gemini') {
+        return 0
+    }
+    return 1
+}
+
+function Resolve-ExpectedMaxTokens {
+    param(
+        [AllowNull()][Nullable[int]]$ExplicitValue,
+        [string]$AiProvider
+    )
+
+    if ($ExplicitValue -ne $null) {
+        return [int]$ExplicitValue
+    }
+
+    $provider = if ([string]::IsNullOrWhiteSpace($AiProvider)) { 'openai' } else { $AiProvider.Trim().ToLowerInvariant() }
+    if ($provider -eq 'gemini') {
+        return 700
+    }
+    return 900
+}
+
 $expectedParseRecoveryEnabledValue = $true
 if (-not [string]::IsNullOrWhiteSpace($ExpectedParseRecoveryEnabled)) {
     $parseRecoveryToken = $ExpectedParseRecoveryEnabled.Trim().ToLowerInvariant()
@@ -51,9 +85,9 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedParseRecoveryEnabled)) {
     }
 }
 
-$expectedOpenAiRetryCountValue = 1
+$expectedOpenAiRetryCountValue = $null
 if (-not [string]::IsNullOrWhiteSpace($ExpectedOpenAiRetryCount)) {
-    $expectedOpenAiRetryCountValue = [int]$ExpectedOpenAiRetryCount
+    $expectedOpenAiRetryCountValue = [Nullable[int]]([int]$ExpectedOpenAiRetryCount)
 }
 
 $expectedMaxTokensValue = $null
@@ -178,7 +212,7 @@ function Assert-ChatServerPolicy {
         [string]$ExpectedPolicyVersionValue,
         [string]$ExpectedResponseFormatValue,
         [bool]$ExpectedParseRecoveryEnabledValue,
-        [int]$ExpectedOpenAiRetryCountValue,
+        [AllowNull()][Nullable[int]]$ExpectedOpenAiRetryCountValue,
         [AllowNull()][Nullable[int]]$ExpectedMaxTokensValue,
         [string]$RawBody
     )
@@ -210,6 +244,8 @@ function Assert-ChatServerPolicy {
     $actualAiProvider = if ($aiProviderProperty) { [string]$aiProviderProperty.Value } else { '' }
     $actualResponseFormat = if ($responseFormatProperty) { [string]$responseFormatProperty.Value } else { '' }
     $expectedResponseFormatEffective = Resolve-ExpectedResponseFormat -ExplicitValue $ExpectedResponseFormatValue -AiProvider $actualAiProvider
+    $expectedOpenAiRetryCountEffective = Resolve-ExpectedOpenAiRetryCount -ExplicitValue $ExpectedOpenAiRetryCountValue -AiProvider $actualAiProvider
+    $expectedMaxTokensEffective = Resolve-ExpectedMaxTokens -ExplicitValue $ExpectedMaxTokensValue -AiProvider $actualAiProvider
     $expectedResponseFormatSource = if ([string]::IsNullOrWhiteSpace($ExpectedResponseFormatValue) -or $ExpectedResponseFormatValue.Trim().ToLowerInvariant() -eq 'auto') {
         "auto(provider=$($actualAiProvider.ToLowerInvariant()))"
     } else {
@@ -226,12 +262,10 @@ function Assert-ChatServerPolicy {
     }
     $actualOpenAiRetryCount = [int]$retryCountProperty.Value
 
-    $actualMaxTokens = $null
-    if ($maxTokensProperty -and $null -ne $maxTokensProperty.Value) {
-        $actualMaxTokens = [int]$maxTokensProperty.Value
-    } elseif ($ExpectedMaxTokensValue -ne $null) {
+    if (-not $maxTokensProperty -or $null -eq $maxTokensProperty.Value) {
         throw "chat authenticated response missing meta.server.maxTokens. body=$RawBody"
     }
+    $actualMaxTokens = [int]$maxTokensProperty.Value
 
     $mismatches = @()
     if ($actualPolicyVersion -ne $ExpectedPolicyVersionValue) {
@@ -243,19 +277,18 @@ function Assert-ChatServerPolicy {
     if ($actualParseRecoveryEnabled -ne $ExpectedParseRecoveryEnabledValue) {
         $mismatches += "parseRecoveryEnabled expected=$ExpectedParseRecoveryEnabledValue actual=$actualParseRecoveryEnabled"
     }
-    if ($actualOpenAiRetryCount -ne $ExpectedOpenAiRetryCountValue) {
-        $mismatches += "openaiRetryCount expected=$ExpectedOpenAiRetryCountValue actual=$actualOpenAiRetryCount"
+    if ($actualOpenAiRetryCount -ne $expectedOpenAiRetryCountEffective) {
+        $mismatches += "openaiRetryCount expected=$expectedOpenAiRetryCountEffective actual=$actualOpenAiRetryCount"
     }
-    if ($ExpectedMaxTokensValue -ne $null -and $actualMaxTokens -ne $ExpectedMaxTokensValue) {
-        $mismatches += "maxTokens expected=$ExpectedMaxTokensValue actual=$actualMaxTokens"
+    if ($actualMaxTokens -ne $expectedMaxTokensEffective) {
+        $mismatches += "maxTokens expected=$expectedMaxTokensEffective actual=$actualMaxTokens"
     }
 
     if ($mismatches.Count -gt 0) {
         throw "chat meta.server mismatch. $($mismatches -join ', ') body=$RawBody"
     }
 
-    $maxTokensLabel = if ($actualMaxTokens -ne $null) { $actualMaxTokens } else { 'missing' }
-    Write-Host "[OK] chat meta.server: policyVersion=$actualPolicyVersion responseFormat=$actualResponseFormat parseRecoveryEnabled=$actualParseRecoveryEnabled openaiRetryCount=$actualOpenAiRetryCount maxTokens=$maxTokensLabel"
+    Write-Host "[OK] chat meta.server: policyVersion=$actualPolicyVersion responseFormat=$actualResponseFormat parseRecoveryEnabled=$actualParseRecoveryEnabled openaiRetryCount=$actualOpenAiRetryCount maxTokens=$actualMaxTokens"
 }
 
 function Resolve-DefaultPagesUrl {

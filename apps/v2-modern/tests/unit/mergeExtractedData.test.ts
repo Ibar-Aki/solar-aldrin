@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
 
 describe('mergeExtractedData', () => {
-    it('whyDangerous が欠落した場合に hazardDescription から補完する', () => {
+    it('whyDangerous が欠落していても推論補完しない', () => {
         const currentWorkItem = {
             workDescription: '配管の溶接作業',
             hazardDescription: '火花が飛散して可燃物に引火する恐れ',
@@ -18,9 +18,7 @@ describe('mergeExtractedData', () => {
             nextAction: 'ask_more_work',
         })
 
-        expect(result.workItemPatch.whyDangerous).toEqual([
-            '周囲の養生が不十分で火花が飛散して引火する恐れがあります',
-        ])
+        expect(result.workItemPatch.whyDangerous).toBeUndefined()
         expect(result.shouldCommitWorkItem).toBe(false)
     })
 

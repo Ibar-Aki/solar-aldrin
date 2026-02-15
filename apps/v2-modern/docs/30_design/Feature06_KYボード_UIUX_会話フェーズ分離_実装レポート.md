@@ -25,6 +25,7 @@
 更新日: 2026-02-12（KYボードに文字数セグメント指標を追加: 具体性/詳細度バー + どうなる入力チェック）
 更新日: 2026-02-12（文字数セグメント指標とチェックを左列右端へ移動、バー長短縮、ラベルをバー左側へ変更）
 更新日: 2026-02-12（KYボードに拡大/縮小切替を追加、具体性/詳細度ラベルをセグメントバーへ近接）
+更新日: 2026-02-14（「何が原因で」への作業文誤混入対策: 補完停止・Workersガード・プロンプト強化）
 
 ## 目的
 
@@ -163,6 +164,15 @@
   - 「2件目のKYに移る」旨のテキスト入力でも、API呼び出し無しで1件目を確定し
     - `次の、2件目の想定される危険を教えてください。`
     を表示して2件目へ移行
+- `apps/v2-modern/src/lib/chat/mergeExtractedData.ts`
+  - `whyDangerous` 欠落時の推論補完を停止（`workDescription`/`hazardDescription` から自動補完しない）
+- `apps/v2-modern/workers/lib/chat/fieldGuard.ts`（新規）
+  - `workDescription` と `whyDangerous` の混同（同文/作業文流入）を検知し、原因欄を除外
+  - 混同除外後に原因欄が空で、かつ後続フェーズへ進もうとしている場合は `nextAction=ask_why` へ補正
+- `apps/v2-modern/workers/lib/chat/execution.ts`
+  - 正規化後に `applyKyFieldGuard` を適用し、必要時は原因確認の再質問文へ置換
+- `apps/v2-modern/workers/prompts/soloKY.ts`
+  - 「原因欄に作業文を入れない」制約、NG/OK例、曖昧時は `whyDangerous=null` 維持のルールを追加
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - `status === completed` を監視し、ストア側で完了になったケースでも `/complete` へ自動遷移するよう補強
 

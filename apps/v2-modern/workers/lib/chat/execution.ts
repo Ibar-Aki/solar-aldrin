@@ -5,6 +5,7 @@ import { type AIProvider } from '../aiProvider'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../openai'
 import { type ChatExecutionProfile, resolveResponseFormat, resolveResponseFormatLabel } from './config'
 import { type SchemaIssueSummary, summarizeSchemaValidationError } from './errors'
+import { applyKyFieldGuard } from './fieldGuard'
 import { compactExtractedData, normalizeModelResponse } from './normalize'
 
 type ParseRetryMeta = {
@@ -399,11 +400,15 @@ export async function runChatCompletionFlow(params: RunChatCompletionFlowParams)
     }
 
     const validContent = finalValidation.data
-    const compactedExtracted = compactExtractedData(validContent.extracted)
+    const guarded = applyKyFieldGuard(validContent.extracted)
+    const compactedExtracted = compactExtractedData(guarded.extracted)
+    const reply = guarded.askWhyEnforced
+        ? '「何が原因で」に当たる内容を教えてください。例: 足元が滑りやすい、手すりが不十分 など。'
+        : validContent.reply
 
     return {
         kind: 'success',
-        reply: validContent.reply,
+        reply,
         extracted: compactedExtracted || {},
         usage: {
             totalTokens: state.totalTokens,

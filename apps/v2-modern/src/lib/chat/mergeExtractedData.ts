@@ -39,35 +39,6 @@ function normalizeMeasureText(value: string): string {
     return value.replace(/\s+/g, ' ').trim()
 }
 
-function inferWhyDangerousFromContext(
-    currentWorkItem: Partial<WorkItem>,
-    data: ExtractedData
-): string[] | undefined {
-    const sourceCandidates = [
-        data.hazardDescription,
-        currentWorkItem.hazardDescription,
-        data.workDescription,
-        currentWorkItem.workDescription,
-    ]
-        .filter((v): v is string => typeof v === 'string')
-        .map((v) => v.replace(/\s+/g, ' ').trim())
-        .filter((v) => v.length > 0 && !isNonAnswerText(v))
-
-    if (sourceCandidates.length === 0) return undefined
-
-    for (const source of sourceCandidates) {
-        if (/(ため|ので|から|により|によって|恐れがあります|危険があります|リスクがあります)/.test(source)) {
-            return [source]
-        }
-        const stripped = source.replace(/[。.!！?？]+$/g, '').trim()
-        if (stripped.length > 0) {
-            return [`${stripped}ため`]
-        }
-    }
-
-    return undefined
-}
-
 function mergeUniqueCountermeasures(
     base: Countermeasure[] | undefined,
     incoming: Countermeasure[] | undefined
@@ -108,11 +79,10 @@ export function mergeExtractedData(
         workItemPatch.riskLevel = data.riskLevel as 1 | 2 | 3 | 4 | 5
     }
 
-    const hasCurrentWhyDangerous = (currentWorkItem.whyDangerous?.length ?? 0) > 0
     const whyDangerousIncoming =
         data.whyDangerous && data.whyDangerous.length > 0
             ? data.whyDangerous
-            : (hasCurrentWhyDangerous ? undefined : inferWhyDangerousFromContext(currentWorkItem, data))
+            : undefined
     const mergedWhyDangerous = mergeUniqueList(currentWorkItem.whyDangerous, whyDangerousIncoming)
     if (mergedWhyDangerous) {
         workItemPatch.whyDangerous = mergedWhyDangerous

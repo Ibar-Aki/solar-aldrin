@@ -22,6 +22,9 @@ jobs:
   unit_lint_build:
     name: Unit + Lint + Build (apps/v2-modern)
     runs-on: ubuntu-latest
+    env:
+      VITE_API_BASE_URL: https://voice-ky-v2.solar-aldrin-ky.workers.dev/api
+      VITE_PRODUCTION_API_BASE_URL: https://voice-ky-v2.solar-aldrin-ky.workers.dev/api
     defaults:
       run:
         working-directory: apps/v2-modern
@@ -47,4 +50,3 @@ jobs:
 
       - name: Build
         run: npm run build
-

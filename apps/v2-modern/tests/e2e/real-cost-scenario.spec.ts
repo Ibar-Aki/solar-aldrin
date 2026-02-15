@@ -55,13 +55,13 @@ const EXPECTED_SERVER_PARSE_RECOVERY_ENABLED = (() => {
     if (!raw) return true
     return raw === '1' || raw === 'true'
 })()
-const EXPECTED_SERVER_OPENAI_RETRY_COUNT = (() => {
+const LIVE_EXPECTED_OPENAI_RETRY_COUNT_OVERRIDE = (() => {
     const raw = process.env.LIVE_EXPECTED_OPENAI_RETRY_COUNT?.trim()
-    if (!raw) return 1
+    if (!raw) return null
     const parsed = Number.parseInt(raw, 10)
-    return Number.isFinite(parsed) ? parsed : 1
+    return Number.isFinite(parsed) ? parsed : null
 })()
-const EXPECTED_SERVER_MAX_TOKENS = (() => {
+const LIVE_EXPECTED_MAX_TOKENS_OVERRIDE = (() => {
     const raw = process.env.LIVE_EXPECTED_MAX_TOKENS?.trim()
     if (!raw) return null
     const parsed = Number.parseInt(raw, 10)
@@ -70,6 +70,20 @@ const EXPECTED_SERVER_MAX_TOKENS = (() => {
 
 function expectedResponseFormatByProvider(provider: string | undefined): 'json_object' | 'json_schema_strict' {
     return provider === 'gemini' ? 'json_object' : 'json_schema_strict'
+}
+
+function expectedRetryCountByProvider(provider: string | undefined): number {
+    if (LIVE_EXPECTED_OPENAI_RETRY_COUNT_OVERRIDE !== null) {
+        return LIVE_EXPECTED_OPENAI_RETRY_COUNT_OVERRIDE
+    }
+    return provider === 'gemini' ? 0 : 1
+}
+
+function expectedMaxTokensByProvider(provider: string | undefined): number {
+    if (LIVE_EXPECTED_MAX_TOKENS_OVERRIDE !== null) {
+        return LIVE_EXPECTED_MAX_TOKENS_OVERRIDE
+    }
+    return provider === 'gemini' ? 700 : 900
 }
 
 // Skip logic: Run if LIVE is explicitly requested OR if DRY_RUN is requested
@@ -368,7 +382,8 @@ async function recordApiTrace(response: Response) {
             const expectedResponseFormatSource = LIVE_EXPECTED_RESPONSE_FORMAT_OVERRIDE
                 ? 'env(LIVE_EXPECTED_RESPONSE_FORMAT)'
                 : `auto(provider=${entry.serverAiProvider ?? 'openai'})`
-            const expectedRetryCount = EXPECTED_SERVER_OPENAI_RETRY_COUNT
+            const expectedRetryCount = expectedRetryCountByProvider(entry.serverAiProvider)
+            const expectedMaxTokens = expectedMaxTokensByProvider(entry.serverAiProvider)
             const actualRetryCount = entry.serverAiRetryCount ?? entry.serverOpenaiRetryCount
             if (entry.serverPolicyVersion !== EXPECTED_SERVER_POLICY_VERSION) {
                 mismatchReasons.push(`policyVersion expected=${EXPECTED_SERVER_POLICY_VERSION} actual=${entry.serverPolicyVersion ?? 'missing'}`)
@@ -382,8 +397,8 @@ async function recordApiTrace(response: Response) {
             if (actualRetryCount !== expectedRetryCount) {
                 mismatchReasons.push(`aiRetryCount expected=${expectedRetryCount} actual=${actualRetryCount ?? 'missing'}`)
             }
-            if (EXPECTED_SERVER_MAX_TOKENS !== null && entry.serverMaxTokens !== EXPECTED_SERVER_MAX_TOKENS) {
-                mismatchReasons.push(`maxTokens expected=${EXPECTED_SERVER_MAX_TOKENS} actual=${entry.serverMaxTokens ?? 'missing'}`)
+            if (entry.serverMaxTokens !== expectedMaxTokens) {
+                mismatchReasons.push(`maxTokens expected=${expectedMaxTokens} actual=${entry.serverMaxTokens ?? 'missing'}`)
             }
 
             if (mismatchReasons.length > 0) {
@@ -804,10 +819,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         let userTurn = 0
 
         // Helper: ユーザー入力とAI応答待ち
-        async function sendUserMessage(text: string, expectedResponsePart?: string) {
+        async function sendUserMessage(text: string, expectedResponsePart?: string): Promise<string> {
             userTurn++
             try {
                 assertNoFatalInfraError()
+                await expect(chatInput).toBeVisible({ timeout: 15000 })
                 await chatInput.fill(text)
                 await expect(sendButton).toBeEnabled() // 送信ボタンが有効になるのを待つ
                 await sendButton.click()
@@ -948,8 +964,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         const latestBubble = assistantBubbles.last()
                         const textContent = await latestBubble.textContent().catch(() => null) || ''
                         await recordLog('AI', textContent)
+                        return textContent
                     }
                 }
+                return ''
             } catch (error: unknown) {
                 const message = error instanceof Error ? error.message : String(error)
                 addFailureDiagnostic(`Turn ${userTurn} failed. User="${shortText(text, 40)}" reason="${shortText(message, 180)}"`)
@@ -982,32 +1000,47 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '行動目標を記録しました')
         } else {
             // --- 1件目: 危険内容（何をするとき / 何が原因で / どうなる） ---
-            await sendUserMessage('配管の溶接作業をするとき、周囲の養生が不十分で火花が飛散し、可燃物に引火する恐れがあります')
+            const firstHazardReply = await sendUserMessage('配管の溶接作業をするとき、周囲の養生が不十分で火花が飛散し、可燃物に引火する恐れがあります')
 
             // 危険度選択UIが出る場合はそれを使い、出ない場合はテキストで送る
             let selectedRisk = false
-            try {
-                await expect(page.locator('text=危険度を選択').first()).toBeVisible({ timeout: 45000 })
-                const risk5Button = page.locator('button').filter({ hasText: '重大' }).first()
-                await expect(risk5Button).toBeEnabled()
+            const normalizedFirstReply = firstHazardReply
+                .normalize('NFKC')
+                .replace(/\s+/g, '')
+                .toLowerCase()
+            const asksRiskLevelByText =
+                normalizedFirstReply.includes('危険度') ||
+                normalizedFirstReply.includes('リスク') ||
+                normalizedFirstReply.includes('1から5') ||
+                normalizedFirstReply.includes('1〜5') ||
+                normalizedFirstReply.includes('1~5') ||
+                normalizedFirstReply.includes('5段階')
+            const risk5Button = page.locator('button').filter({ hasText: '重大' }).first()
+            const riskUiAlreadyVisible = await risk5Button.isVisible().catch(() => false)
 
-                const countBefore = await assistantBubbles.count()
-                const startWait = Date.now()
-                await risk5Button.click()
-                await recordLog('User', '(Selected Risk Level: 5)')
+            if (asksRiskLevelByText || riskUiAlreadyVisible) {
+                try {
+                    await expect(risk5Button).toBeVisible({ timeout: 8000 })
+                    await expect(risk5Button).toBeEnabled({ timeout: 8000 })
 
-                await expect(async () => {
-                    const countAfter = await assistantBubbles.count()
-                    expect(countAfter).toBeGreaterThan(countBefore)
-                }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
+                    const countBefore = await assistantBubbles.count()
+                    const startWait = Date.now()
+                    await risk5Button.click()
+                    await recordLog('User', '(Selected Risk Level: 5)')
 
-                const endWait = Date.now()
-                METRICS.uiReadyTimes.push(endWait - startWait)
-                const riskReply = await assistantBubbles.last().textContent() || ''
-                await recordLog('AI', riskReply)
-                selectedRisk = true
-            } catch {
-                selectedRisk = false
+                    await expect(async () => {
+                        const countAfter = await assistantBubbles.count()
+                        expect(countAfter).toBeGreaterThan(countBefore)
+                    }).toPass({ timeout: CHAT_WAIT_TIMEOUT_MS })
+
+                    const endWait = Date.now()
+                    METRICS.uiReadyTimes.push(endWait - startWait)
+                    const riskReply = await assistantBubbles.last().textContent() || ''
+                    await recordLog('AI', riskReply)
+                    selectedRisk = true
+                } catch {
+                    selectedRisk = false
+                }
             }
 
             if (!selectedRisk) {
@@ -1024,22 +1057,35 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             }
 
             // 完了確認（AIが「これでOK？」を聞く想定）
-            await sendUserMessage('これでOKです。他にありません。')
+            const inputVisibleBeforeConfirm = await chatInput.isVisible().catch(() => false)
+            if (inputVisibleBeforeConfirm) {
+                await sendUserMessage('これでOKです。他にありません。')
+            } else {
+                completionArrived = await Promise.race([
+                    page.waitForURL('**/complete', { timeout: 10000 }).then(() => true).catch(() => false),
+                    page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+                ])
+            }
 
             // 2件目の途中でも打ち切り可能（2件目は破棄して行動目標へ）。
             // 実運用では保存件数の反映遅延があるため、件数コミット待ちは行わず
             // 「KY完了」ショートカット→未遷移時は行動目標入力へフォールバックする。
-            await sendUserMessage('KY完了')
-            const completedByShortcut = await Promise.race([
-                page.waitForURL('**/complete', { timeout: 30000 }).then(() => true).catch(() => false),
-                page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false),
-            ])
-            if (completedByShortcut) {
-                completionArrived = true
-                await recordLog('System', 'Navigated to Complete page (auto after KY完了)')
-                METRICS.navigationSuccess = true
-            } else {
-                await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
+            if (!completionArrived) {
+                const inputVisibleBeforeShortcut = await chatInput.isVisible().catch(() => false)
+                if (inputVisibleBeforeShortcut) {
+                    await sendUserMessage('KY完了')
+                    const completedByShortcut = await Promise.race([
+                        page.waitForURL('**/complete', { timeout: 30000 }).then(() => true).catch(() => false),
+                        page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false),
+                    ])
+                    if (completedByShortcut) {
+                        completionArrived = true
+                        await recordLog('System', 'Navigated to Complete page (auto after KY完了)')
+                        METRICS.navigationSuccess = true
+                    } else {
+                        await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。これで内容を確定して終了してください。')
+                    }
+                }
             }
         }
 
@@ -1079,36 +1125,52 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         if (!completionArrived) {
             let finishVisible = await waitForFinishButton(30000)
             if (!finishVisible && !DRY_RUN) {
-                await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
-                finishVisible = await waitForFinishButton(30000)
+                const inputVisible = await chatInput.isVisible().catch(() => false)
+                if (inputVisible) {
+                    await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
+                    finishVisible = await waitForFinishButton(30000)
+                } else {
+                    completionArrived = await tryWaitForCompletionPage(10000)
+                }
             }
-            if (!finishVisible && !DRY_RUN) {
-                await sendUserMessage('はい、これで確定して終了してください。')
-                finishVisible = await waitForFinishButton(30000)
+            if (!finishVisible && !DRY_RUN && !completionArrived) {
+                const inputVisible = await chatInput.isVisible().catch(() => false)
+                if (inputVisible) {
+                    await sendUserMessage('はい、これで確定して終了してください。')
+                    finishVisible = await waitForFinishButton(30000)
+                } else {
+                    completionArrived = await tryWaitForCompletionPage(10000)
+                }
             }
-            if (!finishVisible) {
+            if (!finishVisible && !completionArrived) {
                 const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
                 addFailureDiagnostic(`button-complete-session did not appear. progress=${progressText ?? 'unknown'}`)
                 throw new Error('button-complete-session did not appear')
             }
-
-            await finishButton.click()
-            await recordLog('User', '(Clicked Finish Button)')
-
-            // 遷移待ち (URL or Element)
-            try {
-                await Promise.race([
-                    page.waitForURL('**/complete', { timeout: 30000 }),
-                    page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
-                ])
-            } catch (error: unknown) {
-                const message = error instanceof Error ? error.message : String(error)
-                addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
-                throw error
+            if (completionArrived && !METRICS.navigationSuccess) {
+                await recordLog('System', 'Navigated to Complete page (auto)')
+                METRICS.navigationSuccess = true
             }
-            completionArrived = true
-            await recordLog('System', 'Navigated to Complete page')
-            METRICS.navigationSuccess = true
+
+            if (!completionArrived) {
+                await finishButton.click()
+                await recordLog('User', '(Clicked Finish Button)')
+
+                // 遷移待ち (URL or Element)
+                try {
+                    await Promise.race([
+                        page.waitForURL('**/complete', { timeout: 30000 }),
+                        page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
+                    ])
+                } catch (error: unknown) {
+                    const message = error instanceof Error ? error.message : String(error)
+                    addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
+                    throw error
+                }
+                completionArrived = true
+                await recordLog('System', 'Navigated to Complete page')
+                METRICS.navigationSuccess = true
+            }
         }
 
         // --- Phase 2.6 Evolution: Verify Feedback Features ---

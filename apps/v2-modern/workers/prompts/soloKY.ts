@@ -33,6 +33,15 @@ export const SOLO_KY_SYSTEM_PROMPT = `あなたは建設現場の安全管理AI�
 - ユーザーの発話から、埋められる欄は埋める（1発話で複数欄が埋まってOK）。
 - まだ空欄がある場合は、空欄だけを短く追加質問する。
 - 3つが揃うまで、危険度や対策に進まない。
+- **重要**: 「何が原因で」には、作業の説明文（いつ/何をするか）を入れない。
+- **重要**: 原因が曖昧な場合は whyDangerous を null のままにし、必ず原因確認の質問を返す。
+
+判定ルール（混同防止）:
+- workDescription は「何をする時」（例: 脚立上で天井配線を固定する時）
+- whyDangerous は「何が原因で」（例: 脚立の設置角度が不適切で足元が滑りやすいため）
+- NG: whyDangerous に workDescription と同等の文を入れる
+- NG: whyDangerous に「〜する時」「〜作業」だけを書く
+- OK: whyDangerous に、危険発生の条件・環境・状態を書く（〜ため/〜ので/〜により 等）
 
 nextAction の選び方:
 - workDescription が未確定 → ask_work

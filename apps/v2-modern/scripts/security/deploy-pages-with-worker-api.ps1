@@ -30,6 +30,7 @@ if ($uri.Scheme -ne 'https') {
 }
 
 $env:VITE_API_BASE_URL = $ApiBaseUrl.TrimEnd('/')
+$env:VITE_PRODUCTION_API_BASE_URL = $ApiBaseUrl.TrimEnd('/')
 # Explicitly clear any inherited value to prevent token embedding at build time.
 if (Test-Path Env:VITE_API_TOKEN) {
     Write-Host "INFO: Clearing existing VITE_API_TOKEN before build to avoid token embedding."
@@ -48,3 +49,4 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Deployed Pages project: $ProjectName"
 Write-Host "VITE_API_BASE_URL: $env:VITE_API_BASE_URL"
+Write-Host "VITE_PRODUCTION_API_BASE_URL: $env:VITE_PRODUCTION_API_BASE_URL"
