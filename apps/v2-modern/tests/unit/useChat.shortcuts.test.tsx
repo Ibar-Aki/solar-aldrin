@@ -269,7 +269,6 @@ describe('useChat shortcuts', () => {
     })
 
     it('行動目標入力フェーズでは、明確な目標入力をローカル確定してAPI呼び出しを抑止する', async () => {
-        vi.useFakeTimers()
         const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
         const commitCompleteWorkItem = (index: number) => {
             updateCurrentWorkItem({
@@ -297,17 +296,11 @@ describe('useChat shortcuts', () => {
         expect(vi.mocked(postChat)).not.toHaveBeenCalled()
         expect(useKYStore.getState().session?.actionGoal).toBe('火気使用時の完全養生よし！')
         expect(useKYStore.getState().status).toBe('confirmation')
+        expect(useKYStore.getState().messages.at(-1)?.content).toContain('最終安全確認')
         expect(useKYStore.getState().messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
-
-        await act(async () => {
-            vi.advanceTimersByTime(900)
-        })
-        expect(useKYStore.getState().status).toBe('completed')
-        vi.useRealTimers()
     })
 
     it('行動目標が既にある場合は、完了意思のみの発話でもAPI無しで確認フェーズへ進める', async () => {
-        vi.useFakeTimers()
         const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
         const commitCompleteWorkItem = (index: number) => {
             updateCurrentWorkItem({
@@ -336,12 +329,88 @@ describe('useChat shortcuts', () => {
         expect(vi.mocked(postChat)).not.toHaveBeenCalled()
         expect(useKYStore.getState().session?.actionGoal).toBe('火気使用時の完全養生よし！')
         expect(useKYStore.getState().status).toBe('confirmation')
+        expect(useKYStore.getState().messages.at(-1)?.content).toContain('最終安全確認')
         expect(useKYStore.getState().messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+    })
+
+    it('最終安全確認4項目が揃うと、ローカル完了で完了画面へ進める', async () => {
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        const commitCompleteWorkItem = (index: number) => {
+            updateCurrentWorkItem({
+                workDescription: `作業${index}`,
+                hazardDescription: `危険${index}`,
+                riskLevel: 3,
+                whyDangerous: [`要因${index}`],
+                countermeasures: [
+                    { category: 'equipment', text: `設備対策${index}` },
+                    { category: 'ppe', text: `保護具対策${index}` },
+                ],
+            })
+            commitWorkItem()
+        }
+        commitCompleteWorkItem(1)
+        commitCompleteWorkItem(2)
+        useKYStore.getState().updateActionGoal('火気使用時の完全養生よし！')
+        useKYStore.getState().setStatus('confirmation')
+
+        const { result } = renderHook(() => useChat())
 
         await act(async () => {
-            vi.advanceTimersByTime(900)
+            result.current.completeSafetyConfirmation({
+                pointAndCall: true,
+                toolAndWireInspection: true,
+                ppeReady: true,
+                evacuationRouteAndContact: true,
+            })
         })
-        expect(useKYStore.getState().status).toBe('completed')
-        vi.useRealTimers()
+
+        const state = useKYStore.getState()
+        expect(state.status).toBe('completed')
+        expect(state.session?.safetyChecks).toEqual({
+            pointAndCall: true,
+            toolAndWireInspection: true,
+            ppeReady: true,
+            evacuationRouteAndContact: true,
+        })
+        expect(state.session?.pointingConfirmed).toBe(true)
+        expect(state.session?.allMeasuresImplemented).toBe(true)
+    })
+
+    it('確認ステータス以外では最終安全確認を完了できない', async () => {
+        const { result } = renderHook(() => useChat())
+        const completed = result.current.completeSafetyConfirmation({
+            pointAndCall: true,
+            toolAndWireInspection: true,
+            ppeReady: true,
+            evacuationRouteAndContact: true,
+        })
+        expect(completed).toBe(false)
+        expect(useKYStore.getState().status).not.toBe('completed')
+    })
+
+    it('行動目標確定後は、チェック完了まで自動で完了状態に遷移しない', async () => {
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        const commitCompleteWorkItem = (index: number) => {
+            updateCurrentWorkItem({
+                workDescription: `作業${index}`,
+                hazardDescription: `危険${index}`,
+                riskLevel: 3,
+                whyDangerous: [`要因${index}`],
+                countermeasures: [
+                    { category: 'equipment', text: `設備対策${index}` },
+                    { category: 'ppe', text: `保護具対策${index}` },
+                ],
+            })
+            commitWorkItem()
+        }
+        commitCompleteWorkItem(1)
+        commitCompleteWorkItem(2)
+        useKYStore.getState().setStatus('action_goal')
+        const { result } = renderHook(() => useChat())
+        await act(async () => {
+            await result.current.sendMessage('行動目標は「火気使用時の完全養生よし！」です。')
+        })
+
+        expect(useKYStore.getState().status).toBe('confirmation')
     })
 })

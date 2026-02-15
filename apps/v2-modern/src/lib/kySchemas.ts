@@ -243,6 +243,13 @@ export const WorkItemSchema = z.object({
     countermeasures: z.array(CountermeasureSchema).min(2),
 })
 
+export const SafetyConfirmationChecksSchema = z.object({
+    pointAndCall: z.boolean(),
+    toolAndWireInspection: z.boolean(),
+    ppeReady: z.boolean(),
+    evacuationRouteAndContact: z.boolean(),
+})
+
 /** ISO 8601 日付文字列のスキーマ（ミリ秒対応） */
 export const ISO8601Schema = z.string().regex(
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?([+-]\d{2}:\d{2}|Z)$/,
@@ -265,6 +272,7 @@ export const SoloKYSessionSchema = z.object({
     workItems: z.array(WorkItemSchema),
     actionGoal: z.string().nullable(),
     pointingConfirmed: z.boolean().nullable(),
+    safetyChecks: SafetyConfirmationChecksSchema.nullable().optional(),
     allMeasuresImplemented: z.boolean().nullable(),
     hadNearMiss: z.boolean().nullable(),
     nearMissNote: z.string().nullable(),

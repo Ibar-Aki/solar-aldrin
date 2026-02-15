@@ -8,6 +8,7 @@ const sendMessageMock = vi.fn()
 const completeFirstWorkItemMock = vi.fn()
 const completeSecondWorkItemMock = vi.fn()
 const applyRiskLevelSelectionMock = vi.fn()
+const completeSafetyConfirmationMock = vi.fn()
 const initializeChatMock = vi.fn()
 const retryLastMessageMock = vi.fn()
 
@@ -25,6 +26,7 @@ vi.mock('@/hooks/useChat', () => ({
         completeFirstWorkItem: completeFirstWorkItemMock,
         completeSecondWorkItem: completeSecondWorkItemMock,
         applyRiskLevelSelection: applyRiskLevelSelectionMock,
+        completeSafetyConfirmation: completeSafetyConfirmationMock,
         initializeChat: initializeChatMock,
         retryLastMessage: retryLastMessageMock,
         canRetry: false,
@@ -40,6 +42,7 @@ describe('KYSessionPage first work item flow', () => {
         completeFirstWorkItemMock.mockReset()
         completeSecondWorkItemMock.mockReset()
         applyRiskLevelSelectionMock.mockReset()
+        completeSafetyConfirmationMock.mockReset()
         initializeChatMock.mockReset()
         retryLastMessageMock.mockReset()
         useKYStore.setState(initialState, true)
@@ -143,5 +146,50 @@ describe('KYSessionPage first work item flow', () => {
         expect(screen.getByTestId('ky-board-card')).toHaveAttribute('data-scale', 'expanded')
         expect(screen.getByTestId('ky-board-scale-expanded')).toHaveAttribute('aria-pressed', 'true')
         expect(screen.getByTestId('ky-board-scale-compact')).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('confirmation時は4項目チェックが揃うまで完了ボタンを無効化し、揃うと完了処理を呼ぶ', () => {
+        const { updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus } = useKYStore.getState()
+        updateCurrentWorkItem({
+            workDescription: '作業1',
+            hazardDescription: '危険1',
+            riskLevel: 3,
+            whyDangerous: ['要因1'],
+            countermeasures: [
+                { category: 'equipment', text: '設備対策1' },
+                { category: 'ppe', text: '保護具対策1' },
+            ],
+        })
+        commitWorkItem()
+        updateCurrentWorkItem({
+            workDescription: '作業2',
+            hazardDescription: '危険2',
+            riskLevel: 3,
+            whyDangerous: ['要因2'],
+            countermeasures: [
+                { category: 'equipment', text: '設備対策2' },
+                { category: 'ppe', text: '保護具対策2' },
+            ],
+        })
+        commitWorkItem()
+        updateActionGoal('火気使用時の完全養生よし！')
+        setStatus('confirmation')
+
+        render(<KYSessionPage />)
+
+        expect(screen.getByTestId('safety-checklist-panel')).toBeInTheDocument()
+        expect(screen.queryByPlaceholderText('メッセージを入力...')).not.toBeInTheDocument()
+
+        const completeButton = screen.getByTestId('button-complete-safety-checks')
+        expect(completeButton).toBeDisabled()
+
+        fireEvent.click(screen.getByTestId('safety-check-pointAndCall'))
+        fireEvent.click(screen.getByTestId('safety-check-toolAndWireInspection'))
+        fireEvent.click(screen.getByTestId('safety-check-ppeReady'))
+        fireEvent.click(screen.getByTestId('safety-check-evacuationRouteAndContact'))
+
+        expect(completeButton).not.toBeDisabled()
+        fireEvent.click(completeButton)
+        expect(completeSafetyConfirmationMock).toHaveBeenCalledTimes(1)
     })
 })

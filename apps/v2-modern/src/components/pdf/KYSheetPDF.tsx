@@ -248,6 +248,12 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
     const formatDateShort = (isoString: string) => isoString.slice(0, 10)
 
     const actionGoalText = actionGoalOverride ?? session.actionGoal
+    const safetyChecks = session.safetyChecks ?? {
+        pointAndCall: Boolean(session.pointingConfirmed),
+        toolAndWireInspection: false,
+        ppeReady: false,
+        evacuationRouteAndContact: false,
+    }
 
     return (
         <Document>
@@ -428,15 +434,27 @@ export function KYSheetPDF({ session, feedback, supplements, actionGoalOverride,
                 <View style={styles.confirmSection}>
                     <View style={styles.checkItem}>
                         <View style={styles.checkbox}>
-                            <Text>{session.pointingConfirmed ? '✓' : ''}</Text>
+                            <Text>{safetyChecks.pointAndCall ? '✓' : ''}</Text>
                         </View>
-                        <Text>指差し呼称を実施した</Text>
+                        <Text>指差し呼称を実施した。</Text>
                     </View>
                     <View style={styles.checkItem}>
                         <View style={styles.checkbox}>
-                            <Text>{session.allMeasuresImplemented ? '✓' : ''}</Text>
+                            <Text>{safetyChecks.toolAndWireInspection ? '✓' : ''}</Text>
                         </View>
-                        <Text>上記の対策をすべて実施する</Text>
+                        <Text>工具やワイヤーの点検を行った。</Text>
+                    </View>
+                    <View style={styles.checkItem}>
+                        <View style={styles.checkbox}>
+                            <Text>{safetyChecks.ppeReady ? '✓' : ''}</Text>
+                        </View>
+                        <Text>適切な保護具を準備した。</Text>
+                    </View>
+                    <View style={styles.checkItem}>
+                        <View style={styles.checkbox}>
+                            <Text>{safetyChecks.evacuationRouteAndContact ? '✓' : ''}</Text>
+                        </View>
+                        <Text>退避経路と連絡手段を確認した。</Text>
                     </View>
                     {session.hadNearMiss && (
                         <View style={{ marginTop: 5 }}>

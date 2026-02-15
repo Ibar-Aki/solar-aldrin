@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { SoloKYSession, SessionStatus, ProcessPhase, HealthCondition } from '@/types/ky'
+import type { SoloKYSession, SessionStatus, ProcessPhase, HealthCondition, SafetyConfirmationChecks } from '@/types/ky'
 import type { KYStore } from '../kyStore'
 import { saveSession } from '@/lib/db'
 import { sendTelemetry } from '@/lib/observability/telemetry'
@@ -21,6 +21,7 @@ export interface SessionSlice {
     completeSession: (data: {
         actionGoal: string | null
         pointingConfirmed: boolean | null
+        safetyChecks?: SafetyConfirmationChecks | null
         allMeasuresImplemented: boolean | null
         hadNearMiss: boolean | null
         nearMissNote?: string | null
@@ -77,6 +78,7 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
             workItems: [],
             actionGoal: null,
             pointingConfirmed: null,
+            safetyChecks: null,
             allMeasuresImplemented: null,
             hadNearMiss: null,
             nearMissNote: null,
@@ -117,12 +119,17 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
     completeSession: (data) => {
         const session = get().session
         if (!session) return
+        const resolvedSafetyChecks = data.safetyChecks ?? session.safetyChecks ?? null
+        const allSafetyChecksDone = resolvedSafetyChecks
+            ? Object.values(resolvedSafetyChecks).every(Boolean)
+            : null
         // レビュー指摘: 完了後のセッションオブジェクトを組み立てる
         const completedSession: SoloKYSession = {
             ...session,
             actionGoal: data.actionGoal,
-            pointingConfirmed: data.pointingConfirmed,
-            allMeasuresImplemented: data.allMeasuresImplemented,
+            pointingConfirmed: data.pointingConfirmed ?? resolvedSafetyChecks?.pointAndCall ?? null,
+            safetyChecks: resolvedSafetyChecks,
+            allMeasuresImplemented: data.allMeasuresImplemented ?? allSafetyChecksDone,
             hadNearMiss: data.hadNearMiss,
             nearMissNote: data.nearMissNote ?? null,
             workEndTime: now(),

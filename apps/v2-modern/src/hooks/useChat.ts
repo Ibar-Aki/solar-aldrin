@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useKYStore } from '@/stores/kyStore'
 import { postChat } from '@/lib/api'
 import { mergeExtractedData } from '@/lib/chat/mergeExtractedData'
-import type { ExtractedData } from '@/types/ky'
+import type { ExtractedData, SafetyConfirmationChecks } from '@/types/ky'
 import { sendTelemetry } from '@/lib/observability/telemetry'
 import { buildContextInjection, getWeatherContext } from '@/lib/contextUtils'
 import { buildConversationSummary } from '@/lib/chat/conversationSummary'
@@ -33,7 +33,6 @@ import {
 } from '@/hooks/chat/workItemUtils'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
-const AUTO_COMPLETE_DELAY_MS = 800
 
 type RetrySource = 'none' | 'manual' | 'silent'
 
@@ -247,21 +246,36 @@ export function useChat() {
         )
     }, [session, status, updateCurrentWorkItem, addMessage, setError])
 
-    const completeSessionFromCurrentState = useCallback(() => {
+    const completeSessionFromCurrentState = useCallback((safetyChecks?: SafetyConfirmationChecks | null) => {
         const latest = useKYStore.getState()
         if (!latest.session) return
         if (latest.status === 'completed') return
         if (latest.session.workItems.length < 1) return
         if (!latest.session.actionGoal || latest.session.actionGoal.trim().length === 0) return
 
+        const resolvedSafetyChecks = safetyChecks ?? latest.session.safetyChecks ?? null
+        const allSafetyChecksDone = resolvedSafetyChecks
+            ? Object.values(resolvedSafetyChecks).every(Boolean)
+            : latest.session.allMeasuresImplemented ?? null
+
         latest.completeSession({
             actionGoal: latest.session.actionGoal,
-            pointingConfirmed: latest.session.pointingConfirmed ?? null,
-            allMeasuresImplemented: latest.session.allMeasuresImplemented ?? null,
+            pointingConfirmed: resolvedSafetyChecks?.pointAndCall ?? latest.session.pointingConfirmed ?? null,
+            safetyChecks: resolvedSafetyChecks,
+            allMeasuresImplemented: allSafetyChecksDone,
             hadNearMiss: latest.session.hadNearMiss ?? null,
             nearMissNote: latest.session.nearMissNote ?? null,
         })
     }, [])
+
+    const completeSafetyConfirmation = useCallback((safetyChecks: SafetyConfirmationChecks): boolean => {
+        const latest = useKYStore.getState()
+        if (!latest.session) return false
+        if (latest.status !== 'confirmation') return false
+        if (!latest.session.actionGoal || latest.session.actionGoal.trim().length === 0) return false
+        completeSessionFromCurrentState(safetyChecks)
+        return true
+    }, [completeSessionFromCurrentState])
 
     const completeFirstWorkItem = useCallback((): boolean => {
         const latest = useKYStore.getState()
@@ -528,7 +542,7 @@ export function useChat() {
 
                 return {
                     ...data,
-                    reply: '行動目標を記録しました。完了画面に移動します。',
+                    reply: '行動目標を記録しました。続けて最終安全確認（4項目）をチェックしてください。',
                     extracted: {
                         ...extracted,
                         actionGoal: hasActionGoal ? extracted.actionGoal : userGoal,
@@ -617,7 +631,7 @@ export function useChat() {
         }
 
         // 仕様: 2件が完了済みなら「KY完了」で即時にセッション完了（APIは呼ばない）
-        if (session && status !== 'completed' && session.workItems.length >= 2 && isKYCompleteCommand(text)) {
+        if (session && status === 'action_goal' && session.workItems.length >= 2 && isKYCompleteCommand(text)) {
             const normalized = text.trim()
             addMessage('user', normalized)
             void sendTelemetry({
@@ -697,21 +711,18 @@ export function useChat() {
                 setStatus('confirmation')
                 addMessage(
                     'assistant',
-                    '行動目標を記録しました。完了画面に移動します。',
+                    '行動目標を記録しました。続けて最終安全確認（4項目）をチェックしてください。',
                     {
                         actionGoal: finalGoal,
                         nextAction: 'confirm',
                     }
                 )
-                setTimeout(() => {
-                    completeSessionFromCurrentState()
-                }, AUTO_COMPLETE_DELAY_MS)
                 return
             }
         }
 
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [session, status, currentWorkItem, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal, completeFirstWorkItem, completeSessionFromCurrentState])
+    }, [session, status, currentWorkItem, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal, completeFirstWorkItem])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return
@@ -746,6 +757,7 @@ export function useChat() {
         completeFirstWorkItem,
         completeSecondWorkItem,
         applyRiskLevelSelection,
+        completeSafetyConfirmation,
         retryLastMessage,
         canRetry,
     }

@@ -844,6 +844,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     const countBefore = await assistantBubbles.count()
                     const thinking = page.locator('text=考え中...').first()
                     const completionHeading = page.locator('text=KY活動完了').first()
+                    const safetyChecklistPanel = page.getByTestId('safety-checklist-panel')
                     const deadline = Date.now() + CHAT_WAIT_TIMEOUT_MS
 
                     while (Date.now() < deadline) {
@@ -855,6 +856,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         }
                         const countAfter = await assistantBubbles.count()
                         if (countAfter > countBefore) {
+                            METRICS.uiReadyTimes.push(Date.now() - startWait)
+                            return
+                        }
+                        const onSafetyChecklist = await safetyChecklistPanel.isVisible().catch(() => false)
+                        if (onSafetyChecklist) {
                             METRICS.uiReadyTimes.push(Date.now() - startWait)
                             return
                         }
@@ -973,6 +979,48 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 addFailureDiagnostic(`Turn ${userTurn} failed. User="${shortText(text, 40)}" reason="${shortText(message, 180)}"`)
                 throw error
             }
+        }
+
+        async function completeSafetyChecklistIfVisible(): Promise<boolean> {
+            const checklistPanel = page.getByTestId('safety-checklist-panel')
+            const completionHeading = page.locator('text=KY活動完了').first()
+            const waitDeadline = Date.now() + 15000
+
+            while (Date.now() < waitDeadline) {
+                assertNoFatalInfraError()
+                const onCompletePage = page.url().includes('/complete') || await completionHeading.isVisible().catch(() => false)
+                if (onCompletePage) return false
+
+                const visible = await checklistPanel.isVisible().catch(() => false)
+                if (visible) break
+                await page.waitForTimeout(200)
+            }
+
+            const isVisibleNow = await checklistPanel.isVisible().catch(() => false)
+            if (!isVisibleNow) return false
+
+            const checkKeys = [
+                'pointAndCall',
+                'toolAndWireInspection',
+                'ppeReady',
+                'evacuationRouteAndContact',
+            ] as const
+
+            for (const key of checkKeys) {
+                const checkbox = page.getByTestId(`safety-check-${key}`)
+                await expect(checkbox).toBeVisible({ timeout: 5000 })
+                const pressed = await checkbox.getAttribute('aria-pressed')
+                if (pressed !== 'true') {
+                    await checkbox.click()
+                    await recordLog('User', `(Checked ${key})`)
+                }
+            }
+
+            const completeButton = page.getByTestId('button-complete-safety-checks')
+            await expect(completeButton).toBeEnabled({ timeout: 5000 })
+            await completeButton.click()
+            await recordLog('User', '(Clicked 安全確認完了)')
+            return true
         }
 
         let completionArrived = false
@@ -1103,6 +1151,13 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         }
 
         if (!completionArrived) {
+            const completedSafetyChecklist = await completeSafetyChecklistIfVisible()
+            if (completedSafetyChecklist) {
+                completionArrived = await tryWaitForCompletionPage(30000)
+            }
+        }
+
+        if (!completionArrived) {
             completionArrived = await tryWaitForCompletionPage(15000)
         }
         if (completionArrived && !METRICS.navigationSuccess) {
@@ -1118,7 +1173,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
                     transitioned = await tryWaitForCompletionPage(30000)
                 } else {
-                    transitioned = await tryWaitForCompletionPage(10000)
+                    const completedSafetyChecklist = await completeSafetyChecklistIfVisible()
+                    transitioned = completedSafetyChecklist
+                        ? await tryWaitForCompletionPage(30000)
+                        : await tryWaitForCompletionPage(10000)
                 }
             }
             if (!transitioned && !DRY_RUN) {
@@ -1127,7 +1185,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     await sendUserMessage('はい、これで確定して終了してください。')
                     transitioned = await tryWaitForCompletionPage(30000)
                 } else {
-                    transitioned = await tryWaitForCompletionPage(10000)
+                    const completedSafetyChecklist = await completeSafetyChecklistIfVisible()
+                    transitioned = completedSafetyChecklist
+                        ? await tryWaitForCompletionPage(30000)
+                        : await tryWaitForCompletionPage(10000)
                 }
             }
             if (!transitioned) {

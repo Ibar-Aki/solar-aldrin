@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChatInput } from '@/components/ChatInput'
 import { ChatBubble } from '@/components/ChatBubble'
 import { RiskLevelSelector } from '@/components/RiskLevelSelector'
@@ -11,11 +12,20 @@ import { useChat } from '@/hooks/useChat'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 import { isWorkItemComplete } from '@/lib/validation'
 import { isNonAnswerText } from '@/lib/nonAnswer'
+import type { SafetyConfirmationChecks } from '@/types/ky'
+
+const DEFAULT_SAFETY_CHECKS: SafetyConfirmationChecks = {
+    pointAndCall: false,
+    toolAndWireInspection: false,
+    ppeReady: false,
+    evacuationRouteAndContact: false,
+}
 
 export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [kyBoardScale, setKyBoardScale] = useState<'expanded' | 'compact'>('expanded')
+    const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
 
     const WAIT_NOTICE_AFTER_MS = (() => {
         const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
@@ -39,6 +49,7 @@ export function KYSessionPage() {
         completeFirstWorkItem,
         completeSecondWorkItem,
         applyRiskLevelSelection,
+        completeSafetyConfirmation,
         initializeChat,
         retryLastMessage,
         canRetry,
@@ -94,6 +105,20 @@ export function KYSessionPage() {
         completeSecondWorkItem()
     }
 
+    const safetyChecks = safetyChecksDraft ?? session?.safetyChecks ?? DEFAULT_SAFETY_CHECKS
+
+    const toggleSafetyCheck = (key: keyof SafetyConfirmationChecks) => {
+        setSafetyChecksDraft((prev) => {
+            const base = prev ?? session?.safetyChecks ?? DEFAULT_SAFETY_CHECKS
+            return { ...base, [key]: !base[key] }
+        })
+    }
+
+    const handleCompleteSafetyConfirmation = () => {
+        if (!Object.values(safetyChecks).every(Boolean)) return
+        completeSafetyConfirmation(safetyChecks)
+    }
+
     if (!session) return null
 
     const processPhaseLabel = (session.processPhase ?? 'フリー').trim() || 'フリー'
@@ -144,8 +169,20 @@ export function KYSessionPage() {
         workItemCount === 1 &&
         isWorkItemComplete(currentWorkItem) &&
         secondWorkItemMeasureCount >= 2
+    const safetyChecklistItems: Array<{ key: keyof SafetyConfirmationChecks; label: string }> = [
+        { key: 'pointAndCall', label: '指差し呼称を実施した。' },
+        { key: 'toolAndWireInspection', label: '工具やワイヤーの点検を行った。' },
+        { key: 'ppeReady', label: '適切な保護具を準備した。' },
+        { key: 'evacuationRouteAndContact', label: '退避経路と連絡手段を確認した。' },
+    ]
+    const completedSafetyCheckCount = safetyChecklistItems.filter((item) => safetyChecks[item.key]).length
+    const isSafetyChecklistComplete = completedSafetyCheckCount === safetyChecklistItems.length
     const shouldHideChatInputForFirstWorkItem =
         canShowFirstWorkItemCompleteButton && firstWorkItemMeasureCount >= 3
+    const shouldShowSafetyChecklist = status === 'confirmation'
+    const shouldHideChatInput =
+        shouldShowSafetyChecklist ||
+        shouldHideChatInputForFirstWorkItem
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
@@ -299,6 +336,60 @@ export function KYSessionPage() {
                     </div>
                 )}
 
+                {shouldShowSafetyChecklist && (
+                    <div className="px-4 py-2 border-b bg-slate-50" data-testid="safety-checklist-panel">
+                        <div className="max-w-4xl mx-auto">
+                            <Card className="gap-2 py-3">
+                                <CardHeader className="py-1.5">
+                                    <CardTitle className="text-sm">
+                                        最終安全確認 ({completedSafetyCheckCount}/{safetyChecklistItems.length})
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="pt-0 space-y-2">
+                                    {safetyChecklistItems.map((item) => {
+                                        const checked = safetyChecks[item.key]
+                                        return (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                onClick={() => toggleSafetyCheck(item.key)}
+                                                aria-pressed={checked}
+                                                data-testid={`safety-check-${item.key}`}
+                                                className={`w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${
+                                                    checked
+                                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                                        : 'border-slate-200 bg-white text-slate-700'
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`inline-flex h-5 w-5 items-center justify-center rounded border text-xs ${
+                                                        checked
+                                                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                                                            : 'border-slate-300 bg-white text-transparent'
+                                                    }`}
+                                                    aria-hidden="true"
+                                                >
+                                                    ✓
+                                                </span>
+                                                <span>{item.label}</span>
+                                            </button>
+                                        )
+                                    })}
+                                    <Button
+                                        type="button"
+                                        onClick={handleCompleteSafetyConfirmation}
+                                        disabled={!isSafetyChecklistComplete}
+                                        className="w-full"
+                                        data-testid="button-complete-safety-checks"
+                                    >
+                                        確認OKで完了画面へ進む
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
+                )}
+
                 {/* エラー表示 */}
                 {error && (
                     <div className="px-4 py-2 border-b border-red-100 bg-red-50">
@@ -322,7 +413,7 @@ export function KYSessionPage() {
                 )}
 
                 {/* 入力エリア */}
-                {!shouldHideChatInputForFirstWorkItem && (
+                {!shouldHideChatInput && (
                     <div className="px-3 sm:px-4 py-1.5 sm:py-2">
                         <div className="max-w-4xl mx-auto w-full">
                             <ChatInput

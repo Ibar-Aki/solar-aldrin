@@ -19,6 +19,18 @@ export type HealthCondition = HealthConditionFromZod
 export type CountermeasureCategory = CountermeasureCategoryFromZod
 export type Countermeasure = CountermeasureFromZod
 
+/** 行動目標後の最終安全確認チェック */
+export interface SafetyConfirmationChecks {
+    /** 指差し呼称 */
+    pointAndCall: boolean
+    /** 工具・ワイヤー点検 */
+    toolAndWireInspection: boolean
+    /** 保護具準備 */
+    ppeReady: boolean
+    /** 退避経路・連絡手段確認 */
+    evacuationRouteAndContact: boolean
+}
+
 /** 作業単位（作業 + 危険 + なぜ + 対策 のセット） */
 export interface WorkItem {
     /** 一意識別子 (uuid) */
@@ -73,6 +85,8 @@ export interface SoloKYSession {
     actionGoal: string | null
     /** 指差し確認実施フラグ */
     pointingConfirmed: boolean | null
+    /** 行動目標後の安全確認チェック（4項目） */
+    safetyChecks?: SafetyConfirmationChecks | null
 
     // === 完了確認 ===
     /** 全対策実施フラグ */
