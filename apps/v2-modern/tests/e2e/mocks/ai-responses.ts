@@ -23,14 +23,13 @@ export const basicFlowResponses = [
         },
     },
     {
-        reply: '対策はOKです。行動目標を短く1つ決めて、画面の「完了」ボタンで終了してください。',
+        reply: '対策はOKです。本日の行動目標を1つ設定してください。',
         extracted: {
             countermeasures: [
                 { category: 'equipment', text: '足場の点検を実施する' },
                 { category: 'ppe', text: '安全帯を二丁掛けで使用する' },
             ],
-            actionGoal: '高所作業は足元確認と二丁掛けを徹底する',
-            nextAction: 'completed',
+            nextAction: 'ask_goal',
         },
         usage: {
             totalTokens: 80,

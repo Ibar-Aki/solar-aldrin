@@ -33,6 +33,7 @@ import {
 } from '@/hooks/chat/workItemUtils'
 
 const RETRY_ASSISTANT_MESSAGE = '申し訳ありません、応答に失敗しました。もう一度お試しください。'
+const AUTO_COMPLETE_DELAY_MS = 800
 
 type RetrySource = 'none' | 'manual' | 'silent'
 
@@ -109,6 +110,11 @@ export function useChat() {
             latestStatus === 'work_items' &&
             latestSession.workItems.length === 0
         )
+        const isSecondWorkItemContext = Boolean(
+            latestSession &&
+            latestStatus === 'work_items' &&
+            latestSession.workItems.length === 1
+        )
         const beforeMeasureCount = countValidCountermeasures(latestWorkItem.countermeasures)
 
         if (data?.nextAction) {
@@ -149,8 +155,8 @@ export function useChat() {
             updateCurrentWorkItem(patchToApply)
         }
 
-        // 1件目は「1件目完了」操作でのみ確定させる（AI nextAction ではコミットしない）
-        if (shouldCommitWorkItem && !isFirstWorkItemContext) {
+        // 1件目/2件目は完了ボタン操作でのみ確定させる（AI nextAction ではコミットしない）
+        if (shouldCommitWorkItem && !isFirstWorkItemContext && !isSecondWorkItemContext) {
             commitWorkItem()
         }
 
@@ -158,7 +164,10 @@ export function useChat() {
         if (!stateAfter.session) return
 
         let stateForPendingCheck = stateAfter
-        if (stateAfter.session.workItems.length === 0 && stateAfter.status !== 'work_items') {
+        const hasPendingWorkItemForManualCompletion =
+            stateAfter.session.workItems.length < 2 &&
+            isWorkItemComplete(stateAfter.currentWorkItem)
+        if (hasPendingWorkItemForManualCompletion && stateAfter.status !== 'work_items') {
             setStatus('work_items')
             stateForPendingCheck = useKYStore.getState()
         }
@@ -168,24 +177,37 @@ export function useChat() {
             stateForPendingCheck.session?.workItems.length ?? 0,
             stateForPendingCheck.currentWorkItem
         )
-        if (!isFirstPendingAfterUpdate) return
+        const isSecondPendingAfterUpdate = Boolean(
+            stateForPendingCheck.status === 'work_items' &&
+            (stateForPendingCheck.session?.workItems.length ?? 0) === 1 &&
+            isWorkItemComplete(stateForPendingCheck.currentWorkItem)
+        )
+        if (isFirstPendingAfterUpdate || isSecondPendingAfterUpdate) {
+            const afterMeasureCount = countValidCountermeasures(stateForPendingCheck.currentWorkItem.countermeasures)
+            if (beforeMeasureCount < 2 && afterMeasureCount >= 2) {
+                if (isSecondPendingAfterUpdate) {
+                    addMessage(
+                        'assistant',
+                        '他に対策はありますか？それとも、行動目標の設定に進みますか？',
+                        { nextAction: 'ask_countermeasure' }
+                    )
+                } else {
+                    addMessage(
+                        'assistant',
+                        '他に何か対策はありますか？それとも、2件目のKYに移りますか？',
+                        { nextAction: 'ask_countermeasure' }
+                    )
+                }
+                return
+            }
 
-        const afterMeasureCount = countValidCountermeasures(stateForPendingCheck.currentWorkItem.countermeasures)
-        if (beforeMeasureCount < 2 && afterMeasureCount >= 2) {
-            addMessage(
-                'assistant',
-                '他に何か対策はありますか？それとも、2件目のKYに移りますか？',
-                { nextAction: 'ask_countermeasure' }
-            )
-            return
-        }
-
-        if (beforeMeasureCount < 3 && afterMeasureCount >= 3) {
-            addMessage(
-                'assistant',
-                '3件目の対策を追記しました。続けるには「1件目完了」を押してください。',
-                { nextAction: 'ask_countermeasure' }
-            )
+            if (isFirstPendingAfterUpdate && beforeMeasureCount < 3 && afterMeasureCount >= 3) {
+                addMessage(
+                    'assistant',
+                    '3件目の対策を追記しました。続けるには「1件目完了」を押してください。',
+                    { nextAction: 'ask_countermeasure' }
+                )
+            }
         }
     }, [updateCurrentWorkItem, commitWorkItem, updateActionGoal, setStatus, addMessage])
 
@@ -225,6 +247,22 @@ export function useChat() {
         )
     }, [session, status, updateCurrentWorkItem, addMessage, setError])
 
+    const completeSessionFromCurrentState = useCallback(() => {
+        const latest = useKYStore.getState()
+        if (!latest.session) return
+        if (latest.status === 'completed') return
+        if (latest.session.workItems.length < 1) return
+        if (!latest.session.actionGoal || latest.session.actionGoal.trim().length === 0) return
+
+        latest.completeSession({
+            actionGoal: latest.session.actionGoal,
+            pointingConfirmed: latest.session.pointingConfirmed ?? null,
+            allMeasuresImplemented: latest.session.allMeasuresImplemented ?? null,
+            hadNearMiss: latest.session.hadNearMiss ?? null,
+            nearMissNote: latest.session.nearMissNote ?? null,
+        })
+    }, [])
+
     const completeFirstWorkItem = useCallback((): boolean => {
         const latest = useKYStore.getState()
         if (!latest.session) return false
@@ -247,6 +285,32 @@ export function useChat() {
             'assistant',
             '次の、2件目の想定される危険を教えてください。',
             { nextAction: 'ask_hazard' }
+        )
+        return true
+    }, [])
+
+    const completeSecondWorkItem = useCallback((): boolean => {
+        const latest = useKYStore.getState()
+        if (!latest.session) return false
+        if (latest.status !== 'work_items') return false
+        if (latest.session.workItems.length !== 1) return false
+        if (!isWorkItemComplete(latest.currentWorkItem)) {
+            latest.setError('作業項目が不完全です（対策は2件以上が必要です）', 'validation')
+            return false
+        }
+
+        latest.setError(null)
+        latest.commitWorkItem({ suppressGoalPrompt: true })
+
+        const afterCommit = useKYStore.getState()
+        if (!afterCommit.session) return false
+        if (afterCommit.session.workItems.length !== 2) return false
+
+        afterCommit.setStatus('action_goal')
+        afterCommit.addMessage(
+            'assistant',
+            '本日の行動目標を1つ設定してください。',
+            { nextAction: 'ask_goal' }
         )
         return true
     }, [])
@@ -464,7 +528,7 @@ export function useChat() {
 
                 return {
                     ...data,
-                    reply: '行動目標を記録しました。内容を確認して、画面の「完了」ボタンを押してください。',
+                    reply: '行動目標を記録しました。完了画面に移動します。',
                     extracted: {
                         ...extracted,
                         actionGoal: hasActionGoal ? extracted.actionGoal : userGoal,
@@ -602,7 +666,7 @@ export function useChat() {
                 'assistant',
                 [
                     '了解です。2件目はここで打ち切って、本日のKYを完了に進めます。',
-                    '今日の行動目標を、短く1つだけ教えてください。',
+                    '本日の行動目標を1つ設定してください。',
                 ].join('\n'),
                 { nextAction: 'ask_goal' }
             )
@@ -633,18 +697,21 @@ export function useChat() {
                 setStatus('confirmation')
                 addMessage(
                     'assistant',
-                    '行動目標を記録しました。内容を確認して、画面の「完了」ボタンを押してください。',
+                    '行動目標を記録しました。完了画面に移動します。',
                     {
                         actionGoal: finalGoal,
                         nextAction: 'confirm',
                     }
                 )
+                setTimeout(() => {
+                    completeSessionFromCurrentState()
+                }, AUTO_COMPLETE_DELAY_MS)
                 return
             }
         }
 
         await sendMessageInternal(text, { retrySource: 'none' })
-    }, [session, status, currentWorkItem, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal, completeFirstWorkItem])
+    }, [session, status, currentWorkItem, addMessage, setError, startNewWorkItem, completeSession, setStatus, sendMessageInternal, updateActionGoal, completeFirstWorkItem, completeSessionFromCurrentState])
 
     const retryLastMessage = useCallback(async () => {
         if (!lastUserMessageRef.current) return
@@ -677,6 +744,7 @@ export function useChat() {
         initializeChat,
         sendMessage,
         completeFirstWorkItem,
+        completeSecondWorkItem,
         applyRiskLevelSelection,
         retryLastMessage,
         canRetry,

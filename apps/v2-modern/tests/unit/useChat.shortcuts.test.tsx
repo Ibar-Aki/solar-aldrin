@@ -26,6 +26,7 @@ const initialState = useKYStore.getState()
 describe('useChat shortcuts', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        vi.useRealTimers()
         useKYStore.setState(initialState, true)
         window.localStorage.clear()
         useKYStore.getState().startSession('Test User', 'Test Site', '晴れ', 'フリー', 'good')
@@ -80,6 +81,48 @@ describe('useChat shortcuts', () => {
         expect(state.currentWorkItem.countermeasures).toHaveLength(2)
         expect(state.messages.at(-1)?.role).toBe('assistant')
         expect(state.messages.at(-1)?.content).toContain('他に何か対策はありますか？それとも、2件目のKYに移りますか？')
+    })
+
+    it('2件目で対策が2件揃うと、行動目標設定へ進む確認メッセージを表示する', async () => {
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+
+        updateCurrentWorkItem({
+            workDescription: '足場上で資材を運ぶ',
+            hazardDescription: '転落する',
+            riskLevel: 4,
+            whyDangerous: ['足元が滑りやすい'],
+            countermeasures: [
+                { category: 'equipment', text: '手すりを設置する' },
+                { category: 'behavior', text: '監視員を配置する' },
+            ],
+        })
+        commitWorkItem()
+
+        updateCurrentWorkItem({
+            workDescription: 'グラインダーで切断する',
+            hazardDescription: '火花が飛散して火災になる',
+            riskLevel: 5,
+            whyDangerous: ['周囲の養生が不十分'],
+            countermeasures: [{ category: 'equipment', text: '消火器を手元に置く' }],
+        })
+
+        vi.mocked(postChat).mockResolvedValueOnce({
+            reply: '監視員を追加してください。',
+            extracted: {
+                countermeasures: [{ category: 'behavior', text: '火気監視を配置する' }],
+                nextAction: 'ask_more_work',
+            },
+        })
+
+        const { result } = renderHook(() => useChat())
+        await act(async () => {
+            await result.current.sendMessage('火気監視を配置します')
+        })
+
+        const state = useKYStore.getState()
+        expect(state.session?.workItems).toHaveLength(1)
+        expect(state.currentWorkItem.countermeasures).toHaveLength(2)
+        expect(state.messages.at(-1)?.content).toContain('他に対策はありますか？それとも、行動目標の設定に進みますか？')
     })
 
     it('1件目完了待ち中は「2件目に移る」発話でAPIなしに1件目を確定できる', async () => {
@@ -226,6 +269,23 @@ describe('useChat shortcuts', () => {
     })
 
     it('行動目標入力フェーズでは、明確な目標入力をローカル確定してAPI呼び出しを抑止する', async () => {
+        vi.useFakeTimers()
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        const commitCompleteWorkItem = (index: number) => {
+            updateCurrentWorkItem({
+                workDescription: `作業${index}`,
+                hazardDescription: `危険${index}`,
+                riskLevel: 3,
+                whyDangerous: [`要因${index}`],
+                countermeasures: [
+                    { category: 'equipment', text: `設備対策${index}` },
+                    { category: 'ppe', text: `保護具対策${index}` },
+                ],
+            })
+            commitWorkItem()
+        }
+        commitCompleteWorkItem(1)
+        commitCompleteWorkItem(2)
         useKYStore.getState().setStatus('action_goal')
 
         const { result } = renderHook(() => useChat())
@@ -234,14 +294,36 @@ describe('useChat shortcuts', () => {
             await result.current.sendMessage('行動目標は「火気使用時の完全養生よし！」です。これで確定して終了します。')
         })
 
-        const state = useKYStore.getState()
         expect(vi.mocked(postChat)).not.toHaveBeenCalled()
-        expect(state.session?.actionGoal).toBe('火気使用時の完全養生よし！')
-        expect(state.status).toBe('confirmation')
-        expect(state.messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+        expect(useKYStore.getState().session?.actionGoal).toBe('火気使用時の完全養生よし！')
+        expect(useKYStore.getState().status).toBe('confirmation')
+        expect(useKYStore.getState().messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+
+        await act(async () => {
+            vi.advanceTimersByTime(900)
+        })
+        expect(useKYStore.getState().status).toBe('completed')
+        vi.useRealTimers()
     })
 
     it('行動目標が既にある場合は、完了意思のみの発話でもAPI無しで確認フェーズへ進める', async () => {
+        vi.useFakeTimers()
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        const commitCompleteWorkItem = (index: number) => {
+            updateCurrentWorkItem({
+                workDescription: `作業${index}`,
+                hazardDescription: `危険${index}`,
+                riskLevel: 3,
+                whyDangerous: [`要因${index}`],
+                countermeasures: [
+                    { category: 'equipment', text: `設備対策${index}` },
+                    { category: 'ppe', text: `保護具対策${index}` },
+                ],
+            })
+            commitWorkItem()
+        }
+        commitCompleteWorkItem(1)
+        commitCompleteWorkItem(2)
         useKYStore.getState().updateActionGoal('火気使用時の完全養生よし！')
         useKYStore.getState().setStatus('action_goal')
 
@@ -251,10 +333,15 @@ describe('useChat shortcuts', () => {
             await result.current.sendMessage('これで完了します。')
         })
 
-        const state = useKYStore.getState()
         expect(vi.mocked(postChat)).not.toHaveBeenCalled()
-        expect(state.session?.actionGoal).toBe('火気使用時の完全養生よし！')
-        expect(state.status).toBe('confirmation')
-        expect(state.messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+        expect(useKYStore.getState().session?.actionGoal).toBe('火気使用時の完全養生よし！')
+        expect(useKYStore.getState().status).toBe('confirmation')
+        expect(useKYStore.getState().messages.at(-1)?.extractedData?.nextAction).toBe('confirm')
+
+        await act(async () => {
+            vi.advanceTimersByTime(900)
+        })
+        expect(useKYStore.getState().status).toBe('completed')
+        vi.useRealTimers()
     })
 })

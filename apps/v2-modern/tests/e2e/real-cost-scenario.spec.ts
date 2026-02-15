@@ -712,10 +712,10 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                      }
                  },
                 {
-                    reply: "了解しました。行動目標を記録しました。画面の完了ボタンを押して終了してください。",
+                    reply: "行動目標を記録しました。完了画面に移動します。",
                     extracted: {
                         actionGoal: "火気使用時の完全養生よし！",
-                        nextAction: 'completed'
+                        nextAction: 'confirm'
                     },
                     needsWrapUp: true
                 }
@@ -1110,65 +1110,35 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             METRICS.navigationSuccess = true
         }
 
-        const finishButton = page.getByTestId('button-complete-session')
-
-        // ボタンが出ない場合は、行動目標/確定の追加メッセージで1〜2回だけ押し上げる
-        const waitForFinishButton = async (timeoutMs: number): Promise<boolean> => {
-            try {
-                await finishButton.waitFor({ state: 'visible', timeout: timeoutMs })
-                return true
-            } catch {
-                return false
-            }
-        }
-
         if (!completionArrived) {
-            let finishVisible = await waitForFinishButton(30000)
-            if (!finishVisible && !DRY_RUN) {
+            let transitioned = await tryWaitForCompletionPage(30000)
+            if (!transitioned && !DRY_RUN) {
                 const inputVisible = await chatInput.isVisible().catch(() => false)
                 if (inputVisible) {
                     await sendUserMessage('行動目標は「火気使用時の完全養生よし！」です。')
-                    finishVisible = await waitForFinishButton(30000)
+                    transitioned = await tryWaitForCompletionPage(30000)
                 } else {
-                    completionArrived = await tryWaitForCompletionPage(10000)
+                    transitioned = await tryWaitForCompletionPage(10000)
                 }
             }
-            if (!finishVisible && !DRY_RUN && !completionArrived) {
+            if (!transitioned && !DRY_RUN) {
                 const inputVisible = await chatInput.isVisible().catch(() => false)
                 if (inputVisible) {
                     await sendUserMessage('はい、これで確定して終了してください。')
-                    finishVisible = await waitForFinishButton(30000)
+                    transitioned = await tryWaitForCompletionPage(30000)
                 } else {
-                    completionArrived = await tryWaitForCompletionPage(10000)
+                    transitioned = await tryWaitForCompletionPage(10000)
                 }
             }
-            if (!finishVisible && !completionArrived) {
+            if (!transitioned) {
                 const progressText = await page.locator('text=/作業・危険 \\(\\d+件\\)/').first().textContent().catch(() => null)
-                addFailureDiagnostic(`button-complete-session did not appear. progress=${progressText ?? 'unknown'}`)
-                throw new Error('button-complete-session did not appear')
+                addFailureDiagnostic(`completion page did not appear. progress=${progressText ?? 'unknown'}`)
+                throw new Error('completion page did not appear')
             }
-            if (completionArrived && !METRICS.navigationSuccess) {
+
+            completionArrived = true
+            if (!METRICS.navigationSuccess) {
                 await recordLog('System', 'Navigated to Complete page (auto)')
-                METRICS.navigationSuccess = true
-            }
-
-            if (!completionArrived) {
-                await finishButton.click()
-                await recordLog('User', '(Clicked Finish Button)')
-
-                // 遷移待ち (URL or Element)
-                try {
-                    await Promise.race([
-                        page.waitForURL('**/complete', { timeout: 30000 }),
-                        page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 })
-                    ])
-                } catch (error: unknown) {
-                    const message = error instanceof Error ? error.message : String(error)
-                    addFailureDiagnostic(`Completion page transition failed. ${shortText(message, 180)}`)
-                    throw error
-                }
-                completionArrived = true
-                await recordLog('System', 'Navigated to Complete page')
                 METRICS.navigationSuccess = true
             }
         }
@@ -1177,7 +1147,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         // フィードバックカードの出現待ち（API応答次第で表示されない場合もある）
         console.log('Checking for Feedback Cards...')
         try {
-            const feedbackSection = page.locator('text=事後フィードバック').first()
+            const feedbackSection = page.locator('text=KYフィードバック').first()
             let feedbackVisible = false
             try {
                 await feedbackSection.waitFor({ state: 'visible', timeout: 10000 })

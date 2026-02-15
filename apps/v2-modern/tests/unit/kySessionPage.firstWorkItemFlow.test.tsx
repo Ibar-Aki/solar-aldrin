@@ -6,6 +6,7 @@ import { useKYStore } from '@/stores/kyStore'
 const navigateMock = vi.fn()
 const sendMessageMock = vi.fn()
 const completeFirstWorkItemMock = vi.fn()
+const completeSecondWorkItemMock = vi.fn()
 const applyRiskLevelSelectionMock = vi.fn()
 const initializeChatMock = vi.fn()
 const retryLastMessageMock = vi.fn()
@@ -22,6 +23,7 @@ vi.mock('@/hooks/useChat', () => ({
     useChat: () => ({
         sendMessage: sendMessageMock,
         completeFirstWorkItem: completeFirstWorkItemMock,
+        completeSecondWorkItem: completeSecondWorkItemMock,
         applyRiskLevelSelection: applyRiskLevelSelectionMock,
         initializeChat: initializeChatMock,
         retryLastMessage: retryLastMessageMock,
@@ -36,6 +38,7 @@ describe('KYSessionPage first work item flow', () => {
         navigateMock.mockReset()
         sendMessageMock.mockReset()
         completeFirstWorkItemMock.mockReset()
+        completeSecondWorkItemMock.mockReset()
         applyRiskLevelSelectionMock.mockReset()
         initializeChatMock.mockReset()
         retryLastMessageMock.mockReset()
@@ -89,6 +92,39 @@ describe('KYSessionPage first work item flow', () => {
 
         expect(screen.getByTestId('button-complete-first-work-item')).toBeInTheDocument()
         expect(screen.queryByPlaceholderText('メッセージを入力...')).not.toBeInTheDocument()
+    })
+
+    it('2件目で対策2件が揃うと「2件目完了」ボタンを表示して押下できる', () => {
+        const { updateCurrentWorkItem, commitWorkItem } = useKYStore.getState()
+        updateCurrentWorkItem({
+            workDescription: '足場上で資材を運ぶ',
+            hazardDescription: '転落する',
+            riskLevel: 4,
+            whyDangerous: ['足元が滑りやすい'],
+            countermeasures: [
+                { category: 'equipment', text: '手すりを設置する' },
+                { category: 'behavior', text: '監視員を配置する' },
+            ],
+        })
+        commitWorkItem()
+
+        useKYStore.getState().updateCurrentWorkItem({
+            workDescription: 'グラインダーで切断する',
+            hazardDescription: '火花が飛散して火災になる',
+            riskLevel: 5,
+            whyDangerous: ['周囲の養生が不十分'],
+            countermeasures: [
+                { category: 'equipment', text: '消火器を手元に置く' },
+                { category: 'behavior', text: '火気監視を配置する' },
+            ],
+        })
+
+        render(<KYSessionPage />)
+
+        const button = screen.getByTestId('button-complete-second-work-item')
+        expect(button).toBeInTheDocument()
+        fireEvent.click(button)
+        expect(completeSecondWorkItemMock).toHaveBeenCalledTimes(1)
     })
 
     it('KYボードのサイズ切替は拡大を初期値にし、縮小/拡大を切り替えできる', () => {

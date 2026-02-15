@@ -8,7 +8,7 @@ import { isNonAnswerText } from '@/lib/nonAnswer'
 export interface WorkItemSlice {
     currentWorkItem: Partial<WorkItem>
     updateCurrentWorkItem: (data: Partial<WorkItem>) => void
-    commitWorkItem: () => void
+    commitWorkItem: (options?: { suppressGoalPrompt?: boolean }) => void
     startNewWorkItem: () => void
 }
 
@@ -27,7 +27,7 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
         }))
     },
 
-    commitWorkItem: () => {
+    commitWorkItem: (options) => {
         const { session, currentWorkItem, messages, addMessage } = get()
         if (!session) return
 
@@ -78,7 +78,7 @@ export const createWorkItemSlice: StateCreator<KYStore, [], [], WorkItemSlice> =
         })
 
         // UX保険: 2件目が保存されたら、AI文言に依存せず「行動目標」入力へ誘導する。
-        if (nextWorkItems.length >= 2) {
+        if (nextWorkItems.length >= 2 && !options?.suppressGoalPrompt) {
             const lastAssistantNextAction = (() => {
                 for (let i = messages.length - 1; i >= 0; i -= 1) {
                     const msg = messages[i]

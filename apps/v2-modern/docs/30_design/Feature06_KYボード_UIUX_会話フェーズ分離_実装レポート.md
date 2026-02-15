@@ -26,6 +26,8 @@
 更新日: 2026-02-12（文字数セグメント指標とチェックを左列右端へ移動、バー長短縮、ラベルをバー左側へ変更）
 更新日: 2026-02-12（KYボードに拡大/縮小切替を追加、具体性/詳細度ラベルをセグメントバーへ近接）
 更新日: 2026-02-14（「何が原因で」への作業文誤混入対策: 補完停止・Workersガード・プロンプト強化）
+更新日: 2026-02-15（2件目完了ボタン導線、行動目標入力後の自動完了遷移、完了画面のスポットライト固定とKYフィードバック圧縮表示）
+更新日: 2026-02-15（完了画面の縦余白を強めに圧縮: 「KY活動完了」「今日のフィードバック」「AI補足」タイトル前後と本文行間を詰める調整）
 
 ## 目的
 
@@ -77,10 +79,16 @@
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - 作業・危険フェーズで `KYBoardCard` を表示
   - 進行バー表示を「KY活動 → 安全確認 → 総括」へ変更（従来: 作業・危険 → 行動目標 → 確認）
-  - 完了ボタンは `lastAssistantNextAction === completed` だけでなく、`status === confirmation` または `status === action_goal` かつ `actionGoal` 設定済みでも表示するよう改善
-  - 危険が2件保存済み (`workItemCount >= 2`) の場合でも、`action_goal / confirmation / nextAction=completed / actionGoal設定済み` の終盤状態に限定して完了ボタンを表示
+  - 2件目で対策2件が揃った場合に `2件目完了` ボタンを表示し、行動目標設定フェーズへ遷移
+  - 行動目標入力後は確認文を表示して自動的に完了画面へ遷移（完了ボタン依存を撤廃）
   - 1件目で対策2件が揃った時点で `1件目完了` ボタンを表示し、**ボタン押下時にのみ** 2件目KYへ遷移
   - 1件目で対策3件目まで入力された場合は、入力欄を隠して `1件目完了` ボタンのみ表示
+- `apps/v2-modern/src/pages/CompletionPage.tsx`
+  - ファンファーレ演出を `spotlight` 固定に変更し、選択UIを撤去
+  - 見出し/本文/アイコン余白を圧縮し、完了画面上部の縦密度を改善
+  - 見出し文言を `KYフィードバック` へ変更し、2件のKY要約（危険1行 + 対策2件）を追加
+- `apps/v2-modern/src/components/FeedbackCard.tsx`
+  - 「今日のフィードバック」カードの上下余白・行間を圧縮
 - `apps/v2-modern/src/pages/HomePage.tsx`
   - APIトークン設定UIを共通化し、新規開始フォームだけでなく「進行中セッションあり」の分岐画面からも更新可能に改善
 
@@ -164,6 +172,15 @@
   - 「2件目のKYに移る」旨のテキスト入力でも、API呼び出し無しで1件目を確定し
     - `次の、2件目の想定される危険を教えてください。`
     を表示して2件目へ移行
+  - 2件目KYで対策2件が揃った場合、確認文
+    - `他に対策はありますか？それとも、行動目標の設定に進みますか？`
+    を表示して `2件目完了` 操作を促す
+  - `2件目完了` 実行後に
+    - `本日の行動目標を1つ設定してください。`
+    を表示して行動目標フェーズへ遷移
+  - 行動目標入力を受理したら
+    - `行動目標を記録しました。完了画面に移動します。`
+    を表示し、短時間後に自動で完了へ遷移
 - `apps/v2-modern/src/lib/chat/mergeExtractedData.ts`
   - `whyDangerous` 欠落時の推論補完を停止（`workDescription`/`hazardDescription` から自動補完しない）
 - `apps/v2-modern/workers/lib/chat/fieldGuard.ts`（新規）
@@ -173,6 +190,8 @@
   - 正規化後に `applyKyFieldGuard` を適用し、必要時は原因確認の再質問文へ置換
 - `apps/v2-modern/workers/prompts/soloKY.ts`
   - 「原因欄に作業文を入れない」制約、NG/OK例、曖昧時は `whyDangerous=null` 維持のルールを追加
+- `apps/v2-modern/workers/prompts/feedbackKY.ts`
+  - `tip` を抽象表現で終わらせず、`いつ/どこで/何を` を含む具体行動で返すルールを追加
 - `apps/v2-modern/src/pages/KYSessionPage.tsx`
   - `status === completed` を監視し、ストア側で完了になったケースでも `/complete` へ自動遷移するよう補強
 

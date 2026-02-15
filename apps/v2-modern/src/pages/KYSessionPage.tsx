@@ -32,12 +32,12 @@ export function KYSessionPage() {
         isLoading,
         error,
         errorSource,
-        completeSession,
     } = useKYStore()
 
     const {
         sendMessage,
         completeFirstWorkItem,
+        completeSecondWorkItem,
         applyRiskLevelSelection,
         initializeChat,
         retryLastMessage,
@@ -86,20 +86,12 @@ export function KYSessionPage() {
         applyRiskLevelSelection(level)
     }
 
-    const handleComplete = () => {
-        if (!session) return
-        completeSession({
-            actionGoal: session.actionGoal ?? null,
-            pointingConfirmed: session.pointingConfirmed ?? null,
-            allMeasuresImplemented: session.allMeasuresImplemented ?? null,
-            hadNearMiss: session.hadNearMiss ?? null,
-            nearMissNote: session.nearMissNote ?? null,
-        })
-        navigate('/complete')
-    }
-
     const handleCompleteFirstWorkItem = () => {
         completeFirstWorkItem()
+    }
+
+    const handleCompleteSecondWorkItem = () => {
+        completeSecondWorkItem()
     }
 
     if (!session) return null
@@ -120,13 +112,6 @@ export function KYSessionPage() {
 
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
-    const hasCurrentWork = Boolean(
-        currentWorkItem.workDescription ||
-        currentWorkItem.hazardDescription ||
-        currentWorkItem.riskLevel ||
-        (currentWorkItem.whyDangerous && currentWorkItem.whyDangerous.length > 0) ||
-        (currentWorkItem.countermeasures && currentWorkItem.countermeasures.length > 0)
-    )
     const lastAssistantNextAction = (() => {
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const message = messages[i]
@@ -141,27 +126,11 @@ export function KYSessionPage() {
         currentRiskLevel: currentWorkItem.riskLevel,
     })
     const kyBoardIndex = Math.min(2, workItemCount + 1)
-    const hasActionGoal = Boolean((session.actionGoal ?? '').trim())
-    const canForceComplete =
-        workItemCount >= 2 &&
-        (
-            status === 'action_goal' ||
-            status === 'confirmation' ||
-            lastAssistantNextAction === 'completed' ||
-            hasActionGoal
-        )
-    const canShowCompleteButton =
-        canForceComplete ||
-        (
-            workItemCount > 0 &&
-            !hasCurrentWork &&
-            (
-                lastAssistantNextAction === 'completed' ||
-                status === 'confirmation' ||
-                (status === 'action_goal' && hasActionGoal)
-            )
-        )
     const firstWorkItemMeasureCount = (currentWorkItem.countermeasures ?? [])
+        .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
+        .filter((text) => text.length > 0 && !isNonAnswerText(text))
+        .length
+    const secondWorkItemMeasureCount = (currentWorkItem.countermeasures ?? [])
         .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
         .filter((text) => text.length > 0 && !isNonAnswerText(text))
         .length
@@ -170,6 +139,11 @@ export function KYSessionPage() {
         workItemCount === 0 &&
         isWorkItemComplete(currentWorkItem) &&
         firstWorkItemMeasureCount >= 2
+    const canShowSecondWorkItemCompleteButton =
+        status === 'work_items' &&
+        workItemCount === 1 &&
+        isWorkItemComplete(currentWorkItem) &&
+        secondWorkItemMeasureCount >= 2
     const shouldHideChatInputForFirstWorkItem =
         canShowFirstWorkItemCompleteButton && firstWorkItemMeasureCount >= 3
 
@@ -295,17 +269,6 @@ export function KYSessionPage() {
                     </div>
                 )}
 
-                {/* 完了ボタン（AIが完了を促した時のみ表示） */}
-                {canShowCompleteButton && (
-                    <div className="px-4 py-2 border-b">
-                        <div className="max-w-4xl mx-auto">
-                            <Button onClick={handleComplete} className="w-full" data-testid="button-complete-session">
-                                行動目標を決めて終了する
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
                 {canShowFirstWorkItemCompleteButton && (
                     <div className="px-4 py-2 border-b">
                         <div className="max-w-4xl mx-auto">
@@ -316,6 +279,21 @@ export function KYSessionPage() {
                                 data-testid="button-complete-first-work-item"
                             >
                                 1件目完了
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {canShowSecondWorkItemCompleteButton && (
+                    <div className="px-4 py-2 border-b">
+                        <div className="max-w-4xl mx-auto">
+                            <Button
+                                type="button"
+                                onClick={handleCompleteSecondWorkItem}
+                                className="w-full"
+                                data-testid="button-complete-second-work-item"
+                            >
+                                2件目完了
                             </Button>
                         </div>
                     </div>

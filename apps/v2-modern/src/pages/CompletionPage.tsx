@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, CheckCircle2, Download, Home } from 'lucide-react'
 import { useKYStore } from '@/stores/kyStore'
 import { usePDFGenerator } from '@/hooks/usePDFGenerator'
-import { FanfareManager, type FanfarePattern } from '@/components/fanfare/FanfareManager'
+import { FanfareManager } from '@/components/fanfare/FanfareManager'
 import { FeedbackCard } from '@/components/FeedbackCard'
 import { SupplementCard } from '@/components/SupplementCard'
 import { GoalPolishCard } from '@/components/GoalPolishCard'
@@ -45,10 +45,7 @@ export function CompletionPage() {
 
     const shouldAutoFanfare = !!session && status === 'completed'
 
-    // ファンファーレ状態管理
-    const [fanfarePattern, setFanfarePattern] = useState<FanfarePattern>(() => (
-        shouldAutoFanfare ? 'spotlight' : 'none'
-    ))
+    // ファンファーレ状態管理（スポットライト固定）
     const [isFanfareActive, setIsFanfareActive] = useState(() => shouldAutoFanfare)
     const [showSkeleton, setShowSkeleton] = useState(false)
     const [recentRisks, setRecentRisks] = useState<RecentRiskMatch[]>([])
@@ -279,18 +276,18 @@ export function CompletionPage() {
         setPolishedActionGoal(null)
     }
 
-    const playFanfare = (pattern: FanfarePattern) => {
-        setFanfarePattern(pattern)
-        setIsFanfareActive(false)
-        // リセットしてから再生
-        setTimeout(() => {
-            setIsFanfareActive(true)
-        }, 50)
-    }
-
     if (!session || status !== 'completed') return null
 
     const displayActionGoal = polishedActionGoal ?? session.actionGoal
+    const kyFeedbackItems = session.workItems.slice(0, 2).map((item, idx) => ({
+        id: item.id,
+        title: `KY${idx + 1}`,
+        hazard: item.hazardDescription.trim(),
+        measures: item.countermeasures
+            .map((cm) => cm.text.trim())
+            .filter((text) => text.length > 0)
+            .slice(0, 2),
+    }))
 
     const hasFeedback = Boolean(feedback && feedback.praise && feedback.tip)
     const hasSupplements = supplements.length > 0
@@ -306,59 +303,35 @@ export function CompletionPage() {
     return (
         <div className="min-h-screen bg-gray-50 p-4 pb-12">
             <FanfareManager
-                pattern={fanfarePattern}
+                pattern="spotlight"
                 isActive={isFanfareActive}
                 onComplete={() => setIsFanfareActive(false)}
             />
 
-            <div className="max-w-md mx-auto space-y-6">
+            <div className="max-w-md mx-auto space-y-2.5">
                 {/* 完了メッセージ */}
-                <div className="text-center space-y-2 py-8">
-                    <div className="flex justify-center mb-4">
-                        <CheckCircle2 className="w-16 h-16 text-green-500" />
+                <div className="text-center space-y-0.5 py-1">
+                    <div className="flex justify-center mb-0.5">
+                        <CheckCircle2 className="w-14 h-14 text-green-500" />
                     </div>
-                    <h1 className="text-2xl font-bold text-gray-900">KY活動 完了</h1>
-                    <p className="text-gray-500">
+                    <h1 className="text-xl font-bold text-gray-900 leading-none">KY活動完了</h1>
+                    <p className="text-sm text-gray-500 leading-[1.15]">
                         お疲れ様でした。<br />
                         今日も一日ご安全に！
                     </p>
                 </div>
 
-                {/* 完了の儀式（簡易版） */}
-                <Card className="border-green-200 bg-green-50">
-                    <CardContent className="pt-4">
-                        <div className="flex gap-2">
-                            <Button
-                                variant={fanfarePattern === 'spotlight' ? 'default' : 'outline'}
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => playFanfare('spotlight')}
-                            >
-                                🔦 スポットライト
-                            </Button>
-                            <Button
-                                variant={fanfarePattern === 'yoshi' ? 'default' : 'outline'}
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => playFanfare('yoshi')}
-                            >
-                                👈 ヨシ！
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-
                 {/* 行動目標カード */}
-                <Card>
-                    <CardHeader>
+                <Card className="gap-3 py-3">
+                    <CardHeader className="py-2">
                         <CardTitle className="text-base">今日の行動目標</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="bg-blue-50 p-4 rounded-lg text-center">
+                    <CardContent className="pt-0">
+                        <div className="bg-blue-50 p-2.5 rounded-lg text-center">
                             <p className="text-xl font-bold text-blue-700">
                                 {displayActionGoal || '（未設定）'}
                             </p>
-                            <p className="text-sm text-blue-600 mt-2 font-bold">
+                            <p className="text-xs text-blue-600 mt-0.5 font-bold">
                                 ヨシ！
                             </p>
                         </div>
@@ -367,13 +340,13 @@ export function CompletionPage() {
 
                 {/* 直近の繰り返し危険 */}
                 {!recentRiskLoading && recentRisks.length > 0 && (
-                    <Card>
-                        <CardHeader>
+                    <Card className="gap-3 py-3">
+                        <CardHeader className="py-2">
                             <CardTitle className="text-base">最近も挙がった危険</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-3">
+                        <CardContent className="space-y-2 pt-0">
                             {recentRisks.map((risk) => (
-                                <div key={`${risk.risk}-${risk.date}`} className="space-y-1">
+                                <div key={`${risk.risk}-${risk.date}`} className="space-y-0.5">
                                     <RecentRiskBadge label={getRecentRiskLabel(risk.daysAgo)} />
                                     <p className="text-sm font-medium text-gray-900">{risk.risk}</p>
                                     <p className="text-xs text-gray-500">前回: {risk.date.slice(0, 10)}</p>
@@ -385,10 +358,27 @@ export function CompletionPage() {
 
                 {/* フィードバック */}
                 {showFeedbackSection && (
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                            <p className="text-sm text-gray-500">事後フィードバック</p>
+                            <p className="text-sm text-gray-500 leading-none">KYフィードバック</p>
                         </div>
+
+                        <Card className="gap-2.5 py-3">
+                            <CardHeader className="py-1.5">
+                                <CardTitle className="text-sm">2件のKYと対策（要約）</CardTitle>
+                            </CardHeader>
+                            <CardContent className="pt-0 space-y-1.5">
+                                {kyFeedbackItems.map((item) => (
+                                    <div key={item.id} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 space-y-0.5">
+                                        <p className="text-xs font-semibold text-slate-700 leading-none">{item.title}</p>
+                                        <p className="text-xs text-slate-900 leading-tight">危険: {item.hazard || '（未入力）'}</p>
+                                        <p className="text-[11px] text-slate-700 leading-tight">
+                                            対策: {item.measures.length > 0 ? item.measures.join(' / ') : '（未入力）'}
+                                        </p>
+                                    </div>
+                                ))}
+                            </CardContent>
+                        </Card>
 
                         {feedbackLoading && showSkeleton && (
                             <>

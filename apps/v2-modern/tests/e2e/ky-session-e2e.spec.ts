@@ -79,11 +79,13 @@ test.describe('KYセッション統合E2E', () => {
         await sendUserMessage(page, '対策は、足場の点検を実施し、安全帯を二丁掛けで使用します')
         await fourthResponse
 
-        // 3. 完了フロー
-        const finishButton = page.getByRole('button', { name: '行動目標を決めて終了する' })
-        await expect(finishButton).toBeVisible()
-        await finishButton.click()
+        // 3. 1件目完了 → KY完了ショートカット → 行動目標入力で自動完了
+        const completeFirstButton = page.getByTestId('button-complete-first-work-item')
+        await expect(completeFirstButton).toBeVisible()
+        await completeFirstButton.click()
 
+        await sendUserMessage(page, 'KY完了')
+        await sendUserMessage(page, '行動目標は「足元確認ヨシ！」です')
         await page.waitForURL('**/complete')
 
         // 4. PDF生成確認
