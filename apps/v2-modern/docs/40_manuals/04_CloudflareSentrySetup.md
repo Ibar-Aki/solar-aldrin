@@ -3,6 +3,7 @@
 - 作成日時: 2026-02-02 00:30
 - 作成者: Codex + GPT-5
 - 更新日: 2026-02-02
+- 更新日: 2026-02-16（優先5テスト実行スクリプトとテスト用環境変数を追記）
 
 ---
 
@@ -116,4 +117,34 @@ npx wrangler pages dev --binding=VITE_SENTRY_DSN=... --binding=VITE_SENTRY_ENV=l
 - [ ] Workers に `SENTRY_DSN` / `SENTRY_ENV` / `SENTRY_RELEASE` が設定されている
 - [ ] Pages に `VITE_SENTRY_*` が Production / Preview で設定されている
 - [ ] Sentry 側で環境（env）・リリース（release）でフィルタできる
+
+---
+
+## 5. 優先5テスト（実運用）実行
+
+### 5-1. テスト有効化（必要時のみ）
+
+- Workers:
+  - `ENABLE_SENTRY_TEST_ENDPOINT="1"`
+  - `SENTRY_TRACES_SAMPLE_RATE`（分散トレース検証時は `0.1` 以上）
+  - 任意: `SENTRY_TEST_TOKEN`（`x-sentry-test-token` ヘッダ保護）
+- Pages:
+  - `VITE_ENABLE_SENTRY_TEST_HOOK=1`
+  - `VITE_SENTRY_TRACES_SAMPLE_RATE`（分散トレース検証時は `0.1` 以上）
+  - 任意: `VITE_SENTRY_TRACE_PROPAGATION_TARGETS`
+
+### 5-2. 実行コマンド
+
+```bash
+npm run test:sentry:priority5
+```
+
+### 5-3. 主な環境変数
+
+- `SENTRY_AUTH_TOKEN`
+- `SENTRY_ORG_SLUG`
+- `SENTRY_PROJECT_SLUG`
+- `SENTRY_TEST_APP_URL`（Pages URL）
+- `SENTRY_TEST_API_URL`（Workers URL）
+- 任意: `SENTRY_TEST_API_TOKEN` / `SENTRY_TEST_ENDPOINT_TOKEN`
 

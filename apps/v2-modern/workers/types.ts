@@ -69,6 +69,9 @@ export type Bindings = {
     SENTRY_DSN?: string
     SENTRY_ENV?: string
     SENTRY_RELEASE?: string
+    SENTRY_TRACES_SAMPLE_RATE?: string
+    ENABLE_SENTRY_TEST_ENDPOINT?: string
+    SENTRY_TEST_TOKEN?: string
     AI_POLICY_VERSION?: string
     ENVIRONMENT?: string
 

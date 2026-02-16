@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { chat } from './routes/chat'
 import { rateLimit } from './middleware/rateLimit'
-import { withSentry } from '@sentry/cloudflare'
+import { startSpan, withSentry } from '@sentry/cloudflare'
 import { metrics } from './routes/metrics'
 import { feedback } from './routes/feedback'
 import { logError, logInfo } from './observability/logger'
@@ -16,6 +16,7 @@ const app = new Hono<{
         reqId: string
         startTime: number
         tokenFingerprint?: string
+        sentryTestId?: string
     }
 }>()
 
@@ -33,6 +34,31 @@ const PRODUCTION_ALLOWED_ORIGINS = [
 function parseBearerToken(authHeader: string | null | undefined): string | null {
     if (!authHeader?.startsWith('Bearer ')) return null
     return authHeader.substring(7).trim() || null
+}
+
+function isTruthyFlag(raw: string | undefined): boolean {
+    const normalized = raw?.trim().toLowerCase()
+    return normalized === '1' || normalized === 'true' || normalized === 'yes'
+}
+
+function resolveSentryTracesSampleRate(raw: string | undefined): number {
+    const parsed = Number(raw ?? '0')
+    if (!Number.isFinite(parsed)) return 0
+    return Math.max(0, Math.min(1, parsed))
+}
+
+function isSentryTestEndpointEnabled(env: Bindings): boolean {
+    return isTruthyFlag(env.ENABLE_SENTRY_TEST_ENDPOINT)
+}
+
+function isAuthorizedSentryTestRequest(c: {
+    env: Bindings
+    req: { header: (name: string) => string | undefined }
+}): boolean {
+    const expected = c.env.SENTRY_TEST_TOKEN?.trim()
+    if (!expected) return true
+    const actual = c.req.header('x-sentry-test-token')?.trim()
+    return actual === expected
 }
 
 function fingerprintToken(token: string): string {
@@ -151,11 +177,13 @@ app.use('*', async (c, next) => {
 // グローバルエラーハンドラ
 app.onError((err, c) => {
     const reqId = c.get('reqId')
+    const sentryTestId = c.get('sentryTestId')
     logError('unhandled_error', {
         reqId,
         message: err instanceof Error ? err.message : 'unknown_error',
+        sentryTestId,
     })
-    captureException(err, { reqId })
+    captureException(err, sentryTestId ? { reqId, sentryTestId } : { reqId })
     return c.json({ error: 'Internal Server Error' }, 500)
 })
 
@@ -172,7 +200,14 @@ app.use('*', async (c, next) => {
         },
         credentials: true,
         allowMethods: ['GET', 'POST', 'OPTIONS'],
-        allowHeaders: ['Content-Type', 'Authorization'],
+        allowHeaders: [
+            'Content-Type',
+            'Authorization',
+            'sentry-trace',
+            'baggage',
+            'x-sentry-test-token',
+            'x-request-id',
+        ],
     })
     return corsMiddleware(c, next)
 })
@@ -236,6 +271,86 @@ app.get('/api/health', (c) => {
     return c.json({ status: 'ok', version: 'v2' })
 })
 
+app.post('/api/debug/sentry-test-error', async (c) => {
+    if (!isSentryTestEndpointEnabled(c.env)) {
+        return c.json({ error: 'Not Found' }, 404)
+    }
+    if (!isAuthorizedSentryTestRequest(c)) {
+        return c.json({ error: 'Forbidden', code: 'SENTRY_TEST_TOKEN_MISMATCH' }, 403)
+    }
+
+    const payload = await c.req.json().catch(() => ({})) as {
+        message?: unknown
+        testId?: unknown
+    }
+    const testId = typeof payload.testId === 'string' && payload.testId.trim()
+        ? payload.testId.trim()
+        : `sentry-test-${Date.now()}`
+    const message = typeof payload.message === 'string' && payload.message.trim()
+        ? payload.message.trim()
+        : 'intentional backend exception for sentry smoke test'
+
+    c.set('sentryTestId', testId)
+    throw new Error(`[sentry-test][backend][${testId}] ${message}`)
+})
+
+app.get('/api/debug/sentry-test-trace', async (c) => {
+    if (!isSentryTestEndpointEnabled(c.env)) {
+        return c.json({ error: 'Not Found' }, 404)
+    }
+    if (!isAuthorizedSentryTestRequest(c)) {
+        return c.json({ error: 'Forbidden', code: 'SENTRY_TEST_TOKEN_MISMATCH' }, 403)
+    }
+
+    const testId = c.req.query('testId')?.trim() || `trace-test-${Date.now()}`
+    const requestedWorkMs = Number.parseInt(c.req.query('workMs') || '120', 10)
+    const workMs = Number.isFinite(requestedWorkMs)
+        ? Math.max(1, Math.min(5000, requestedWorkMs))
+        : 120
+    const sentryTraceHeader = c.req.header('sentry-trace')?.trim() || ''
+    const baggageHeader = c.req.header('baggage')?.trim() || ''
+    const startedAt = Date.now()
+
+    c.set('sentryTestId', testId)
+    const responsePayload = await startSpan(
+        {
+            name: 'sentry.test.trace_probe',
+            op: 'test.trace_probe',
+            attributes: {
+                'sentry.test.id': testId,
+                'sentry.test.work_ms': workMs,
+            },
+        },
+        async () => {
+            await startSpan(
+                {
+                    name: 'sentry.test.trace_work',
+                    op: 'test.trace_work',
+                    attributes: {
+                        'sentry.test.id': testId,
+                    },
+                },
+                async () => {
+                    await new Promise<void>((resolve) => setTimeout(resolve, workMs))
+                },
+            )
+
+            return {
+                ok: true,
+                testId,
+                workMs,
+                durationMs: Date.now() - startedAt,
+                sentryTrace: sentryTraceHeader || null,
+                baggage: baggageHeader || null,
+            }
+        },
+    )
+
+    if (sentryTraceHeader) c.header('x-sentry-trace', sentryTraceHeader)
+    if (baggageHeader) c.header('x-sentry-baggage', baggageHeader)
+    return c.json(responsePayload)
+})
+
 // ルーティングを適用
 app.route('/api/chat', chat)
 app.route('/api/metrics', metrics)
@@ -257,7 +372,7 @@ export default withSentry(
         dsn: env.SENTRY_DSN,
         environment: env.SENTRY_ENV ?? 'unknown',
         release: env.SENTRY_RELEASE,
-        tracesSampleRate: 0,
+        tracesSampleRate: resolveSentryTracesSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
     }),
     sentryHandler,
 )

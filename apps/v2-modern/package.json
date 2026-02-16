@@ -20,6 +20,7 @@
     "test:cost": "playwright test tests/e2e/real-cost-scenario.spec.ts --project=\"Mobile Safari\"",
     "test:cost:preflight": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/security/preflight-live-test.ps1",
     "test:cost:live": "npm run test:cost:preflight && cross-env RUN_LIVE_TESTS=1 LIVE_PREFLIGHT_PASSED=1 playwright test tests/e2e/real-cost-scenario.spec.ts --project=\"Mobile Safari\"",
+    "test:sentry:priority5": "node scripts/sentry/priority5-live-tests.mjs",
     "test:cost:ops": "npm run test:cost:live && npm run reports:perf",
     "reports:prune": "node scripts/prune_real_cost_reports.mjs",
     "reports:perf": "node scripts/generate_perf_summary.mjs",

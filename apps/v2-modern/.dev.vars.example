@@ -44,6 +44,11 @@ WEATHER_API_BASE_URL=""
 SENTRY_DSN=""
 SENTRY_ENV="local"
 SENTRY_RELEASE="local"
+SENTRY_TRACES_SAMPLE_RATE="0"
+# Sentry優先5テスト向け（既定OFF）
+ENABLE_SENTRY_TEST_ENDPOINT="0"
+# 必要なら x-sentry-test-token で保護
+# SENTRY_TEST_TOKEN=""
 
 # 機能フラグ
 ENABLE_FEEDBACK="1"
