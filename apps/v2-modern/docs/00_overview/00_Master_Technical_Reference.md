@@ -1,6 +1,7 @@
 # マスター技術リファレンス (v2-modern)
 
-**最終更新日**: 2026-02-11
+**最終更新日**: 2026-02-17
+**更新日**: 2026-02-17（OpenAI/Gemini 両対応、v2-modern のiPhone実機確認手順・デプロイ手順に同期）
 **更新日**: 2026-02-11
 **更新日**: 2026-02-11（`meta.server` 可観測化、`whyDangerous` 補完ロジック追加）
 **更新日**: 2026-02-11（iPhone/共有リンクでのAPIトークン設定不要化に同期）
@@ -20,7 +21,7 @@
   - **PDF出力**: 捺印可能な帳票を即座に生成
 - **技術スタック**:
   - **Front**: React + Vite + Zustand (状態管理)
-  - **Back**: Cloudflare Workers + Hono + OpenAI API
+  - **Back**: Cloudflare Workers + Hono + OpenAI互換API（OpenAI / Gemini）
   - **Data**: IndexedDB (クライアント保存) + KV (サーバー設定)
 
 ### 開発コマンド早見表
@@ -33,7 +34,16 @@
 | **Lint** | `npm run lint` | ESLint検査 |
 | **デプロイ(Front)** | `npm run deploy:pages` | Cloudflare Pagesへ |
 | **デプロイ(Back)** | `npm run deploy:workers` | Cloudflare Workersへ |
+| **iPhone実機確認** | `https://voice-ky-v2.pages.dev` | Safariで本番同等確認 |
 | **実費テスト** | `npm run test:cost:ops` | 本番APIで課金テスト |
+
+### iPhone実機テスト最短手順（v2-modern）
+
+1. `cd apps/v2-modern`
+2. `npm run deploy:workers`
+3. `npm run deploy:pages`
+4. iPhone の Safari で `https://voice-ky-v2.pages.dev` を開く
+5. 必要に応じて共有メニューから「ホーム画面に追加」
 
 ---
 
@@ -122,7 +132,7 @@ graph TB
 | 音声 | **Web Speech API** | 音声認識/読み上げ |
 | PDF | **@react-pdf/renderer** | PDF生成 |
 | バックエンド | **Hono** | Cloudflare Workers |
-| AI | **OpenAI** | gpt-4o-mini |
+| AI | **OpenAI / Gemini** | OpenAI Chat Completions API / Gemini OpenAI互換API |
 | 永続化 | **IndexedDB (Dexie)** | ローカル永続化 |
 
 ---
@@ -159,12 +169,12 @@ apps/v2-modern/
 │
 ├── docs/                      ← ドキュメント
 │   ├── 00_overview/           ← 概要・マスター資料
-│   ├── 00_planning/           ← 計画資料
 │   ├── 10_planning/           ← 計画資料（旧系統）
 │   ├── 20_phases/             ← フェーズ資料
 │   ├── 30_design/             ← 設計
 │   ├── 40_manuals/            ← マニュアル
-│   └── 50_reviews/            ← レビュー
+│   ├── 50_reviews/            ← レビュー
+│   └── 90_appendix/           ← 補遺
 │
 ├── scripts/                   ← 運用スクリプト
 ├── reports/                   ← テストレポート
@@ -1546,9 +1556,11 @@ VITE_ENABLE_RETRY_SILENT=0
 VITE_TELEMETRY_ENABLED=1
 VITE_TELEMETRY_SAMPLE_RATE=0.1
 
-# wrangler.toml (production)
+# wrangler.worker.toml (production)
 [vars]
-OPENAI_API_KEY = "sk-..."
+AI_PROVIDER = "openai" # または gemini
+OPENAI_API_KEY = "sk-..." # AI_PROVIDER=openai の場合に必須
+GEMINI_API_KEY = "..."    # AI_PROVIDER=gemini の場合に必須
 REQUIRE_API_TOKEN = "0"
 STRICT_CORS = "1"
 REQUIRE_RATE_LIMIT_KV = "1"
@@ -1567,7 +1579,7 @@ dataset = "voice_ky_metrics"
 **特徴**:
 
 - 認証不要（既定）
-- CORS厳格（`*.voice-ky-*.pages.dev` のみ）
+- CORS厳格（`*.voice-ky-*.pages.dev` を許可）
 - レート制限必須（KV必須）
 - サイレントリトライは既定で無効（必要時のみ `VITE_ENABLE_RETRY_SILENT=1`）
 - テレメトリ有効（10%サンプリング）
@@ -1584,6 +1596,9 @@ dataset = "voice_ky_metrics"
 | `VITE_REQUIRE_API_TOKEN` | 0 | 0 | 0 | 1でクライアント側の認証必須UIを表示 |
 | `VITE_ENABLE_RETRY_SILENT` | 0 | 0 | 0 | サイレントリトライ（1で明示有効） |
 | `VITE_TELEMETRY_ENABLED` | 0 | 1 | 1 | テレメトリ送信 |
+| `AI_PROVIDER` | openai | openai/gemini | openai/gemini | AIプロバイダ切替（`openai` / `gemini`） |
+| `OPENAI_API_KEY` | 必須※ | 必須※ | 必須※ | `AI_PROVIDER=openai` 時に必須 |
+| `GEMINI_API_KEY` | 必須※ | 必須※ | 必須※ | `AI_PROVIDER=gemini` 時に必須 |
 | `API_TOKEN` | - | 任意 | 任意 | サーバー認証トークン（必須化時のみ使用） |
 | `REQUIRE_API_TOKEN` | 0 | 0 | 0 | 1でサーバー認証必須 |
 | `STRICT_CORS` | 0 | 0 | 1 | CORS厳格モード |

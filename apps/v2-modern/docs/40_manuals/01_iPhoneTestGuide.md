@@ -1,105 +1,83 @@
-# 📱 Voice KY Assistant - iPhoneテスト手順書
+# Voice KY Assistant - iPhoneテスト手順書
 
-更新日: 2026-02-07
-更新日: 2026-02-11（iPhone利用時のAPIトークン設定不要化を追記）
-更新日: 2026-02-11（認証フラグ truthy 設定値を追記）
+作成日時: 2026-02-18 00:41
+作成者: Codex＋GPT-5
+更新日: 2026-02-17（v2-modern 本番デプロイ手順と完全音声会話モード検証を反映）
 
-## 🎯 概要
+このドキュメントは、`apps/v2-modern` を iPhone で検証するための最短手順を示します。
 
-このドキュメントは、**Voice KY Assistant** をiPhoneでテストするための手順を説明します。
-**検証の結果、PCへの直接接続（LAN経由）が最も安定して動作することが確認されました。**
+## 1. 推奨ルート（本番同等）
 
----
+ローカルLANではなく、Cloudflare Pages にデプロイしたURLでの確認を推奨します。
 
-## 📋 テスト前の準備（PC側）
-
-### 1. 開発サーバー起動
+### 1-1. PC側でデプロイ
 
 ```bash
-# フロントエンド (ポート3000)
-npx serve apps/v1-legacy/src/public -l 3000 --cors
-
-# バックエンド (ポート8787)
-cd apps/v1-legacy/src/workers
-npx wrangler dev --port 8787
+cd apps/v2-modern
+npm run deploy:workers
+npm run deploy:pages
 ```
 
-### 2. ファイアウォール設定（初回のみ）
+### 1-2. iPhone側でアクセス
 
-PowerShell（管理者）で以下を実行して、ポート3000への外部アクセスを許可します。
+- Safari で `https://voice-ky-v2.pages.dev` を開く
+- 初回はマイク許可を「許可」
+- 必要に応じて共有メニューから「ホーム画面に追加」
 
-```powershell
-netsh advfirewall firewall add rule name="Voice KY" dir=in action=allow protocol=tcp localport=3000
+## 2. ローカルLANルート（必要時のみ）
+
+同一Wi-Fiでの一時検証に限って利用します。
+
+### 2-1. PC側起動
+
+```bash
+cd apps/v2-modern
+npm run dev:host
+npm run dev:workers
 ```
 
-### 3. IPアドレス確認
+### 2-2. iPhone側アクセス
 
-```powershell
-ipconfig
-# IPv4 アドレスを確認 (例: 192.168.3.10)
-```
+- PC のIPv4を確認（`ipconfig`）
+- Safari で `http://<PCのIPv4>:5173` にアクセス
+- HTTPではマイク権限挙動が不安定になることがあるため、最終確認は必ず本番URLで行う
 
----
+## 3. テスト観点（iPhone）
 
-## 📱 iPhoneでのアクセス手順
+- セッション開始ができる
+- 音声入力（Mic）が開始/停止できる
+- AI応答のTTS再生ができる
+- 完全音声会話モードで、TTS終了後にマイクが自動再開する
+- 完了画面まで進み、PDF表示/保存ができる
 
-### Step 1: Wi-Fi接続確認
+## 4. APIトークン運用の注意
 
-iPhoneがPCと同じWi-Fiネットワークに接続されていることを確認してください。
+- 既定運用では APIトークン設定なしで開始可能
+- ただし `VITE_REQUIRE_API_TOKEN=1` または `REQUIRE_API_TOKEN=1` の環境ではトークン入力が必要
+- `1 / true / yes / on` は有効値として扱う
 
-### Step 2: Safariでアクセス
+## 5. トラブル時の切り分け
 
-以下の形式でURLを入力します：
-`http://[PCのIPアドレス]:3000`
+- 画面が古い:
+  - Safari のサイトデータ削除後に再読み込み
+- 音声入力できない:
+  - Safari設定のマイク権限を再確認
+- APIエラー:
+  - `deploy:workers` の最新反映と APIキー設定を確認
 
-例:
+## 6. テスト記録テンプレート
 
-```
-http://192.168.3.10:3000
-```
-
-### Step 2.5: APIトークン設定は通常不要
-
-- 現在の標準運用では、iPhone利用時にホーム画面でAPIトークンを設定する必要はありません。
-- 共有リンクで初回アクセスした端末でも、そのまま基本情報入力から開始できます。
-- ただし運用上 `VITE_REQUIRE_API_TOKEN=1` / `REQUIRE_API_TOKEN=1` を有効化した環境では設定が必要です。
-- `1` 以外に `true / yes / on` でも有効化として扱われます。
-
-### Step 3: ホーム画面に追加（PWAインストール）
-
-1. Safariの**共有ボタン**（□↑）をタップ
-2. 下にスクロールして **「ホーム画面に追加」** をタップ
-3. アイコンがホーム画面に追加されます
-
----
-
-## ⚠️ 注意点
-
-- **音声認識エラー表示**
-  - 音声認識エラーが表示されても、入力欄に1文字入力すればエラー表示は消えます。
-
-- **Service Workerのキャッシュ**
-  - アプリの更新が反映されない場合、iPhoneの「設定 > Safari > 履歴とWebサイトデータを消去」を行ってください。
-  - または、プライベートブラウズモードを使用してください。
-
-- **HTTPSではないため**
-  - 現在の手順（http）では、マイク権限の挙動がhttps環境と異なる場合があります。
-  - 基本的な動作確認には十分ですが、本番相当のテストはCloudflare Pagesへのデプロイを推奨します。
-
----
-
-## 📝 テスト報告用メモ
-
-```
+```text
 【テスト日時】
-【テスト端末】iPhone ○○ / iOS ○○
-【テスト環境】ローカルLAN接続 (IP: ____________)
+【端末】iPhone / iOS
+【URL】https://voice-ky-v2.pages.dev
 
 【確認項目】
-☐ 画面が表示される
-☐ 対話が開始できる
-☐ PDFが生成される
+□ セッション開始
+□ 音声入力
+□ TTS再生
+□ 完全音声会話（TTS後マイク自動再開）
+□ PDF出力
 
-【問題点・気付き】
-
+【不具合・気づき】
 ```
