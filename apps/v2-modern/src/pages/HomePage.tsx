@@ -5,7 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { WeatherSelector } from '@/components/WeatherSelector'
+import { VoiceConversationModeToggle } from '@/components/VoiceConversationModeToggle'
 import { useKYStore } from '@/stores/kyStore'
+import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
 import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
 import { getLatestSession } from '@/lib/db'
@@ -26,6 +28,7 @@ export function HomePage() {
     const navigate = useNavigate()
     const location = useLocation()
     const { session, startSession, clearSession } = useKYStore()
+    const { mode, setMode } = useVoiceConversationModeStore()
 
     // Prefill data from history (HIS-03)
     const prefill = (location.state as { prefill?: PrefillData } | null)?.prefill
@@ -204,6 +207,7 @@ export function HomePage() {
 
                     <Card>
                         <CardContent className="pt-6 space-y-4">
+                            <VoiceConversationModeToggle mode={mode} onChange={setMode} />
                             <div className="text-sm text-gray-600">
                                 <p><strong>現場:</strong> {session.siteName}</p>
                                 <p><strong>作業者:</strong> {session.userName}</p>
@@ -257,6 +261,7 @@ export function HomePage() {
                         )}
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        <VoiceConversationModeToggle mode={mode} onChange={setMode} />
                         {requireApiToken && renderApiTokenSettings()}
                         <div>
                             <label className="text-sm font-medium text-gray-700">作業者名</label>

@@ -6,12 +6,14 @@ import { cn } from '@/lib/utils'
 import { SendHorizontal } from 'lucide-react'
 
 import { USER_CONTENT_MAX_LENGTH } from '@/lib/schema'
+import type { VoiceConversationMode } from '@/stores/useVoiceConversationModeStore'
 
 interface ChatInputProps {
     onSend: (message: string) => void
     disabled?: boolean
     placeholder?: string
     variant?: 'default' | 'bare'
+    voiceMode?: VoiceConversationMode
     containerClassName?: string
     inputClassName?: string
     buttonClassName?: string
@@ -22,6 +24,7 @@ export function ChatInput({
     disabled = false,
     placeholder = 'メッセージを入力...',
     variant = 'default',
+    voiceMode = 'normal',
     containerClassName,
     inputClassName,
     buttonClassName,
@@ -29,7 +32,9 @@ export function ChatInput({
     const [value, setValue] = useState('')
     const [micError, setMicError] = useState<string | null>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const lastAutoSubmitRef = useRef<{ text: string; timestamp: number } | null>(null)
     const maxRows = 3
+    const AUTO_SUBMIT_DEDUP_MS = 1500
 
     useEffect(() => {
         if (!disabled) {
@@ -72,7 +77,28 @@ export function ChatInput({
     }
 
     const handleTranscript = (text: string) => {
+        if (voiceMode === 'full_voice') {
+            setValue(text)
+            return
+        }
         setValue((prev) => (prev ? `${prev} ${text}` : text))
+    }
+
+    const handleFinalTranscript = (text: string) => {
+        if (voiceMode !== 'full_voice') return
+        if (disabled) return
+        const trimmed = text.trim()
+        if (!trimmed) return
+
+        const now = Date.now()
+        const last = lastAutoSubmitRef.current
+        if (last && last.text === trimmed && now - last.timestamp < AUTO_SUBMIT_DEDUP_MS) {
+            return
+        }
+
+        lastAutoSubmitRef.current = { text: trimmed, timestamp: now }
+        onSend(trimmed)
+        setValue('')
     }
 
     return (
@@ -97,9 +123,12 @@ export function ChatInput({
             <div className="flex gap-2 items-center">
                 <MicButton
                     onTranscript={handleTranscript}
+                    onFinalTranscript={handleFinalTranscript}
                     disabled={disabled}
                     inputValue={value}
                     onErrorChange={setMicError}
+                    voiceMode={voiceMode}
+                    autoStart={voiceMode === 'full_voice'}
                 />
                 <Textarea
                     ref={textareaRef}

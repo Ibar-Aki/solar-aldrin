@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition'
 import { useTTSStore } from '@/stores/useTTSStore'
+import type { VoiceConversationMode } from '@/stores/useVoiceConversationModeStore'
 import { Mic, Square } from 'lucide-react'
 
 interface MicButtonProps {
@@ -8,15 +9,29 @@ interface MicButtonProps {
     disabled?: boolean
     inputValue: string
     onErrorChange?: (error: string | null) => void
+    onFinalTranscript?: (text: string) => void
+    voiceMode?: VoiceConversationMode
+    autoStart?: boolean
 }
 
-export function MicButton({ onTranscript, disabled = false, inputValue, onErrorChange }: MicButtonProps) {
+export function MicButton({
+    onTranscript,
+    disabled = false,
+    inputValue,
+    onErrorChange,
+    onFinalTranscript,
+    voiceMode = 'normal',
+    autoStart = false,
+}: MicButtonProps) {
     const isTTSSpeaking = useTTSStore((s) => s.isSpeaking)
+    const isFullVoiceMode = voiceMode === 'full_voice'
 
     /** ユーザーが手動で停止したかどうか（強制停止と区別するため） */
     const userStoppedRef = useRef(false)
     /** 強制停止前にリスニング中だったか（復帰判定用） */
     const wasListeningBeforePauseRef = useRef(false)
+    /** 自動開始の重複防止 */
+    const autoStartTriggeredRef = useRef(false)
 
     const {
         isListening,
@@ -24,12 +39,15 @@ export function MicButton({ onTranscript, disabled = false, inputValue, onErrorC
         start,
         stop,
         error,
+        setAutoRestart,
         clearError,
     } = useVoiceRecognition({
-        autoRestart: false, // 手動制御に切り替え
+        autoRestart: isFullVoiceMode,
         onResult: (transcript, isFinal) => {
             if (isFinal && transcript.trim()) {
-                onTranscript(transcript.trim())
+                const finalized = transcript.trim()
+                onTranscript(finalized)
+                onFinalTranscript?.(finalized)
             }
         },
     })
@@ -47,6 +65,11 @@ export function MicButton({ onTranscript, disabled = false, inputValue, onErrorC
 
     /** 強制停止が必要な条件 */
     const shouldForcePause = disabled || isTTSSpeaking
+    const shouldAutoStart = autoStart || isFullVoiceMode
+
+    useEffect(() => {
+        setAutoRestart(isFullVoiceMode)
+    }, [isFullVoiceMode, setAutoRestart])
 
     // 強制停止/再開のエフェクト
     useEffect(() => {
@@ -62,10 +85,34 @@ export function MicButton({ onTranscript, disabled = false, inputValue, onErrorC
             // 条件解除 → ユーザーが手動停止していなければ再開
             if (wasListeningBeforePauseRef.current && !userStoppedRef.current) {
                 wasListeningBeforePauseRef.current = false
+                // 同一更新で自動開始エフェクトが重なっても、start の多重実行を防ぐ
+                autoStartTriggeredRef.current = true
                 start()
             }
         }
     }, [shouldForcePause, isListening, start, stop, isSupported])
+
+    useEffect(() => {
+        if (!shouldAutoStart) {
+            autoStartTriggeredRef.current = false
+            return
+        }
+        if (!isSupported || shouldForcePause || isListening || userStoppedRef.current) return
+        if (autoStartTriggeredRef.current) return
+        autoStartTriggeredRef.current = true
+        start()
+    }, [shouldAutoStart, isSupported, shouldForcePause, isListening, start])
+
+    useEffect(() => {
+        if (!shouldForcePause) return
+        autoStartTriggeredRef.current = false
+    }, [shouldForcePause])
+
+    useEffect(() => {
+        if (isListening) {
+            autoStartTriggeredRef.current = false
+        }
+    }, [isListening])
 
     // 音声非対応ブラウザでは表示しない
     // Note: Hooks are now called before this check

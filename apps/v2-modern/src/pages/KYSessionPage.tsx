@@ -7,7 +7,9 @@ import { ChatInput } from '@/components/ChatInput'
 import { ChatBubble } from '@/components/ChatBubble'
 import { RiskLevelSelector } from '@/components/RiskLevelSelector'
 import { KYBoardCard } from '@/components/KYBoardCard'
+import { VoiceConversationModeToggle } from '@/components/VoiceConversationModeToggle'
 import { useKYStore } from '@/stores/kyStore'
+import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
 import { useChat } from '@/hooks/useChat'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 import { isWorkItemComplete } from '@/lib/validation'
@@ -26,6 +28,7 @@ export function KYSessionPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [kyBoardScale, setKyBoardScale] = useState<'expanded' | 'compact'>('expanded')
     const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
+    const { mode, setMode } = useVoiceConversationModeStore()
 
     const WAIT_NOTICE_AFTER_MS = (() => {
         const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
@@ -189,13 +192,20 @@ export function KYSessionPage() {
             {/* ヘッダー */}
             <div className="shrink-0">
                 <div className="bg-white border-b px-4 py-2">
-                    <div className="max-w-4xl mx-auto flex items-start justify-between gap-3">
-                        <h1 className="text-base sm:text-lg font-bold text-blue-600">一人KY活動</h1>
+                    <div className="max-w-4xl mx-auto space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                            <h1 className="text-base sm:text-lg font-bold text-blue-600">一人KY活動</h1>
 
-                        {/* 右側メタ情報（2行）: 1行目=作業場所,天候 / 2行目=作業内容(工程),ユーザー名 */}
-                        <div className="w-[12.5rem] sm:w-64 lg:w-80 min-w-0 text-right text-xs sm:text-sm">
-                            {meta2Line}
+                            {/* 右側メタ情報（2行）: 1行目=作業場所,天候 / 2行目=作業内容(工程),ユーザー名 */}
+                            <div className="w-[12.5rem] sm:w-64 lg:w-80 min-w-0 text-right text-xs sm:text-sm">
+                                {meta2Line}
+                            </div>
                         </div>
+                        <VoiceConversationModeToggle
+                            mode={mode}
+                            onChange={setMode}
+                            className="rounded-md border border-slate-200 bg-slate-50 p-3"
+                        />
                     </div>
                 </div>
 
@@ -265,7 +275,7 @@ export function KYSessionPage() {
             <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-2 pb-3">
                 <div className="max-w-4xl mx-auto">
                     {messages.map((msg) => (
-                        <ChatBubble key={msg.id} message={msg} />
+                        <ChatBubble key={msg.id} message={msg} autoSpeak={mode === 'full_voice'} />
                     ))}
                     {isLoading && (
                         <div className="flex justify-start mb-3">
@@ -421,6 +431,7 @@ export function KYSessionPage() {
                                 disabled={isLoading}
                                 placeholder="メッセージを入力..."
                                 variant="bare"
+                                voiceMode={mode}
                             />
                         </div>
                     </div>

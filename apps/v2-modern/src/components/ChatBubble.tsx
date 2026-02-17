@@ -1,14 +1,26 @@
+import { useEffect } from 'react'
 import type { ChatMessage } from '@/types/ky'
 import { useTTS } from '@/hooks/useTTS'
 import { Volume2, Square } from 'lucide-react'
 
 interface ChatBubbleProps {
     message: ChatMessage
+    autoSpeak?: boolean
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+const autoSpokenMessageIds = new Set<string>()
+
+export function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
     const isUser = message.role === 'user'
     const { speak, cancel, isSpeaking, isSupported } = useTTS({ messageId: message.id })
+
+    useEffect(() => {
+        if (!autoSpeak || isUser || !isSupported) return
+        if (!message.content.trim()) return
+        if (autoSpokenMessageIds.has(message.id)) return
+        autoSpokenMessageIds.add(message.id)
+        speak(message.content)
+    }, [autoSpeak, isUser, isSupported, message.id, message.content, speak])
 
     const handleSpeak = () => {
         if (isSpeaking) {
