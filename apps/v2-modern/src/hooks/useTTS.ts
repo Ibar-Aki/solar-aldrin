@@ -17,14 +17,16 @@ interface UseTTSOptions {
 }
 
 export function useTTS({ messageId }: UseTTSOptions) {
-    const { isSpeaking, currentMessageId, startSpeaking, stopSpeaking } = useTTSStore()
+    const isAnySpeaking = useTTSStore((state) => state.isSpeaking)
+    const currentMessageId = useTTSStore((state) => state.currentMessageId)
+    const startSpeaking = useTTSStore((state) => state.startSpeaking)
+    const stopSpeaking = useTTSStore((state) => state.stopSpeaking)
+    const isThisSpeaking = useTTSStore((state) => state.isSpeaking && state.currentMessageId === messageId)
     const synthRef = useRef<SpeechSynthesis | null>(null)
     const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const utteranceIdRef = useRef(0)
 
     const isSupported = typeof window !== 'undefined' && !!window.speechSynthesis
-    /** このメッセージが現在再生中かどうか */
-    const isThisSpeaking = isSpeaking && currentMessageId === messageId
 
     useEffect(() => {
         if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -140,7 +142,7 @@ export function useTTS({ messageId }: UseTTSOptions) {
         /** このメッセージが再生中か */
         isSpeaking: isThisSpeaking,
         /** グローバルで何かが再生中か */
-        isAnySpeaking: isSpeaking,
+        isAnySpeaking,
         isSupported
     }
 }

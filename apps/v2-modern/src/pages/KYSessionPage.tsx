@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -23,19 +23,26 @@ const DEFAULT_SAFETY_CHECKS: SafetyConfirmationChecks = {
     evacuationRouteAndContact: false,
 }
 
+const SAFETY_CHECKLIST_ITEMS: Array<{ key: keyof SafetyConfirmationChecks; label: string }> = [
+    { key: 'pointAndCall', label: '指差し呼称を実施した。' },
+    { key: 'toolAndWireInspection', label: '工具やワイヤーの点検を行った。' },
+    { key: 'ppeReady', label: '適切な保護具を準備した。' },
+    { key: 'evacuationRouteAndContact', label: '退避経路と連絡手段を確認した。' },
+]
+
+const WAIT_NOTICE_AFTER_MS = (() => {
+    const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
+    if (!raw) return 15_000
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000
+})()
+
 export function KYSessionPage() {
     const navigate = useNavigate()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [kyBoardScale, setKyBoardScale] = useState<'expanded' | 'compact'>('expanded')
     const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
     const { mode, setMode } = useVoiceConversationModeStore()
-
-    const WAIT_NOTICE_AFTER_MS = (() => {
-        const raw = import.meta.env.VITE_WAIT_NOTICE_AFTER_MS
-        if (!raw) return 15_000
-        const parsed = Number.parseInt(raw, 10)
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000
-    })()
 
     const {
         session,
@@ -124,7 +131,10 @@ export function KYSessionPage() {
 
     if (!session) return null
 
-    const processPhaseLabel = (session.processPhase ?? 'フリー').trim() || 'フリー'
+    const processPhaseLabel = useMemo(
+        () => (session.processPhase ?? 'フリー').trim() || 'フリー',
+        [session.processPhase]
+    )
     const meta2Line = (
         <div className="text-xs sm:text-sm text-gray-500 leading-snug">
             <div className="flex min-w-0 items-center justify-end gap-1">
@@ -140,7 +150,7 @@ export function KYSessionPage() {
 
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
-    const lastAssistantNextAction = (() => {
+    const lastAssistantNextAction = useMemo(() => {
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const message = messages[i]
             if (message.role === 'assistant' && message.extractedData?.nextAction) {
@@ -148,17 +158,13 @@ export function KYSessionPage() {
             }
         }
         return undefined
-    })()
+    }, [messages])
     const isRiskLevelSelectorVisible = shouldShowRiskLevelSelector({
         lastAssistantNextAction,
         currentRiskLevel: currentWorkItem.riskLevel,
     })
     const kyBoardIndex = Math.min(2, workItemCount + 1)
-    const firstWorkItemMeasureCount = (currentWorkItem.countermeasures ?? [])
-        .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
-        .filter((text) => text.length > 0 && !isNonAnswerText(text))
-        .length
-    const secondWorkItemMeasureCount = (currentWorkItem.countermeasures ?? [])
+    const validMeasureCount = (currentWorkItem.countermeasures ?? [])
         .map((cm) => (typeof cm.text === 'string' ? cm.text.trim() : ''))
         .filter((text) => text.length > 0 && !isNonAnswerText(text))
         .length
@@ -166,22 +172,16 @@ export function KYSessionPage() {
         status === 'work_items' &&
         workItemCount === 0 &&
         isWorkItemComplete(currentWorkItem) &&
-        firstWorkItemMeasureCount >= 2
+        validMeasureCount >= 2
     const canShowSecondWorkItemCompleteButton =
         status === 'work_items' &&
         workItemCount === 1 &&
         isWorkItemComplete(currentWorkItem) &&
-        secondWorkItemMeasureCount >= 2
-    const safetyChecklistItems: Array<{ key: keyof SafetyConfirmationChecks; label: string }> = [
-        { key: 'pointAndCall', label: '指差し呼称を実施した。' },
-        { key: 'toolAndWireInspection', label: '工具やワイヤーの点検を行った。' },
-        { key: 'ppeReady', label: '適切な保護具を準備した。' },
-        { key: 'evacuationRouteAndContact', label: '退避経路と連絡手段を確認した。' },
-    ]
-    const completedSafetyCheckCount = safetyChecklistItems.filter((item) => safetyChecks[item.key]).length
-    const isSafetyChecklistComplete = completedSafetyCheckCount === safetyChecklistItems.length
+        validMeasureCount >= 2
+    const completedSafetyCheckCount = SAFETY_CHECKLIST_ITEMS.filter((item) => safetyChecks[item.key]).length
+    const isSafetyChecklistComplete = completedSafetyCheckCount === SAFETY_CHECKLIST_ITEMS.length
     const shouldHideChatInputForFirstWorkItem =
-        canShowFirstWorkItemCompleteButton && firstWorkItemMeasureCount >= 3
+        canShowFirstWorkItemCompleteButton && validMeasureCount >= 3
     const shouldShowSafetyChecklist = status === 'confirmation'
     const shouldHideChatInput =
         shouldShowSafetyChecklist ||
@@ -352,11 +352,11 @@ export function KYSessionPage() {
                             <Card className="gap-2 py-3">
                                 <CardHeader className="py-1.5">
                                     <CardTitle className="text-sm">
-                                        最終安全確認 ({completedSafetyCheckCount}/{safetyChecklistItems.length})
+                                        最終安全確認 ({completedSafetyCheckCount}/{SAFETY_CHECKLIST_ITEMS.length})
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="pt-0 space-y-2">
-                                    {safetyChecklistItems.map((item) => {
+                                    {SAFETY_CHECKLIST_ITEMS.map((item) => {
                                         const checked = safetyChecks[item.key]
                                         return (
                                             <button

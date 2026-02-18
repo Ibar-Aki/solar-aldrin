@@ -114,6 +114,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
 
     const startedAt = Date.now()
     let httpAttempts = 0
+    const serializedBody = JSON.stringify(body)
 
     const performRequest = async (currentRetry: number, attempt: number = 0): Promise<Response> => {
         try {
@@ -124,7 +125,7 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`,
                 },
-                body: JSON.stringify(body),
+                body: serializedBody,
             }, timeoutMs)
 
             // Retryable errors (5xx, 429)

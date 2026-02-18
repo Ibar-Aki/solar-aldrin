@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { memo, useEffect, useMemo } from 'react'
 import type { ChatMessage } from '@/types/ky'
 import { useTTS } from '@/hooks/useTTS'
 import { Volume2, Square } from 'lucide-react'
@@ -9,8 +9,18 @@ interface ChatBubbleProps {
 }
 
 const autoSpokenMessageIds = new Set<string>()
+const MAX_AUTO_SPOKEN_CACHE = 500
 
-export function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
+function rememberAutoSpokenMessage(messageId: string) {
+    autoSpokenMessageIds.add(messageId)
+    if (autoSpokenMessageIds.size <= MAX_AUTO_SPOKEN_CACHE) return
+    const oldest = autoSpokenMessageIds.values().next().value
+    if (typeof oldest === 'string') {
+        autoSpokenMessageIds.delete(oldest)
+    }
+}
+
+export const ChatBubble = memo(function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
     const isUser = message.role === 'user'
     const { speak, cancel, isSpeaking, isSupported } = useTTS({ messageId: message.id })
 
@@ -18,7 +28,7 @@ export function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
         if (!autoSpeak || isUser || !isSupported) return
         if (!message.content.trim()) return
         if (autoSpokenMessageIds.has(message.id)) return
-        autoSpokenMessageIds.add(message.id)
+        rememberAutoSpokenMessage(message.id)
         speak(message.content)
     }, [autoSpeak, isUser, isSupported, message.id, message.content, speak])
 
@@ -30,10 +40,10 @@ export function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
         }
     }
 
-    const timeLabel = new Date(message.timestamp).toLocaleTimeString('ja-JP', {
+    const timeLabel = useMemo(() => new Date(message.timestamp).toLocaleTimeString('ja-JP', {
         hour: 'numeric',
-        minute: '2-digit'
-    })
+        minute: '2-digit',
+    }), [message.timestamp])
 
     return (
         <div className="mb-3 w-full" data-testid="chat-bubble" data-role={message.role}>
@@ -73,4 +83,6 @@ export function ChatBubble({ message, autoSpeak = false }: ChatBubbleProps) {
             </div>
         </div>
     )
-}
+})
+
+ChatBubble.displayName = 'ChatBubble'

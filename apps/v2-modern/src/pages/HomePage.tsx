@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,6 @@ import { useKYStore } from '@/stores/kyStore'
 import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
 import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
-import { getLatestSession } from '@/lib/db'
 import { History } from 'lucide-react'
 import { clearApiToken, getApiToken, maskApiToken, setApiToken } from '@/lib/apiToken'
 import { shouldRequireApiTokenClient } from '@/lib/envFlags'
@@ -22,6 +21,11 @@ interface PrefillData {
     weather?: string
     processPhase?: ProcessPhase
     healthCondition?: HealthCondition
+}
+
+async function fetchLatestSession() {
+    const { getLatestSession } = await import('@/lib/db')
+    return getLatestSession()
 }
 
 export function HomePage() {
@@ -57,7 +61,7 @@ export function HomePage() {
         let cancelled = false
         const loadLatest = async () => {
             try {
-                const latest = await getLatestSession()
+                const latest = await fetchLatestSession()
                 if (!cancelled) {
                     setLatestAvailable(!!latest)
                 }
@@ -75,13 +79,12 @@ export function HomePage() {
     }, [])
 
     // 日付表示 (UX-10) - 絵文字なし
-    const today = new Date()
-    const formattedDate = today.toLocaleDateString('ja-JP', {
+    const formattedDate = useMemo(() => new Date().toLocaleDateString('ja-JP', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         weekday: 'long',
-    })
+    }), [])
 
     const handleStart = async () => {
         if (!userName.trim() || !siteName.trim()) return
@@ -125,7 +128,7 @@ export function HomePage() {
 
     const handleUseLatest = async () => {
         try {
-            const latest = await getLatestSession()
+            const latest = await fetchLatestSession()
             if (!latest) return
             setUserName(latest.userName ?? '')
             setSiteName(latest.siteName ?? '')

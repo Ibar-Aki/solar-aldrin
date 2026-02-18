@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -279,7 +279,7 @@ export function CompletionPage() {
     if (!session || status !== 'completed') return null
 
     const displayActionGoal = polishedActionGoal ?? session.actionGoal
-    const kyFeedbackItems = session.workItems.slice(0, 2).map((item, idx) => ({
+    const kyFeedbackItems = useMemo(() => session.workItems.slice(0, 2).map((item, idx) => ({
         id: item.id,
         title: `KY${idx + 1}`,
         hazard: item.hazardDescription.trim(),
@@ -287,7 +287,7 @@ export function CompletionPage() {
             .map((cm) => cm.text.trim())
             .filter((text) => text.length > 0)
             .slice(0, 2),
-    }))
+    })), [session.workItems])
 
     const hasFeedback = Boolean(feedback && feedback.praise && feedback.tip)
     const hasSupplements = supplements.length > 0
