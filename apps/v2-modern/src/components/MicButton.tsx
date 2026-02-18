@@ -12,6 +12,7 @@ interface MicButtonProps {
     onFinalTranscript?: (text: string) => void
     voiceMode?: VoiceConversationMode
     autoStart?: boolean
+    autoStartEnabled?: boolean
 }
 
 export function MicButton({
@@ -22,6 +23,7 @@ export function MicButton({
     onFinalTranscript,
     voiceMode = 'normal',
     autoStart = false,
+    autoStartEnabled = true,
 }: MicButtonProps) {
     const isTTSSpeaking = useTTSStore((s) => s.isSpeaking)
     const isFullVoiceMode = voiceMode === 'full_voice'
@@ -65,7 +67,7 @@ export function MicButton({
 
     /** 強制停止が必要な条件 */
     const shouldForcePause = disabled || isTTSSpeaking
-    const shouldAutoStart = autoStart || isFullVoiceMode
+    const shouldAutoStart = (autoStart || isFullVoiceMode) && autoStartEnabled
 
     useEffect(() => {
         setAutoRestart(isFullVoiceMode)

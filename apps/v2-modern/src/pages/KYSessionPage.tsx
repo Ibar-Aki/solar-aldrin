@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,8 +9,10 @@ import { RiskLevelSelector } from '@/components/RiskLevelSelector'
 import { KYBoardCard } from '@/components/KYBoardCard'
 import { VoiceConversationModeToggle } from '@/components/VoiceConversationModeToggle'
 import { useKYStore } from '@/stores/kyStore'
+import { useTTSStore } from '@/stores/useTTSStore'
 import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
 import { useChat } from '@/hooks/useChat'
+import { useTTS } from '@/hooks/useTTS'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 import { isWorkItemComplete } from '@/lib/validation'
 import { isNonAnswerText } from '@/lib/nonAnswer'
@@ -37,12 +39,36 @@ const WAIT_NOTICE_AFTER_MS = (() => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000
 })()
 
+type SessionEntry = 'new' | 'resume'
+const INITIAL_VOICE_FALLBACK_MS = 6_000
+
+function getSessionEntryFromState(state: unknown): SessionEntry | null {
+    if (!state || typeof state !== 'object') return null
+    const entry = (state as { entry?: unknown }).entry
+    return entry === 'new' || entry === 'resume' ? entry : null
+}
+
 export function KYSessionPage() {
     const navigate = useNavigate()
+    const location = useLocation()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [kyBoardScale, setKyBoardScale] = useState<'expanded' | 'compact'>('expanded')
     const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
     const { mode, setMode } = useVoiceConversationModeStore()
+    const isTTSSpeaking = useTTSStore((state) => state.isSpeaking)
+    const { speak: speakInitialGuide, isSupported: isTTSSupported } = useTTS({ messageId: 'session-voice-boot' })
+
+    const entryRef = useRef<SessionEntry | null>(getSessionEntryFromState(location.state))
+    const initialModeRef = useRef(mode)
+    const shouldRunInitialVoiceBootRef = useRef(
+        initialModeRef.current === 'full_voice' && entryRef.current !== null
+    )
+    const [isInitialVoiceBootPending, setIsInitialVoiceBootPending] = useState(
+        shouldRunInitialVoiceBootRef.current
+    )
+    const bootSpeechObservedRef = useRef(false)
+    const resumeGuideTriggeredRef = useRef(false)
+    const autoSpeakFromTimestampRef = useRef(entryRef.current === 'resume' ? Date.now() : 0)
 
     const {
         session,
@@ -88,6 +114,56 @@ export function KYSessionPage() {
             initializeChat()
         }
     }, [session, messages.length, initializeChat])
+
+    useEffect(() => {
+        if (!isInitialVoiceBootPending) return
+        if (mode !== 'full_voice') {
+            setIsInitialVoiceBootPending(false)
+        }
+    }, [mode, isInitialVoiceBootPending])
+
+    useEffect(() => {
+        if (!isInitialVoiceBootPending) return
+        if (!isTTSSupported) {
+            setIsInitialVoiceBootPending(false)
+        }
+    }, [isInitialVoiceBootPending, isTTSSupported])
+
+    useEffect(() => {
+        if (!isInitialVoiceBootPending) return
+        if (!session) return
+        if (mode !== 'full_voice') return
+        if (entryRef.current !== 'resume') return
+        if (messages.length === 0) return
+        if (resumeGuideTriggeredRef.current) return
+
+        resumeGuideTriggeredRef.current = true
+        const phase = (session.processPhase ?? 'フリー').trim() || 'フリー'
+        speakInitialGuide(`KY活動を再開します。${phase}の続きから進めましょう。準備ができたら話しかけてください。`)
+    }, [isInitialVoiceBootPending, mode, messages.length, session, speakInitialGuide])
+
+    useEffect(() => {
+        if (!isInitialVoiceBootPending) return
+
+        const timer = window.setTimeout(() => {
+            setIsInitialVoiceBootPending(false)
+        }, INITIAL_VOICE_FALLBACK_MS)
+
+        return () => window.clearTimeout(timer)
+    }, [isInitialVoiceBootPending])
+
+    useEffect(() => {
+        if (!isInitialVoiceBootPending) return
+
+        if (isTTSSpeaking) {
+            bootSpeechObservedRef.current = true
+            return
+        }
+
+        if (bootSpeechObservedRef.current) {
+            setIsInitialVoiceBootPending(false)
+        }
+    }, [isTTSSpeaking, isInitialVoiceBootPending])
 
     // メッセージ追加時にスクロール
     useEffect(() => {
@@ -186,13 +262,20 @@ export function KYSessionPage() {
     const shouldHideChatInput =
         shouldShowSafetyChecklist ||
         shouldHideChatInputForFirstWorkItem
+    const micAutoStartEnabled = mode !== 'full_voice' || !isInitialVoiceBootPending
+    const shouldAutoSpeakMessage = (timestamp: string) => {
+        if (mode !== 'full_voice') return false
+        const parsed = Date.parse(timestamp)
+        if (!Number.isFinite(parsed)) return true
+        return parsed >= autoSpeakFromTimestampRef.current
+    }
 
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
             {/* ヘッダー */}
             <div className="shrink-0">
                 <div className="bg-white border-b px-4 py-2">
-                    <div className="max-w-4xl mx-auto space-y-2">
+                    <div className="max-w-4xl mx-auto">
                         <div className="flex items-start justify-between gap-3">
                             <h1 className="text-base sm:text-lg font-bold text-blue-600">一人KY活動</h1>
 
@@ -201,29 +284,18 @@ export function KYSessionPage() {
                                 {meta2Line}
                             </div>
                         </div>
-                        <VoiceConversationModeToggle
-                            mode={mode}
-                            onChange={setMode}
-                            className="rounded-md border border-slate-200 bg-slate-50 p-3"
-                        />
                     </div>
                 </div>
 
-                {/* 進捗バー */}
+                {/* モード切替 + 参考情報（高さ固定） */}
                 <div className="bg-white border-b px-4 py-1">
                     <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-                            <span className={`px-2 py-1 rounded ${status === 'work_items' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                KY活動
-                            </span>
-                            <span className="text-gray-300">→</span>
-                            <span className={`px-2 py-1 rounded ${status === 'action_goal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                安全確認
-                            </span>
-                            <span className="text-gray-300">→</span>
-                            <span className={`px-2 py-1 rounded ${status === 'confirmation' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
-                                総括
-                            </span>
+                        <div className="min-w-0 flex-1" data-testid="session-mode-toggle-compact">
+                            <VoiceConversationModeToggle
+                                mode={mode}
+                                onChange={setMode}
+                                density="compact"
+                            />
                         </div>
                         <Button
                             asChild
@@ -275,7 +347,7 @@ export function KYSessionPage() {
             <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-2 pb-3">
                 <div className="max-w-4xl mx-auto">
                     {messages.map((msg) => (
-                        <ChatBubble key={msg.id} message={msg} autoSpeak={mode === 'full_voice'} />
+                        <ChatBubble key={msg.id} message={msg} autoSpeak={shouldAutoSpeakMessage(msg.timestamp)} />
                     ))}
                     {isLoading && (
                         <div className="flex justify-start mb-3">
@@ -432,6 +504,7 @@ export function KYSessionPage() {
                                 placeholder="メッセージを入力..."
                                 variant="bare"
                                 voiceMode={mode}
+                                micAutoStartEnabled={micAutoStartEnabled}
                             />
                         </div>
                     </div>

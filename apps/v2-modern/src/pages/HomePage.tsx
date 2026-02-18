@@ -92,14 +92,14 @@ export function HomePage() {
         setIsStarting(true)
         try {
             startSession(userName.trim(), siteName.trim(), weather, processPhase, healthCondition)
-            navigate('/session')
+            navigate('/session', { state: { entry: 'new' as const } })
         } finally {
             setIsStarting(false)
         }
     }
 
     const handleContinue = () => {
-        navigate('/session')
+        navigate('/session', { state: { entry: 'resume' as const } })
     }
 
     const handleClear = () => {

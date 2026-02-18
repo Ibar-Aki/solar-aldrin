@@ -14,6 +14,7 @@ interface ChatInputProps {
     placeholder?: string
     variant?: 'default' | 'bare'
     voiceMode?: VoiceConversationMode
+    micAutoStartEnabled?: boolean
     containerClassName?: string
     inputClassName?: string
     buttonClassName?: string
@@ -25,6 +26,7 @@ export function ChatInput({
     placeholder = 'メッセージを入力...',
     variant = 'default',
     voiceMode = 'normal',
+    micAutoStartEnabled = true,
     containerClassName,
     inputClassName,
     buttonClassName,
@@ -129,6 +131,7 @@ export function ChatInput({
                     onErrorChange={setMicError}
                     voiceMode={voiceMode}
                     autoStart={voiceMode === 'full_voice'}
+                    autoStartEnabled={micAutoStartEnabled}
                 />
                 <Textarea
                     ref={textareaRef}

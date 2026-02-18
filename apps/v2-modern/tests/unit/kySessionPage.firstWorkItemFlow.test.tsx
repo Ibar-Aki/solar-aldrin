@@ -17,6 +17,7 @@ vi.mock('react-router-dom', async () => {
     return {
         ...actual,
         useNavigate: () => navigateMock,
+        useLocation: () => ({ state: null }),
     }
 })
 
@@ -76,6 +77,17 @@ describe('KYSessionPage first work item flow', () => {
         expect(link).toHaveAttribute('href', 'https://www.mlit.go.jp/common/001187973.pdf')
         expect(link).toHaveAttribute('target', '_blank')
         expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
+    it('会話モード切替を参考情報帯に配置し、旧進捗ラベルを表示しない', () => {
+        render(<KYSessionPage />)
+
+        expect(screen.getByTestId('session-mode-toggle-compact')).toBeInTheDocument()
+        expect(screen.getByTestId('mode-normal')).toBeInTheDocument()
+        expect(screen.getByTestId('mode-full-voice')).toBeInTheDocument()
+        expect(screen.queryByText('KY活動')).not.toBeInTheDocument()
+        expect(screen.queryByText('安全確認')).not.toBeInTheDocument()
+        expect(screen.queryByText('総括')).not.toBeInTheDocument()
     })
 
     it('1件目で対策3件が揃ったら入力欄を隠し、完了ボタンのみ表示する', () => {

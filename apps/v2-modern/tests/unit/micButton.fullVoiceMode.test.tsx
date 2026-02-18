@@ -68,6 +68,21 @@ describe('MicButton full voice mode', () => {
         expect(setAutoRestartMock).toHaveBeenCalledWith(false)
     })
 
+    it('自動開始ゲートが無効なら、完全音声会話モードでも自動開始しない', () => {
+        render(
+            <MicButton
+                onTranscript={() => {}}
+                voiceMode="full_voice"
+                autoStart
+                autoStartEnabled={false}
+                disabled={false}
+                inputValue=""
+            />
+        )
+
+        expect(startMock).not.toHaveBeenCalled()
+    })
+
     it('強制停止解除と自動開始が同時条件でも start は1回のみ', async () => {
         const noop = () => {}
 

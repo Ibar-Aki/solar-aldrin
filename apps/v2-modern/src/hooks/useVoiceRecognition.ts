@@ -47,14 +47,22 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
     const recognitionRef = useRef<InstanceType<typeof SpeechRecognition> | null>(null)
     const lastSpeechTimeRef = useRef<number>(0)
     const isStoppingRef = useRef(false)
+    const isStartingRef = useRef(false)
+    const hasStartedRef = useRef(false)
+    const isListeningRef = useRef(false)
 
     const isSupported = !!SpeechRecognition
 
     // 10秒無音で自動停止
     const SILENCE_TIMEOUT = 10000
 
+    useEffect(() => {
+        isListeningRef.current = isListening
+    }, [isListening])
+
     const stop = useCallback(() => {
         isStoppingRef.current = true
+        isStartingRef.current = false
         if (recognitionRef.current) {
             recognitionRef.current.stop()
         }
@@ -66,6 +74,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
     }, [])
 
     const start = useCallback(() => {
+        if (isStartingRef.current || isListeningRef.current) return
+
         if (!isSupported) {
             const msg = 'このブラウザは音声認識に対応していません'
             setError((prev) => (prev === msg ? prev : msg))
@@ -74,10 +84,20 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
         }
 
         isStoppingRef.current = false
+        isStartingRef.current = true
         setError(null)
         setTranscript('')
 
         try {
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.stop()
+                } catch {
+                    // no-op
+                }
+                recognitionRef.current = null
+            }
+
             const recognition = new SpeechRecognition()
             recognition.lang = lang
             recognition.continuous = continuous
@@ -85,6 +105,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
             recognition.onstart = () => {
                 setIsListening(true)
+                isStartingRef.current = false
+                hasStartedRef.current = true
                 lastSpeechTimeRef.current = Date.now()
             }
 
@@ -116,6 +138,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
                 const normalized = normalizeSpeechRecognitionError(event.error)
                 console.error('Speech recognition error:', normalized)
+                isStartingRef.current = false
 
                 // 一時的なエラーは無視
                 if (normalized === 'no-speech' || normalized === 'aborted') {
@@ -146,6 +169,8 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
             recognition.onend = () => {
                 setIsListening(false)
+                isStartingRef.current = false
+                recognitionRef.current = null
             }
 
             recognitionRef.current = recognition
@@ -153,6 +178,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
         } catch (e) {
             console.error('Failed to start speech recognition:', e)
+            isStartingRef.current = false
             const msg = '音声認識の開始に失敗しました'
             setError((prev) => (prev === msg ? prev : msg))
             onError?.(msg)
@@ -191,6 +217,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
 
     // 自動再開（意図的な停止でない場合）
     useEffect(() => {
+        if (!hasStartedRef.current) return
         if (!isListening && autoRestart && !isStoppingRef.current && isSupported) {
             const timer = setTimeout(() => {
                 start()
@@ -205,6 +232,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             if (recognitionRef.current) {
                 recognitionRef.current.stop()
             }
+            isStartingRef.current = false
         }
     }, [])
 
