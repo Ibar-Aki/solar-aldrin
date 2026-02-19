@@ -86,7 +86,34 @@ test.describe('KYセッション統合E2E', () => {
 
         await sendUserMessage(page, 'KY完了')
         await sendUserMessage(page, '行動目標は「足元確認ヨシ！」です')
-        await page.waitForURL('**/complete')
+
+        const reachedCompleteDirectly = await page
+            .waitForURL('**/complete', { timeout: 5000 })
+            .then(() => true)
+            .catch(() => false)
+        if (!reachedCompleteDirectly) {
+            // 現行仕様: 行動目標の後に最終安全確認（4チェック）が必要。
+            const checklistPanel = page.getByTestId('safety-checklist-panel')
+            await expect(checklistPanel).toBeVisible({ timeout: 10000 })
+            const safetyCheckKeys = [
+                'pointAndCall',
+                'toolAndWireInspection',
+                'ppeReady',
+                'evacuationRouteAndContact',
+            ] as const
+            for (const key of safetyCheckKeys) {
+                const check = page.getByTestId(`safety-check-${key}`)
+                await expect(check).toBeVisible()
+                const pressed = await check.getAttribute('aria-pressed')
+                if (pressed !== 'true') {
+                    await check.click()
+                }
+            }
+            const completeSafetyButton = page.getByTestId('button-complete-safety-checks')
+            await expect(completeSafetyButton).toBeEnabled()
+            await completeSafetyButton.click()
+            await page.waitForURL('**/complete', { timeout: 30000 })
+        }
 
         // 4. PDF生成確認
         const pdfButton = page.getByRole('button', { name: 'PDF記録をダウンロード' })

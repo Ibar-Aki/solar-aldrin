@@ -16,9 +16,11 @@ let cachedVoices: SpeechSynthesisVoice[] = []
 interface UseTTSOptions {
     /** このメッセージの一意な識別子 */
     messageId: string
+    /** 読み上げエラー通知 */
+    onTtsError?: (errorCode: string) => void
 }
 
-export function useTTS({ messageId }: UseTTSOptions) {
+export function useTTS({ messageId, onTtsError }: UseTTSOptions) {
     const isAnySpeaking = useTTSStore((state) => state.isSpeaking)
     const currentMessageId = useTTSStore((state) => state.currentMessageId)
     const startSpeaking = useTTSStore((state) => state.startSpeaking)
@@ -36,8 +38,23 @@ export function useTTS({ messageId }: UseTTSOptions) {
     const isSupported = typeof window !== 'undefined' && !!window.speechSynthesis
 
     useEffect(() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-            synthRef.current = window.speechSynthesis
+        if (typeof window === 'undefined' || !window.speechSynthesis) return
+
+        const synth = window.speechSynthesis
+        synthRef.current = synth
+
+        const refreshVoicesCache = () => {
+            const voices = synth.getVoices()
+            if (voices.length > 0) {
+                cachedVoices = voices
+            }
+        }
+
+        refreshVoicesCache()
+        synth.addEventListener?.('voiceschanged', refreshVoicesCache)
+
+        return () => {
+            synth.removeEventListener?.('voiceschanged', refreshVoicesCache)
         }
     }, [])
 
@@ -143,6 +160,7 @@ export function useTTS({ messageId }: UseTTSOptions) {
 
             const maybeError = e as { error?: unknown }
             const errorCode = typeof maybeError.error === 'string' ? maybeError.error : ''
+            onTtsError?.(errorCode)
             const shouldQueueReplay =
                 errorCode === 'not-allowed' &&
                 replayAttemptedTextRef.current !== text
@@ -162,8 +180,10 @@ export function useTTS({ messageId }: UseTTSOptions) {
                 stopSpeaking()
             }
         }, TTS_FALLBACK_TIMEOUT_MS)
-    }, [messageId, startSpeaking, stopSpeaking, clearFallbackTimer, clearReplayHandler, queueReplayOnUserInteraction])
-    speakRef.current = speak
+    }, [messageId, startSpeaking, stopSpeaking, clearFallbackTimer, clearReplayHandler, queueReplayOnUserInteraction, onTtsError])
+    useEffect(() => {
+        speakRef.current = speak
+    }, [speak])
 
     /**
      * 読み上げ停止

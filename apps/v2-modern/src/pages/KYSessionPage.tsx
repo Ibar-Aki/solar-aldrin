@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -56,7 +56,6 @@ export function KYSessionPage() {
     const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
     const { mode, setMode } = useVoiceConversationModeStore()
     const isTTSSpeaking = useTTSStore((state) => state.isSpeaking)
-    const { speak: speakInitialGuide, isSupported: isTTSSupported } = useTTS({ messageId: 'session-voice-boot' })
 
     const entryRef = useRef<SessionEntry | null>(getSessionEntryFromState(location.state))
     const initialModeRef = useRef(mode)
@@ -67,8 +66,21 @@ export function KYSessionPage() {
         shouldRunInitialVoiceBootRef.current
     )
     const bootSpeechObservedRef = useRef(false)
+    const bootGuideBlockedRef = useRef(false)
     const resumeGuideTriggeredRef = useRef(false)
     const autoSpeakFromTimestampRef = useRef(entryRef.current === 'resume' ? Date.now() : 0)
+
+    const handleInitialGuideTtsError = useCallback((errorCode: string) => {
+        if (!errorCode) return
+        if (errorCode !== 'not-allowed') return
+        bootGuideBlockedRef.current = true
+        setIsInitialVoiceBootPending(false)
+    }, [])
+
+    const { speak: speakInitialGuide, isSupported: isTTSSupported } = useTTS({
+        messageId: 'session-voice-boot',
+        onTtsError: handleInitialGuideTtsError,
+    })
 
     const {
         session,
@@ -143,6 +155,7 @@ export function KYSessionPage() {
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
+        if (bootGuideBlockedRef.current) return
 
         const timer = window.setTimeout(() => {
             setIsInitialVoiceBootPending(false)

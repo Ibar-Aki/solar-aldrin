@@ -9,6 +9,9 @@ interface MockSpeechSynthesis {
     cancel: () => void
     speak: (_utterance: SpeechSynthesisUtterance) => void
     getVoices: () => SpeechSynthesisVoice[]
+    addEventListener: (type: 'voiceschanged', listener: () => void) => void
+    removeEventListener: (type: 'voiceschanged', listener: () => void) => void
+    emitVoicesChanged: () => void
 }
 
 class MockSpeechSynthesisUtterance {
@@ -29,16 +32,28 @@ class MockSpeechSynthesisUtterance {
 
 describe('useTTS recovery guard', () => {
     let mockSynth: MockSpeechSynthesis
+    let voices: SpeechSynthesisVoice[]
 
     beforeEach(() => {
         vi.useFakeTimers()
         ;(globalThis as unknown as { SpeechSynthesisUtterance: typeof MockSpeechSynthesisUtterance }).SpeechSynthesisUtterance = MockSpeechSynthesisUtterance
+        voices = []
+        const voicesChangedListeners = new Set<() => void>()
         mockSynth = {
             speaking: false,
             pending: false,
             cancel: vi.fn(),
             speak: vi.fn(),
-            getVoices: () => [],
+            getVoices: () => voices,
+            addEventListener: (_type, listener) => {
+                voicesChangedListeners.add(listener)
+            },
+            removeEventListener: (_type, listener) => {
+                voicesChangedListeners.delete(listener)
+            },
+            emitVoicesChanged: () => {
+                voicesChangedListeners.forEach((listener) => listener())
+            },
         }
         ;(window as unknown as { speechSynthesis: MockSpeechSynthesis }).speechSynthesis = mockSynth
         useTTSStore.setState({ isSpeaking: false, currentMessageId: null })
@@ -115,6 +130,51 @@ describe('useTTS recovery guard', () => {
 
         expect(mockSynth.speak).toHaveBeenCalledTimes(2)
         expect(useTTSStore.getState().isSpeaking).toBe(false)
+        act(() => {
+            unmount()
+        })
+    })
+
+    it('voiceschanged 後は更新された日本語Voiceを読み上げに使用する', () => {
+        const jaVoice = { lang: 'ja-JP', name: 'Google 日本語' } as SpeechSynthesisVoice
+        const { result, unmount } = renderHook(() => useTTS({ messageId: 'test-message' }))
+
+        act(() => {
+            result.current.speak('初回')
+        })
+        const firstUtterance = (mockSynth.speak as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0] as MockSpeechSynthesisUtterance
+        expect(firstUtterance.voice).toBeNull()
+
+        voices = [jaVoice]
+        act(() => {
+            mockSynth.emitVoicesChanged()
+        })
+
+        act(() => {
+            result.current.speak('2回目')
+        })
+        const secondUtterance = (mockSynth.speak as unknown as { mock: { calls: unknown[][] } }).mock.calls[1][0] as MockSpeechSynthesisUtterance
+        expect(secondUtterance.voice).toBe(jaVoice)
+
+        act(() => {
+            unmount()
+        })
+    })
+
+    it('読み上げエラー時に onTtsError コールバックへエラーコードを通知する', () => {
+        const onTtsError = vi.fn()
+        mockSynth.speak = vi.fn((utterance) => {
+            const mockUtterance = utterance as unknown as MockSpeechSynthesisUtterance
+            mockUtterance.onerror?.({ error: 'not-allowed' } as SpeechSynthesisErrorEvent)
+        })
+        const { result, unmount } = renderHook(() => useTTS({ messageId: 'test-message', onTtsError }))
+
+        act(() => {
+            result.current.speak('エラー通知テスト')
+        })
+
+        expect(onTtsError).toHaveBeenCalledWith('not-allowed')
+
         act(() => {
             unmount()
         })

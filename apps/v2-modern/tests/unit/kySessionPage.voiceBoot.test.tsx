@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { KYSessionPage } from '@/pages/KYSessionPage'
 import { useKYStore } from '@/stores/kyStore'
 import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
@@ -16,6 +16,7 @@ const speakMock = vi.fn()
 
 let locationState: unknown = null
 let mockIsSpeaking = false
+let initialGuideTtsErrorHandler: ((errorCode: string) => void) | null = null
 
 vi.mock('react-router-dom', async () => {
     const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -40,13 +41,18 @@ vi.mock('@/hooks/useChat', () => ({
 }))
 
 vi.mock('@/hooks/useTTS', () => ({
-    useTTS: () => ({
-        speak: speakMock,
-        cancel: vi.fn(),
-        isSpeaking: false,
-        isAnySpeaking: mockIsSpeaking,
-        isSupported: true,
-    }),
+    useTTS: (options?: { messageId?: string; onTtsError?: (errorCode: string) => void }) => {
+        if (options?.messageId === 'session-voice-boot') {
+            initialGuideTtsErrorHandler = options.onTtsError ?? null
+        }
+        return {
+            speak: speakMock,
+            cancel: vi.fn(),
+            isSpeaking: false,
+            isAnySpeaking: mockIsSpeaking,
+            isSupported: true,
+        }
+    },
 }))
 
 vi.mock('@/stores/useTTSStore', () => ({
@@ -80,6 +86,7 @@ describe('KYSessionPage initial voice boot', () => {
         speakMock.mockReset()
         locationState = null
         mockIsSpeaking = false
+        initialGuideTtsErrorHandler = null
         useKYStore.setState(initialState, true)
         useVoiceConversationModeStore.setState({ mode: 'normal' })
         useKYStore.getState().startSession('Test User', 'Test Site', '晴れ', 'フリー', 'good')
@@ -130,5 +137,25 @@ describe('KYSessionPage initial voice boot', () => {
             expect(speakMock).toHaveBeenCalledTimes(1)
         })
         expect(screen.getByTestId('chat-bubble-proxy')).toHaveAttribute('data-autospeak', 'false')
+    })
+
+    it('初回ガイド音声が not-allowed で失敗した場合は待機を解除してマイク自動開始を許可する', async () => {
+        locationState = { entry: 'resume' }
+        useVoiceConversationModeStore.setState({ mode: 'full_voice' })
+
+        render(<KYSessionPage />)
+
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-input-proxy')).toHaveAttribute('data-mic-autostart-enabled', 'false')
+        })
+        expect(initialGuideTtsErrorHandler).toBeTypeOf('function')
+
+        act(() => {
+            initialGuideTtsErrorHandler?.('not-allowed')
+        })
+
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-input-proxy')).toHaveAttribute('data-mic-autostart-enabled', 'true')
+        })
     })
 })
