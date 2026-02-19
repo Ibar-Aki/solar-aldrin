@@ -59,6 +59,12 @@ vi.mock('@/components/ChatInput', () => ({
     ),
 }))
 
+vi.mock('@/components/ChatBubble', () => ({
+    ChatBubble: ({ autoSpeak }: { autoSpeak?: boolean }) => (
+        <div data-testid="chat-bubble-proxy" data-autospeak={String(autoSpeak)} />
+    ),
+}))
+
 const initialState = useKYStore.getState()
 
 describe('KYSessionPage initial voice boot', () => {
@@ -99,5 +105,30 @@ describe('KYSessionPage initial voice boot', () => {
 
         expect(speakMock).not.toHaveBeenCalled()
         expect(screen.getByTestId('chat-input-proxy')).toHaveAttribute('data-mic-autostart-enabled', 'true')
+    })
+
+    it('再開かつメッセージ0件でも、初回ガイド音声を再生する', async () => {
+        locationState = { entry: 'resume' }
+        useVoiceConversationModeStore.setState({ mode: 'full_voice' })
+
+        render(<KYSessionPage />)
+
+        await waitFor(() => {
+            expect(speakMock).toHaveBeenCalledTimes(1)
+        })
+        expect(String(speakMock.mock.calls[0]?.[0])).toContain('KY活動を再開します')
+    })
+
+    it('初期ブート待機中は、既存AIメッセージの autoSpeak を抑止する', async () => {
+        locationState = { entry: 'resume' }
+        useVoiceConversationModeStore.setState({ mode: 'full_voice' })
+        useKYStore.getState().addMessage('assistant', '危険ポイントを教えてください。')
+
+        render(<KYSessionPage />)
+
+        await waitFor(() => {
+            expect(speakMock).toHaveBeenCalledTimes(1)
+        })
+        expect(screen.getByTestId('chat-bubble-proxy')).toHaveAttribute('data-autospeak', 'false')
     })
 })

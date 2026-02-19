@@ -303,6 +303,7 @@ export async function runChatCompletionFlow(params: RunChatCompletionFlowParams)
             return await callOpenAI(primaryBody, profile, aiProvider, apiKey, aiModel)
         } catch (error) {
             const canFallback =
+                providerFallbackEnabled &&
                 aiProvider === 'gemini' &&
                 Boolean(fallbackApiKey) &&
                 Boolean(fallbackModel) &&

@@ -46,10 +46,15 @@ export function MicButton({
     } = useVoiceRecognition({
         autoRestart: isFullVoiceMode,
         onResult: (transcript, isFinal) => {
-            if (isFinal && transcript.trim()) {
-                const finalized = transcript.trim()
-                onTranscript(finalized)
-                onFinalTranscript?.(finalized)
+            const normalized = transcript.trim()
+            if (!normalized) return
+
+            // 完全音声会話では中間結果も表示して、無反応に見える時間を減らす。
+            if (isFullVoiceMode || isFinal) {
+                onTranscript(normalized)
+            }
+            if (isFinal) {
+                onFinalTranscript?.(normalized)
             }
         },
     })
@@ -128,6 +133,10 @@ export function MicButton({
             stop()
         } else {
             userStoppedRef.current = false
+            // fatal error で自動再開が落ちた後も、手動開始で復帰できるようにする。
+            if (isFullVoiceMode) {
+                setAutoRestart(true)
+            }
             start()
         }
     }

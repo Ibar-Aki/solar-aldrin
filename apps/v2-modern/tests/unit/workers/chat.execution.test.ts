@@ -114,4 +114,42 @@ describe('runChatCompletionFlow', () => {
         expect(result.details.issueCount).toBeGreaterThan(0)
         expect(result.meta.parseRetry.attempted).toBe(false)
     })
+
+    it('providerFallbackEnabled=false のとき Gemini失敗時にOpenAIへフォールバックしない', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+            error: {
+                message: 'temporary upstream failure',
+            },
+        }), { status: 500 }))
+
+        const runtimeConfig: RuntimeConfig = {
+            provider: 'gemini',
+            timeoutMs: 18000,
+            retryCount: 0,
+            maxTokens: 700,
+        }
+        const { initialProfile, recoveryProfile } = buildProfiles(runtimeConfig)
+
+        await expect(runChatCompletionFlow({
+            reqId: 'req-3',
+            aiProvider: 'gemini',
+            aiModel: 'gemini-3-flash-preview',
+            apiKey: 'gemini-key',
+            providerFallbackEnabled: false,
+            fallbackApiKey: 'openai-key',
+            fallbackModel: 'gpt-4o-mini',
+            limitedHistory: [{ role: 'user', content: '次へ進めてください' }],
+            initialProfile,
+            recoveryProfile,
+            parseRecoveryMaxTokens: resolveParseRecoveryMaxTokens('gemini'),
+            policyVersion: 'policy-test',
+            aiRetryCount: runtimeConfig.retryCount,
+            aiMaxTokens: runtimeConfig.maxTokens,
+        })).rejects.toMatchObject({
+            name: 'OpenAIHTTPError',
+            status: 500,
+        })
+
+        expect(fetch).toHaveBeenCalledTimes(1)
+    })
 })

@@ -134,13 +134,12 @@ export function KYSessionPage() {
         if (!session) return
         if (mode !== 'full_voice') return
         if (entryRef.current !== 'resume') return
-        if (messages.length === 0) return
         if (resumeGuideTriggeredRef.current) return
 
         resumeGuideTriggeredRef.current = true
         const phase = (session.processPhase ?? 'フリー').trim() || 'フリー'
         speakInitialGuide(`KY活動を再開します。${phase}の続きから進めましょう。準備ができたら話しかけてください。`)
-    }, [isInitialVoiceBootPending, mode, messages.length, session, speakInitialGuide])
+    }, [isInitialVoiceBootPending, mode, session, speakInitialGuide])
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
@@ -265,6 +264,7 @@ export function KYSessionPage() {
     const micAutoStartEnabled = mode !== 'full_voice' || !isInitialVoiceBootPending
     const shouldAutoSpeakMessage = (timestamp: string) => {
         if (mode !== 'full_voice') return false
+        if (isInitialVoiceBootPending) return false
         const parsed = Date.parse(timestamp)
         if (!Number.isFinite(parsed)) return true
         return parsed >= autoSpeakFromTimestampRef.current

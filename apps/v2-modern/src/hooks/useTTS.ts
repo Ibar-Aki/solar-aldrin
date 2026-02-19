@@ -7,6 +7,8 @@ import { useTTSStore } from '@/stores/useTTSStore'
 
 /** TTS再生のフォールバックタイムアウト (ms) - onendが発火しない場合用 */
 const TTS_FALLBACK_TIMEOUT_MS = 30000
+/** Store上で「再生中」のまま固着した場合の自己回復しきい値 */
+const TTS_STUCK_GUARD_MS = 2000
 
 /** 音声リストのキャッシュ */
 let cachedVoices: SpeechSynthesisVoice[] = []
@@ -25,6 +27,11 @@ export function useTTS({ messageId }: UseTTSOptions) {
     const synthRef = useRef<SpeechSynthesis | null>(null)
     const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const utteranceIdRef = useRef(0)
+    const notSpeakingSinceRef = useRef<number | null>(null)
+    const pendingReplayTextRef = useRef<string | null>(null)
+    const replayAttemptedTextRef = useRef<string | null>(null)
+    const replayHandlerRef = useRef<(() => void) | null>(null)
+    const speakRef = useRef<(text: string) => void>(() => {})
 
     const isSupported = typeof window !== 'undefined' && !!window.speechSynthesis
 
@@ -42,15 +49,44 @@ export function useTTS({ messageId }: UseTTSOptions) {
         }
     }, [])
 
+    const clearReplayHandler = useCallback(() => {
+        if (!replayHandlerRef.current) return
+        window.removeEventListener('pointerdown', replayHandlerRef.current, true)
+        window.removeEventListener('touchstart', replayHandlerRef.current, true)
+        window.removeEventListener('keydown', replayHandlerRef.current, true)
+        replayHandlerRef.current = null
+    }, [])
+
+    const queueReplayOnUserInteraction = useCallback((text: string) => {
+        if (typeof window === 'undefined') return
+        pendingReplayTextRef.current = text
+        if (replayHandlerRef.current) return
+
+        const replay = () => {
+            const queued = pendingReplayTextRef.current
+            pendingReplayTextRef.current = null
+            clearReplayHandler()
+            if (!queued) return
+            replayAttemptedTextRef.current = queued
+            speakRef.current(queued)
+        }
+        replayHandlerRef.current = replay
+        window.addEventListener('pointerdown', replay, true)
+        window.addEventListener('touchstart', replay, true)
+        window.addEventListener('keydown', replay, true)
+    }, [clearReplayHandler])
+
     /**
      * テキストを読み上げる
      */
     const speak = useCallback((text: string) => {
         if (!synthRef.current) return
+        if (!text.trim()) return
 
         // 既存の読み上げをキャンセル（他メッセージ含む）
         synthRef.current.cancel()
         clearFallbackTimer()
+        notSpeakingSinceRef.current = null
 
         const utteranceId = ++utteranceIdRef.current
         const utterance = new SpeechSynthesisUtterance(text)
@@ -78,16 +114,23 @@ export function useTTS({ messageId }: UseTTSOptions) {
 
         const isCurrentUtterance = () => {
             const { currentMessageId: activeMessageId } = useTTSStore.getState()
-            return activeMessageId === messageId && utteranceIdRef.current === utteranceId
+            // onstart 前に onerror が先行する環境があるため、activeMessageId=null も許容する。
+            const isNotPreemptedByOtherMessage = activeMessageId === null || activeMessageId === messageId
+            return isNotPreemptedByOtherMessage && utteranceIdRef.current === utteranceId
         }
 
         utterance.onstart = () => {
+            notSpeakingSinceRef.current = null
+            replayAttemptedTextRef.current = null
+            pendingReplayTextRef.current = null
+            clearReplayHandler()
             startSpeaking(messageId)
         }
 
         utterance.onend = () => {
             if (!isCurrentUtterance()) return
             clearFallbackTimer()
+            notSpeakingSinceRef.current = null
             stopSpeaking()
         }
 
@@ -95,7 +138,17 @@ export function useTTS({ messageId }: UseTTSOptions) {
             console.error('TTS Error:', e)
             if (!isCurrentUtterance()) return
             clearFallbackTimer()
+            notSpeakingSinceRef.current = null
             stopSpeaking()
+
+            const maybeError = e as { error?: unknown }
+            const errorCode = typeof maybeError.error === 'string' ? maybeError.error : ''
+            const shouldQueueReplay =
+                errorCode === 'not-allowed' &&
+                replayAttemptedTextRef.current !== text
+            if (shouldQueueReplay) {
+                queueReplayOnUserInteraction(text)
+            }
         }
 
         synthRef.current.speak(utterance)
@@ -105,16 +158,21 @@ export function useTTS({ messageId }: UseTTSOptions) {
             if (isCurrentUtterance()) {
                 console.warn('TTS fallback timeout triggered')
                 synthRef.current?.cancel()
+                notSpeakingSinceRef.current = null
                 stopSpeaking()
             }
         }, TTS_FALLBACK_TIMEOUT_MS)
-    }, [messageId, startSpeaking, stopSpeaking, clearFallbackTimer])
+    }, [messageId, startSpeaking, stopSpeaking, clearFallbackTimer, clearReplayHandler, queueReplayOnUserInteraction])
+    speakRef.current = speak
 
     /**
      * 読み上げ停止
      */
     const cancel = useCallback(() => {
         clearFallbackTimer()
+        notSpeakingSinceRef.current = null
+        pendingReplayTextRef.current = null
+        clearReplayHandler()
         if (synthRef.current) {
             synthRef.current.cancel()
         }
@@ -122,19 +180,50 @@ export function useTTS({ messageId }: UseTTSOptions) {
         if (currentMessageId === messageId) {
             stopSpeaking()
         }
-    }, [messageId, currentMessageId, stopSpeaking, clearFallbackTimer])
+    }, [messageId, currentMessageId, stopSpeaking, clearFallbackTimer, clearReplayHandler])
 
     // アンマウント時のクリーンアップ
     useEffect(() => {
         return () => {
             clearFallbackTimer()
+            notSpeakingSinceRef.current = null
+            pendingReplayTextRef.current = null
+            clearReplayHandler()
             // 自分が再生中ならキャンセル
             if (useTTSStore.getState().currentMessageId === messageId) {
                 synthRef.current?.cancel()
                 stopSpeaking()
             }
         }
-    }, [messageId, stopSpeaking, clearFallbackTimer])
+    }, [messageId, stopSpeaking, clearFallbackTimer, clearReplayHandler])
+
+    // iOS/Safari などで onend/onerror が不発のまま state が固着した場合の復帰。
+    useEffect(() => {
+        if (!synthRef.current) return
+        if (!isAnySpeaking || currentMessageId !== messageId) return
+
+        const interval = window.setInterval(() => {
+            const synth = synthRef.current
+            if (!synth) return
+            if (synth.speaking || synth.pending) {
+                notSpeakingSinceRef.current = null
+                return
+            }
+
+            const now = Date.now()
+            if (notSpeakingSinceRef.current === null) {
+                notSpeakingSinceRef.current = now
+                return
+            }
+            if (now - notSpeakingSinceRef.current < TTS_STUCK_GUARD_MS) return
+
+            clearFallbackTimer()
+            notSpeakingSinceRef.current = null
+            stopSpeaking()
+        }, 250)
+
+        return () => window.clearInterval(interval)
+    }, [isAnySpeaking, currentMessageId, messageId, stopSpeaking, clearFallbackTimer])
 
     return {
         speak,

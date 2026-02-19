@@ -87,6 +87,9 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
         isStartingRef.current = true
         setError(null)
         setTranscript('')
+        // 初回起動失敗でも autoRestart による再試行が機能するよう、
+        // 「開始試行済み」フラグは onstart 前に立てる。
+        hasStartedRef.current = true
 
         try {
             if (recognitionRef.current) {
@@ -102,15 +105,17 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             recognition.lang = lang
             recognition.continuous = continuous
             recognition.interimResults = true
+            const isCurrentRecognition = () => recognitionRef.current === recognition
 
             recognition.onstart = () => {
+                if (!isCurrentRecognition()) return
                 setIsListening(true)
                 isStartingRef.current = false
-                hasStartedRef.current = true
                 lastSpeechTimeRef.current = Date.now()
             }
 
             recognition.onresult = (event: SpeechRecognitionEvent) => {
+                if (!isCurrentRecognition()) return
                 lastSpeechTimeRef.current = Date.now()
 
                 let interimTranscript = ''
@@ -136,6 +141,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             }
 
             recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+                if (!isCurrentRecognition()) return
                 const normalized = normalizeSpeechRecognitionError(event.error)
                 console.error('Speech recognition error:', normalized)
                 isStartingRef.current = false
@@ -155,7 +161,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
                     setAutoRestart(false)
                     isStoppingRef.current = true // 意図的な停止とみなす（自動再開を抑制）
                     try {
-                        recognitionRef.current?.stop()
+                        recognition.stop()
                     } catch {
                         // no-op
                     }
@@ -168,6 +174,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             }
 
             recognition.onend = () => {
+                if (!isCurrentRecognition()) return
                 setIsListening(false)
                 isStartingRef.current = false
                 recognitionRef.current = null
@@ -224,7 +231,7 @@ export function useVoiceRecognition(options: UseVoiceRecognitionOptions = {}): U
             }, 500)
             return () => clearTimeout(timer)
         }
-    }, [isListening, autoRestart, isSupported, start])
+    }, [isListening, autoRestart, isSupported, start, error])
 
     // クリーンアップ
     useEffect(() => {

@@ -272,6 +272,7 @@ describe('Chat API Integration Flow', () => {
             AI_MODEL: 'gemini-2.5-flash',
             OPENAI_MODEL: 'gpt-4o-mini',
             OPENAI_RETRY_COUNT: '0',
+            ENABLE_PROVIDER_FALLBACK: '1',
         })
 
         expect(res.status).toBe(200)

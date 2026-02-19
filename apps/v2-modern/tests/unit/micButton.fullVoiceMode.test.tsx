@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MicButton } from '@/components/MicButton'
 
 const startMock = vi.fn()
@@ -118,5 +118,26 @@ describe('MicButton full voice mode', () => {
         await waitFor(() => {
             expect(startMock).toHaveBeenCalledTimes(1)
         })
+    })
+
+    it('完全音声会話モードで手動開始した場合、autoRestart を再有効化して開始する', () => {
+        const noop = () => {}
+        const { getByRole } = render(
+            <MicButton
+                onTranscript={noop}
+                voiceMode="full_voice"
+                autoStart={false}
+                disabled={false}
+                inputValue=""
+            />
+        )
+
+        setAutoRestartMock.mockClear()
+        startMock.mockClear()
+
+        fireEvent.click(getByRole('button', { name: '音声認識を開始' }))
+
+        expect(setAutoRestartMock).toHaveBeenCalledWith(true)
+        expect(startMock).toHaveBeenCalledTimes(1)
     })
 })
