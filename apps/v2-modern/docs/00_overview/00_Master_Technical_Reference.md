@@ -1,12 +1,7 @@
 # マスター技術リファレンス (v2-modern)
 
-**最終更新日**: 2026-02-17
-**更新日**: 2026-02-17（OpenAI/Gemini 両対応、v2-modern のiPhone実機確認手順・デプロイ手順に同期）
-**更新日**: 2026-02-11
-**更新日**: 2026-02-11（`meta.server` 可観測化、`whyDangerous` 補完ロジック追加）
-**更新日**: 2026-02-11（iPhone/共有リンクでのAPIトークン設定不要化に同期）
-**更新日**: 2026-02-11（`finish_reason=length` 時のみJSON再生成を有効化し、再生成上限を1500へ調整）
-**更新日**: 2026-02-11（`AI_RESPONSE_INVALID_SCHEMA` の details 要約と、空文字length応答の再生成判定を厳密化）
+**最終更新日**: 2026-02-21
+**更新日**: 2026-02-21（コンポーネント・テスト・workers構成・AIプロバイダ設定を実コードベースに全面同期）
 
 ---
 
@@ -92,9 +87,9 @@ graph TB
     
     subgraph "フロントエンド (React 19)"
         Pages[Pages<br/>5画面]
-        Components[Components<br/>11+個]
-        Hooks[Hooks<br/>4個]
-        Stores[Stores<br/>4スライス]
+        Components[Components<br/>13+個]
+        Hooks[Hooks<br/>4個 + chat/4]
+        Stores[Stores<br/>4スライス + 2独立]
     end
     
     subgraph "バックエンド (Cloudflare Workers)"
@@ -104,7 +99,7 @@ graph TB
     end
     
     subgraph "AI/外部サービス"
-        OpenAI[OpenAI API<br/>gpt-4o-mini]
+        AI[OpenAI / Gemini<br/>gpt-4o-mini / gemini-2.5-flash]
         KV[KV Storage]
         Analytics[Analytics Engine]
     end
@@ -115,7 +110,7 @@ graph TB
     Hooks --> Stores
     Hooks --> API
     API --> Routes
-    Routes --> OpenAI
+    Routes --> AI
     Routes --> KV
     Routes --> Analytics
 ```
@@ -143,29 +138,35 @@ graph TB
 apps/v2-modern/
 │
 ├── src/                       ← フロントエンド本体
-│   ├── components/            ← UIコンポーネント (11個 + サブ)
-│   │   ├── ui/                ← 共通UI (Button, Card, Input...)
+│   ├── components/            ← UIコンポーネント (13個 + サブ)
+│   │   ├── ui/                ← 共通UI (Button, Card, Input, Alert, Textarea)
 │   │   ├── pdf/               ← PDF関連 (KYSheetPDF)
 │   │   └── fanfare/           ← 完了演出
-│   ├── hooks/                 ← カスタムフック (4個)
+│   ├── hooks/                 ← カスタムフック (4個 + chat/4)
+│   │   └── chat/              ← チャット関連ヘルパー (4個)
 │   ├── pages/                 ← ページ (5個 + debug)
 │   ├── stores/                ← Zustandストア
-│   │   └── slices/            ← 4スライス
-│   ├── lib/                   ← ユーティリティ (14ファイル)
+│   │   └── slices/            ← 4スライス + 2独立ストア
+│   ├── lib/                   ← ユーティリティ (18ファイル + サブ2)
+│   │   ├── chat/              ← チャットユーティリティ (2個)
+│   │   └── observability/     ← 監視・テレメトリ (4個)
 │   ├── types/                 ← 型定義
 │   └── constants/             ← 定数
 │
 ├── workers/                   ← バックエンド (Hono API)
 │   ├── routes/                ← APIルート (3個)
 │   ├── prompts/               ← AIプロンプト (4個)
-│   ├── lib/                   ← ユーティリティ (2個)
+│   ├── lib/                   ← ユーティリティ (3個 + chat/6)
+│   │   └── chat/              ← チャット処理モジュール (6個)
 │   ├── middleware/            ← ミドルウェア (1個)
-│   └── observability/         ← ログ・監視 (2個)
+│   ├── observability/         ← ログ・監視 (2個)
+│   └── types.ts               ← 共通型定義 (Bindings一元管理)
 │
 ├── tests/                     ← テスト
 │   ├── e2e/                   ← E2Eテスト (5個)
-│   ├── unit/                  ← ユニットテスト (23個)
-│   └── integration/           ← 統合テスト
+│   ├── unit/                  ← ユニットテスト (42個 + workers/3)
+│   │   └── workers/           ← Workers専用テスト (3個)
+│   └── integration/           ← 統合テスト (5個)
 │
 ├── docs/                      ← ドキュメント
 │   ├── 00_overview/           ← 概要・マスター資料
@@ -205,9 +206,9 @@ graph LR
 
 | ページ | サイズ | 機能 |
 |:------|:------:|------|
-| **HomePage** | 12KB | ユーザー名・現場名・天候入力 |
-| **KYSessionPage** | 11KB | チャットUI・音声入力・AI対話 |
-| **CompletionPage** | 19KB | 完了画面・フィードバック・PDF |
+| **HomePage** | 20KB | ユーザー名・現場名・天候入力 |
+| **KYSessionPage** | 25KB | チャットUI・音声入力・AI対話・KYボード |
+| **CompletionPage** | 18KB | 完了画面・フィードバック・PDF |
 | **HistoryPage** | 6KB | 過去KY履歴一覧 |
 | **HistoryDetailPage** | 10KB | 履歴詳細閲覧 |
 
@@ -228,8 +229,15 @@ graph TB
     subgraph "情報表示"
         CIC[ConfirmedInfoCard]
         FC[FeedbackCard]
+        FSC[FeedbackSkeletonCard]
         GPC[GoalPolishCard]
         SC[SupplementCard]
+        KBC[KYBoardCard]
+    end
+    
+    subgraph "操作・UI"
+        VCMT[VoiceConversationModeToggle]
+        RRB[RecentRiskBadge]
     end
     
     subgraph "共通UI (ui/)"
@@ -237,6 +245,7 @@ graph TB
         CARD[Card]
         INPUT[Input]
         ALERT[Alert]
+        TA[Textarea]
     end
     
     subgraph "専用"
@@ -249,10 +258,19 @@ graph TB
 
 | フック | サイズ | 責務 |
 |:------|:------:|------|
-| **useChat** | 20KB | チャット制御・API呼び出し・エラー処理・リトライ |
+| **useChat** | 32KB | チャット制御・API呼び出し・エラー処理・リトライ |
 | **usePDFGenerator** | 4KB | PDF生成・ダウンロード |
-| **useTTS** | 5KB | 音声読み上げ制御 |
-| **useVoiceRecognition** | 8KB | 音声認識制御 |
+| **useTTS** | 10KB | 音声読み上げ制御 |
+| **useVoiceRecognition** | 13KB | 音声認識制御 |
+
+#### hooks/chat/ サブモジュール
+
+| ファイル | サイズ | 責務 |
+|:------|:------:|------|
+| **actionGoal.ts** | 2.5KB | 行動目標ロジック |
+| **errorHandling.ts** | 8KB | チャットエラーハンドリング |
+| **requestPayload.ts** | 2KB | リクエストペイロード構築 |
+| **workItemUtils.ts** | 2KB | 作業項目ユーティリティ |
 
 ### 状態管理 (Zustand)
 
@@ -261,15 +279,16 @@ graph TB
     subgraph "kyStore"
         SS[sessionSlice<br/>ユーザー名/現場名/天候/開始時刻]
         CS[chatSlice<br/>メッセージ履歴/送信状態/エラー]
-        WS[workItemSlice<br/>作業項目/危険要因/対策/危険度]
+        WIS[workItemSlice<br/>作業項目/危険要因/対策/危険度]
         FS[feedbackSlice<br/>褒め/ヒント/補足リスク/目標添削]
     end
     
     TTS[useTTSStore<br/>TTS再生状態]
+    VCM[useVoiceConversationModeStore<br/>音声会話モード状態]
     
     style SS fill:#e8f5e9
     style CS fill:#e3f2fd
-    style WS fill:#fff3e0
+    style WIS fill:#fff3e0
     style FS fill:#f3e5f5
 ```
 
@@ -289,19 +308,38 @@ graph TB
 |----------|------|
 | `api.ts` | API呼び出し (postChat, postFeedback) |
 | `apiBase.ts` | APIベースURL正規化 |
-| `db.ts` | IndexedDB永続化 (Dexie) |
-| `schema.ts` | Zodスキーマ (API応答検証) |
-| `kySchemas.ts` | KYデータ構造スキーマ |
-| `contextUtils.ts` | 文脈注入 |
-| `historyUtils.ts` | 履歴管理 |
-| `exportUtils.ts` | エクスポート |
-| `validation.ts` | 抽出データ検証・作業項目完了判定 |
-| `clientId.ts` | クライアントID生成 |
 | `apiToken.ts` | APIトークンの保存/読込（localStorage） |
-| `nonAnswer.ts` | 「なし/ありません」等の非回答判定 |
+| `clientId.ts` | クライアントID生成 |
+| `contextUtils.ts` | 文脈注入 |
 | `dateUtils.ts` | 日付ユーティリティ |
+| `db.ts` | IndexedDB永続化 (Dexie) |
+| `envFlags.ts` | 環境フラグ解決 |
+| `exportUtils.ts` | エクスポート |
+| `greeting.ts` | グリーティングメッセージ生成 |
+| `historyUtils.ts` | 履歴管理 |
+| `kySchemas.ts` | KYデータ構造スキーマ |
+| `nonAnswer.ts` | 「なし/ありません」等の非回答判定 |
 | `riskLevelVisibility.ts` | 危険度表示制御 |
+| `schema.ts` | Zodスキーマ (API応答検証) |
 | `speechRecognitionErrors.ts` | 音声認識エラー処理 |
+| `utils.ts` | 汎用ユーティリティ |
+| `validation.ts` | 抽出データ検証・作業項目完了判定 |
+
+#### lib/chat/ サブモジュール
+
+| ファイル | 機能 |
+|----------|------|
+| `conversationSummary.ts` | 会話サマリ生成 |
+| `mergeExtractedData.ts` | 抽出データのマージロジック |
+
+#### lib/observability/ サブモジュール
+
+| ファイル | 機能 |
+|----------|------|
+| `metricsKpi.ts` | KPIメトリクス |
+| `sentry.ts` | Sentryエラートラッキング |
+| `telemetry.ts` | テレメトリ送信 |
+| `webVitals.ts` | Web Vitals計測 |
 
 ---
 
@@ -329,14 +367,14 @@ graph LR
         end
     end
     
-    OPENAI[OpenAI API]
+    AI[OpenAI / Gemini]
     KV[KV Storage]
     AE[Analytics Engine]
     
     ENTRY --> REQ --> ORG --> CORS --> RL --> AUTH
     AUTH --> CHAT & FB & MET
-    CHAT --> OPENAI
-    FB --> OPENAI
+    CHAT --> AI
+    FB --> AI
     MET --> AE
     RL --> KV
 ```
@@ -345,9 +383,38 @@ graph LR
 
 | ルート | サイズ | 機能 |
 |:------|:------:|------|
-| **chat.ts** | 32KB | AI応答 + 抽出データ返却 |
-| **feedback.ts** | 13KB | KY結果フィードバック生成 |
+| **chat.ts** | 9KB | AI応答 + 抽出データ返却（実行ロジックはlib/chat/に分離） |
+| **feedback.ts** | 14KB | KY結果フィードバック生成 |
 | **metrics.ts** | 2KB | イベント記録 |
+
+### workers/lib/ ユーティリティ
+
+| ファイル | サイズ | 機能 |
+|:------|:------:|------|
+| **openai.ts** | 10KB | OpenAI/Gemini API呼び出し（リトライ・タイムアウト・JSONクリーニング） |
+| **aiProvider.ts** | 1KB | AIプロバイダ解決（openai/gemini切替・モデル解決） |
+| **securityMode.ts** | 2KB | セキュリティモード制御 |
+
+### workers/lib/chat/ チャット処理モジュール
+
+chat.tsから分離された6ファイル構成：
+
+| ファイル | サイズ | 機能 |
+|:------|:------:|------|
+| **config.ts** | 12KB | チャットAPI設定・プロバイダ・モデル解決 |
+| **context.ts** | 5KB | セッションコンテキスト処理 |
+| **errors.ts** | 6KB | エラーハンドリング・エラーレスポンス生成 |
+| **execution.ts** | 14KB | AI呼び出し・レスポンスパース・リカバリ |
+| **fieldGuard.ts** | 4KB | 抽出データのフィールドガード |
+| **normalize.ts** | 18KB | 抽出データの正規化・補完 |
+
+### workers/types.ts 共通型定義
+
+全ルート・ミドルウェアで共有する統合型：
+
+- `KVNamespace` - KVインターフェイス
+- `AnalyticsEngineDataset` - Analytics Engine
+- `Bindings` - 環境変数バインディング一元管理
 
 ### APIガード（CORS・認証・レート制限）
 
@@ -550,7 +617,8 @@ graph LR
 ```mermaid
 pie title テスト分類
     "E2Eテスト" : 5
-    "ユニットテスト" : 23
+    "ユニットテスト" : 45
+    "統合テスト" : 5
 ```
 
 ### E2Eテスト (5件)
@@ -563,17 +631,29 @@ pie title テスト分類
 | **ios_compatibility** | iOS互換性 |
 | **pdf-visual** | PDFビジュアル確認 |
 
-### ユニットテスト (23件)
+### ユニットテスト (45件)
 
 | 分類 | テストファイル |
 |:----|---------------|
 | API | api.chatError, api.feedbackError, apiBase |
 | ストア | kyStore |
-| コンポーネント | completionPage, micButton.errorClear |
-| フック | useChat.retry, useChat.shortcuts |
-| ユーティリティ | historyUtils, contextInjection, riskLevelVisibility, speechRecognitionErrors |
-| バックエンド | rateLimit, openaiHttpError, logger, securityMode, metrics |
-| スキーマ | schema, kySchemas.extracted, kySchemas.workItem, validation.nonAnswer |
+| コンポーネント | completionPage, chatBubble.autoSpeak, chatInput.fullVoiceMode, chatInput.micError, homePage.apiTokenSettings, homePage.focusStylePreview, homePage.sessionEntryNavigation, kyBoardCard, kySessionPage.firstWorkItemFlow, kySessionPage.voiceBoot, voiceConversationMode.pages |
+| フック | useChat.retry, useChat.shortcuts, useTTS.recovery, useVoiceRecognition.resilience |
+| ユーティリティ | historyUtils, contextInjection, riskLevelVisibility, speechRecognitionErrors, envFlags, greeting, mergeExtractedData, validation.hazardSection, validation.nonAnswer |
+| バックエンド | rateLimit, openaiHttpError, openaiJsonCleanup, logger, securityMode, metrics, aiProvider, chat.requestPayload |
+| スキーマ | schema, kySchemas.extracted, kySchemas.workItem |
+| MicButton | micButton.errorClear, micButton.fullVoiceMode, micButton.transcriptFlow |
+| Workers | chat.execution, chat.normalize, fieldGuard |
+
+### 統合テスト (5件)
+
+| テスト | 内容 |
+|:------|------|
+| **integration** | APIルート統合テスト |
+| **feedback** | フィードバックAPI統合テスト |
+| **metrics.route** | メトリクスルートテスト |
+| **security.middleware** | セキュリティミドルウェアテスト |
+| **sentry.debug-endpoints** | Sentryデバッグエンドポイントテスト |
 
 ---
 
@@ -587,7 +667,7 @@ sequenceDiagram
     participant Session
     participant useChat
     participant API
-    participant OpenAI
+    participant AI as OpenAI/Gemini
     participant Complete
 
     User->>HomePage: ユーザー名・現場名入力
@@ -598,16 +678,16 @@ sequenceDiagram
         User->>Session: テキスト/音声入力
         Session->>useChat: sendMessage（危険度ボタン選択時はローカル更新）
         useChat->>API: POST /api/chat
-        API->>OpenAI: Chat Completions
-        OpenAI-->>API: 応答 + 抽出データ
+        API->>AI: Chat Completions
+        AI-->>API: 応答 + 抽出データ
         API-->>useChat: reply + extracted
         useChat->>Session: ストア更新
     end
 
     Session->>Complete: セッション完了
     Complete->>API: POST /api/feedback
-    API->>OpenAI: フィードバック生成
-    OpenAI-->>API: フィードバック
+    API->>AI: フィードバック生成
+    AI-->>API: フィードバック
     API-->>Complete: 表示
     Complete->>User: PDF出力可能
 ```
@@ -926,9 +1006,10 @@ graph LR
 4. **レート制限**
    - 429 が多発する場合は `Retry-After` に従い待機し、必要なら上限値と送信頻度を見直す。
    - `RATE_LIMIT_KV_REQUIRED` の場合は KV バインディング設定を確認する。
-5. **OpenAI設定**
-   - `OPENAI_KEY_MISSING` は `OPENAI_API_KEY` の未設定が原因。環境変数を補う。
+5. **AIプロバイダ設定**
+   - `OPENAI_KEY_MISSING` は `AI_PROVIDER=openai` 時に `OPENAI_API_KEY` が未設定の場合。`AI_PROVIDER=gemini` 時は `GEMINI_API_KEY` が必要。
    - `OPENAI_AUTH_ERROR` / `OPENAI_BAD_REQUEST` はキーやモデル設定、入力内容を確認する。
+   - デフォルトモデル: `openai` = `gpt-4o-mini`、`gemini` = `gemini-2.5-flash`。`AI_MODEL` で全体上書き可。
 6. **デプロイ反映確認（A/B）**
    - `npm run test:cost:preflight` で `chat meta.server` 検証を通す（`policyVersion` / `responseFormat` / `parseRecoveryEnabled` / `openaiRetryCount`）。
    - 不一致時は Pages の配信バンドルと Workers のデプロイ先不整合を優先確認する。
@@ -964,13 +1045,14 @@ graph LR
 | カテゴリ | 数量 |
 |:--------|:----:|
 | ページ | 5 + debug |
-| コンポーネント | 11 + サブ |
-| カスタムフック | 4 |
-| ストアスライス | 4 |
+| コンポーネント | 13 + サブ |
+| カスタムフック | 4 + chat/4 |
+| ストア | 4スライス + 2独立 |
 | APIルート | 3 |
 | AIプロンプト | 4 |
 | E2Eテスト | 5 |
-| ユニットテスト | 16 |
+| ユニットテスト | 45 |
+| 統合テスト | 5 |
 
 ---
 
@@ -978,10 +1060,11 @@ graph LR
 
 v2は **フロントエンドのチャット体験・音声機能・PDF出力** と **バックエンドのAPI/エラー処理/セキュリティ** が一体化した構成です。
 
-- **21件のテスト** で品質担保
+- **55件のテスト** で品質担保（45 unit + 5 integration + 5 e2e）
 - **4カテゴリのドキュメント** で知識管理
 - **多層セキュリティ** で本番運用対応
 - **音声/テキスト両対応** で現場での使いやすさを実現
+- **OpenAI/Gemini デュアルプロバイダ** 対応でコスト最適化
 
 ---
 
@@ -1310,6 +1393,7 @@ graph TB
     subgraph "Stores"
         KYS[kyStore]
         TTSS[useTTSStore]
+        VCMS[useVoiceConversationModeStore]
     end
     
     subgraph "API"
@@ -1346,12 +1430,15 @@ graph TB
         KSP_ROOT --> CB[ChatBubble]
         KSP_ROOT --> RLS[RiskLevelSelector]
         KSP_ROOT --> CIC[ConfirmedInfoCard]
+        KSP_ROOT --> KBC[KYBoardCard]
+        KSP_ROOT --> VCMT[VoiceConversationModeToggle]
         CI --> MB[MicButton]
     end
     
     subgraph "CompletionPage"
         CP_ROOT[CompletionPage]
         CP_ROOT --> FC[FeedbackCard]
+        CP_ROOT --> FSC[FeedbackSkeletonCard]
         CP_ROOT --> GPC[GoalPolishCard]
         CP_ROOT --> SC[SupplementCard]
         CP_ROOT --> FAN[Fanfare]
@@ -1368,6 +1455,7 @@ graph TB
         CARD[Card]
         INPUT[Input]
         ALERT[Alert]
+        TA[Textarea]
     end
     
     CI --> BTN
@@ -1385,16 +1473,19 @@ graph LR
     subgraph "kyStore"
         SS[sessionSlice<br/>ユーザー名・現場名・天候]
         CS[chatSlice<br/>メッセージ履歴・送信状態]
-        WS[workItemSlice<br/>作業項目・危険・対策]
+        WIS[workItemSlice<br/>作業項目・危険・対策]
         FS[feedbackSlice<br/>フィードバック結果]
     end
     
     SS --> KYS_CORE[KYStore Core]
     CS --> KYS_CORE
-    WS --> KYS_CORE
+    WIS --> KYS_CORE
     FS --> KYS_CORE
     
     KYS_CORE --> PERSIST[localStorage<br/>Zustand Persist]
+    
+    TTS_EXT[useTTSStore<br/>TTS再生状態]
+    VCM_EXT[useVoiceConversationModeStore<br/>音声会話モード]
 ```
 
 ---
@@ -1704,4 +1795,3 @@ dataset = "voice_ky_metrics"
   }
 }
 ```
-
