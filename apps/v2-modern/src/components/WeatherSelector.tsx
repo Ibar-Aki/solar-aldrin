@@ -10,7 +10,7 @@ export function WeatherSelector({ value, onChange, options, disabled }: WeatherS
         <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="mt-1 w-full border rounded-md p-2"
+            className="mt-1 h-11 w-full rounded-lg border border-[color:var(--surface-border)] bg-[var(--surface-card)] px-3 text-sm text-slate-800 shadow-xs transition-colors outline-none focus-visible:border-[color:var(--focus-ring)] focus-visible:ring-[3px] focus-visible:ring-[color:color-mix(in_oklab,var(--focus-ring)_25%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
             data-testid="select-weather"
             disabled={disabled}
         >
@@ -20,4 +20,3 @@ export function WeatherSelector({ value, onChange, options, disabled }: WeatherS
         </select>
     )
 }
-

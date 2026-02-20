@@ -1122,9 +1122,11 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 const inputVisibleBeforeShortcut = await chatInput.isVisible().catch(() => false)
                 if (inputVisibleBeforeShortcut) {
                     await sendUserMessage('KY完了')
+                    // KY完了ショートカット後は、完了遷移の有無を短時間だけ確認し、
+                    // 未遷移なら即行動目標入力へ進めて無駄な30秒待機を避ける。
                     const completedByShortcut = await Promise.race([
-                        page.waitForURL('**/complete', { timeout: 30000 }).then(() => true).catch(() => false),
-                        page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false),
+                        page.waitForURL('**/complete', { timeout: 5000 }).then(() => true).catch(() => false),
+                        page.locator('text=KY活動完了').waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false),
                     ])
                     if (completedByShortcut) {
                         completionArrived = true

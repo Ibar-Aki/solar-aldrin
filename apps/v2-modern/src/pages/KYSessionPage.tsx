@@ -57,18 +57,13 @@ export function KYSessionPage() {
     const { mode, setMode } = useVoiceConversationModeStore()
     const isTTSSpeaking = useTTSStore((state) => state.isSpeaking)
 
-    const entryRef = useRef<SessionEntry | null>(getSessionEntryFromState(location.state))
-    const initialModeRef = useRef(mode)
-    const shouldRunInitialVoiceBootRef = useRef(
-        initialModeRef.current === 'full_voice' && entryRef.current !== null
-    )
+    const sessionEntry = getSessionEntryFromState(location.state)
     const [isInitialVoiceBootPending, setIsInitialVoiceBootPending] = useState(
-        shouldRunInitialVoiceBootRef.current
+        mode === 'full_voice' && sessionEntry !== null
     )
     const bootSpeechObservedRef = useRef(false)
     const bootGuideBlockedRef = useRef(false)
     const resumeGuideTriggeredRef = useRef(false)
-    const autoSpeakFromTimestampRef = useRef(entryRef.current === 'resume' ? Date.now() : 0)
 
     const handleInitialGuideTtsError = useCallback((errorCode: string) => {
         if (!errorCode) return
@@ -102,6 +97,14 @@ export function KYSessionPage() {
         retryLastMessage,
         canRetry,
     } = useChat()
+    const [autoSpeakFromTimestamp] = useState(() => {
+        if (sessionEntry !== 'resume') return 0
+        const latestTimestamp = messages.reduce((latest, message) => {
+            const parsed = Date.parse(message.timestamp)
+            return Number.isFinite(parsed) ? Math.max(latest, parsed) : latest
+        }, 0)
+        return latestTimestamp + 1
+    })
 
     // セッションがない場合はホームに戻る
     useEffect(() => {
@@ -129,29 +132,35 @@ export function KYSessionPage() {
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
-        if (mode !== 'full_voice') {
+        if (mode === 'full_voice') return
+
+        const timer = window.setTimeout(() => {
             setIsInitialVoiceBootPending(false)
-        }
+        }, 0)
+        return () => window.clearTimeout(timer)
     }, [mode, isInitialVoiceBootPending])
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
-        if (!isTTSSupported) {
+        if (isTTSSupported) return
+
+        const timer = window.setTimeout(() => {
             setIsInitialVoiceBootPending(false)
-        }
+        }, 0)
+        return () => window.clearTimeout(timer)
     }, [isInitialVoiceBootPending, isTTSSupported])
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
         if (!session) return
         if (mode !== 'full_voice') return
-        if (entryRef.current !== 'resume') return
+        if (sessionEntry !== 'resume') return
         if (resumeGuideTriggeredRef.current) return
 
         resumeGuideTriggeredRef.current = true
         const phase = (session.processPhase ?? 'フリー').trim() || 'フリー'
         speakInitialGuide(`KY活動を再開します。${phase}の続きから進めましょう。準備ができたら話しかけてください。`)
-    }, [isInitialVoiceBootPending, mode, session, speakInitialGuide])
+    }, [isInitialVoiceBootPending, mode, session, sessionEntry, speakInitialGuide])
 
     useEffect(() => {
         if (!isInitialVoiceBootPending) return
@@ -173,7 +182,10 @@ export function KYSessionPage() {
         }
 
         if (bootSpeechObservedRef.current) {
-            setIsInitialVoiceBootPending(false)
+            const timer = window.setTimeout(() => {
+                setIsInitialVoiceBootPending(false)
+            }, 0)
+            return () => window.clearTimeout(timer)
         }
     }, [isTTSSpeaking, isInitialVoiceBootPending])
 
@@ -217,14 +229,23 @@ export function KYSessionPage() {
         completeSafetyConfirmation(safetyChecks)
     }
 
+    const processPhaseLabel = useMemo(
+        () => (session?.processPhase ?? 'フリー').trim() || 'フリー',
+        [session?.processPhase]
+    )
+    const lastAssistantNextAction = useMemo(() => {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const message = messages[i]
+            if (message.role === 'assistant' && message.extractedData?.nextAction) {
+                return message.extractedData.nextAction
+            }
+        }
+        return undefined
+    }, [messages])
     if (!session) return null
 
-    const processPhaseLabel = useMemo(
-        () => (session.processPhase ?? 'フリー').trim() || 'フリー',
-        [session.processPhase]
-    )
     const meta2Line = (
-        <div className="text-xs sm:text-sm text-gray-500 leading-snug">
+        <div className="text-xs sm:text-sm text-[var(--text-muted)] leading-snug">
             <div className="flex min-w-0 items-center justify-end gap-1">
                 <span className="min-w-0 truncate">{session.siteName}</span>
                 <span className="shrink-0">｜{session.weather}</span>
@@ -238,15 +259,6 @@ export function KYSessionPage() {
 
     // 作業項目の進捗表示
     const workItemCount = session.workItems.length
-    const lastAssistantNextAction = useMemo(() => {
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-            const message = messages[i]
-            if (message.role === 'assistant' && message.extractedData?.nextAction) {
-                return message.extractedData.nextAction
-            }
-        }
-        return undefined
-    }, [messages])
     const isRiskLevelSelectorVisible = shouldShowRiskLevelSelector({
         lastAssistantNextAction,
         currentRiskLevel: currentWorkItem.riskLevel,
@@ -280,17 +292,17 @@ export function KYSessionPage() {
         if (isInitialVoiceBootPending) return false
         const parsed = Date.parse(timestamp)
         if (!Number.isFinite(parsed)) return true
-        return parsed >= autoSpeakFromTimestampRef.current
+        return parsed >= autoSpeakFromTimestamp
     }
 
     return (
-        <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
+        <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-[var(--surface-page)] flex flex-col overflow-hidden">
             {/* ヘッダー */}
             <div className="shrink-0">
-                <div className="bg-white border-b px-4 py-2">
+                <div className="bg-[var(--surface-card)] border-b border-[color:var(--surface-border)] px-4 py-2">
                     <div className="max-w-4xl mx-auto">
                         <div className="flex items-start justify-between gap-3">
-                            <h1 className="text-base sm:text-lg font-bold text-blue-600">一人KY活動</h1>
+                            <h1 className="text-base sm:text-lg font-bold text-[var(--accent-royal-600)]">一人KY活動</h1>
 
                             {/* 右側メタ情報（2行）: 1行目=作業場所,天候 / 2行目=作業内容(工程),ユーザー名 */}
                             <div className="w-[12.5rem] sm:w-64 lg:w-80 min-w-0 text-right text-xs sm:text-sm">
@@ -301,7 +313,7 @@ export function KYSessionPage() {
                 </div>
 
                 {/* モード切替 + 参考情報（高さ固定） */}
-                <div className="bg-white border-b px-4 py-1">
+                <div className="bg-[var(--surface-card)] border-b border-[color:var(--surface-border)] px-4 py-1">
                     <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1" data-testid="session-mode-toggle-compact">
                             <VoiceConversationModeToggle
@@ -313,7 +325,8 @@ export function KYSessionPage() {
                         <Button
                             asChild
                             size="sm"
-                            className="shrink-0 h-8 px-2.5 text-xs font-semibold shadow-sm"
+                            variant="outline"
+                            className="shrink-0 h-8 border-[color:var(--surface-border)] bg-[var(--surface-card)] px-2.5 text-xs font-semibold text-[var(--accent-royal-600)] shadow-xs hover:bg-[var(--brand-50)]"
                             data-testid="button-reference-info"
                         >
                             <a
@@ -330,11 +343,11 @@ export function KYSessionPage() {
 
                 {/* 環境リスク */}
                 {session.environmentRisk && (
-                    <div className="bg-white border-b px-4 py-1">
+                    <div className="bg-[var(--surface-card)] border-b border-[color:var(--surface-border)] px-4 py-1">
                         <div className="max-w-4xl mx-auto w-full">
-                            <Alert>
+                            <Alert className="border-[color:var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]">
                                 <AlertDescription>
-                                    ⚠️ {session.environmentRisk}
+                                    ⚠ {session.environmentRisk}
                                 </AlertDescription>
                             </Alert>
                         </div>
@@ -343,7 +356,7 @@ export function KYSessionPage() {
 
                 {/* KYボード（作業・危険フェーズ中） */}
                 {status === 'work_items' && (
-                    <div className="bg-gray-50 border-b px-4 py-1">
+                    <div className="bg-[var(--surface-muted)] border-b border-[color:var(--surface-border)] px-4 py-1">
                         <div className="max-w-4xl mx-auto w-full">
                             <KYBoardCard
                                 currentWorkItem={currentWorkItem}
@@ -364,7 +377,7 @@ export function KYSessionPage() {
                     ))}
                     {isLoading && (
                         <div className="flex justify-start mb-3">
-                            <div className="bg-gray-100 rounded-2xl px-4 py-2">
+                            <div className="rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-card)] px-4 py-2 text-slate-700">
                                 <span className="animate-pulse">考え中...</span>
                             </div>
                         </div>
@@ -375,7 +388,7 @@ export function KYSessionPage() {
                             style={{ animationDelay: `${WAIT_NOTICE_AFTER_MS}ms` }}
                             data-testid="notice-wait-over-15s"
                         >
-                            <div className="bg-amber-50 text-amber-900 border border-amber-200 rounded-2xl px-4 py-2">
+                            <div className="rounded-2xl border border-[color:var(--warning-border)] bg-[var(--warning-bg)] px-4 py-2 text-[var(--warning-text)]">
                                 <span className="text-sm">
                                     応答に{Math.ceil(WAIT_NOTICE_AFTER_MS / 1000)}秒以上かかっています。混雑している可能性があります。このままお待ちください。
                                 </span>
@@ -387,10 +400,10 @@ export function KYSessionPage() {
             </div>
 
             {/* フッター固定エリア */}
-            <div className="shrink-0 bg-white border-t pb-[env(safe-area-inset-bottom)]">
+            <div className="shrink-0 bg-[var(--surface-card)] border-t border-[color:var(--surface-border)] pb-[env(safe-area-inset-bottom)]">
                 {/* 危険度選択（AIが危険度を聞いているとき） */}
                 {isRiskLevelSelectorVisible && (
-                    <div className="px-4 py-2 border-b">
+                    <div className="border-b border-[color:var(--surface-border)] px-4 py-2">
                         <div className="max-w-4xl mx-auto">
                             <RiskLevelSelector
                                 value={currentWorkItem.riskLevel}
@@ -402,12 +415,12 @@ export function KYSessionPage() {
                 )}
 
                 {canShowFirstWorkItemCompleteButton && (
-                    <div className="px-4 py-2 border-b">
+                    <div className="border-b border-[color:var(--surface-border)] px-4 py-2">
                         <div className="max-w-4xl mx-auto">
                             <Button
                                 type="button"
                                 onClick={handleCompleteFirstWorkItem}
-                                className="w-full"
+                                className="w-full bg-[var(--brand-600)] text-[var(--brand-foreground)] hover:bg-[var(--brand-700)]"
                                 data-testid="button-complete-first-work-item"
                             >
                                 1件目完了
@@ -417,12 +430,12 @@ export function KYSessionPage() {
                 )}
 
                 {canShowSecondWorkItemCompleteButton && (
-                    <div className="px-4 py-2 border-b">
+                    <div className="border-b border-[color:var(--surface-border)] px-4 py-2">
                         <div className="max-w-4xl mx-auto">
                             <Button
                                 type="button"
                                 onClick={handleCompleteSecondWorkItem}
-                                className="w-full"
+                                className="w-full bg-[var(--brand-600)] text-[var(--brand-foreground)] hover:bg-[var(--brand-700)]"
                                 data-testid="button-complete-second-work-item"
                             >
                                 2件目完了
@@ -432,11 +445,11 @@ export function KYSessionPage() {
                 )}
 
                 {shouldShowSafetyChecklist && (
-                    <div className="px-4 py-2 border-b bg-slate-50" data-testid="safety-checklist-panel">
+                    <div className="border-b border-[color:var(--surface-border)] bg-[var(--surface-muted)] px-4 py-2" data-testid="safety-checklist-panel">
                         <div className="max-w-4xl mx-auto">
-                            <Card className="gap-2 py-3">
+                            <Card className="gap-2 border-[color:var(--surface-border)] bg-[var(--surface-card)] py-3 shadow-xs">
                                 <CardHeader className="py-1.5">
-                                    <CardTitle className="text-sm">
+                                    <CardTitle className="text-sm text-slate-800">
                                         最終安全確認 ({completedSafetyCheckCount}/{SAFETY_CHECKLIST_ITEMS.length})
                                     </CardTitle>
                                 </CardHeader>
@@ -452,15 +465,15 @@ export function KYSessionPage() {
                                                 data-testid={`safety-check-${item.key}`}
                                                 className={`w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${
                                                     checked
-                                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                                                        : 'border-slate-200 bg-white text-slate-700'
+                                                        ? 'border-[color:var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]'
+                                                        : 'border-[color:var(--surface-border)] bg-[var(--surface-card)] text-slate-700'
                                                 }`}
                                             >
                                                 <span
                                                     className={`inline-flex h-5 w-5 items-center justify-center rounded border text-xs ${
                                                         checked
-                                                            ? 'border-emerald-500 bg-emerald-500 text-white'
-                                                            : 'border-slate-300 bg-white text-transparent'
+                                                            ? 'border-[color:var(--success-border)] bg-[var(--success-text)] text-white'
+                                                            : 'border-[color:var(--surface-border)] bg-[var(--surface-card)] text-transparent'
                                                     }`}
                                                     aria-hidden="true"
                                                 >
@@ -474,7 +487,7 @@ export function KYSessionPage() {
                                         type="button"
                                         onClick={handleCompleteSafetyConfirmation}
                                         disabled={!isSafetyChecklistComplete}
-                                        className="w-full"
+                                        className="w-full bg-[var(--brand-600)] text-[var(--brand-foreground)] hover:bg-[var(--brand-700)] disabled:bg-[var(--brand-200)]"
                                         data-testid="button-complete-safety-checks"
                                     >
                                         確認OKで完了画面へ進む
@@ -487,8 +500,8 @@ export function KYSessionPage() {
 
                 {/* エラー表示 */}
                 {error && (
-                    <div className="px-4 py-2 border-b border-red-100 bg-red-50">
-                        <div className="max-w-4xl mx-auto text-red-600 text-sm flex items-center justify-between gap-2">
+                    <div className="border-b border-[color:var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2">
+                        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 text-sm text-[var(--danger-text)]">
                             <span>{error}</span>
                             {errorSource === 'chat' && canRetry && (
                                 <Button
@@ -497,7 +510,7 @@ export function KYSessionPage() {
                                     size="sm"
                                     onClick={retryLastMessage}
                                     disabled={isLoading}
-                                    className="shrink-0 border-red-200 text-red-700 hover:bg-red-100"
+                                    className="shrink-0 border-[color:var(--danger-border)] bg-[var(--surface-card)] text-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
                                     data-testid="button-retry"
                                 >
                                     リトライ
@@ -509,7 +522,7 @@ export function KYSessionPage() {
 
                 {/* 入力エリア */}
                 {!shouldHideChatInput && (
-                    <div className="px-3 sm:px-4 py-1.5 sm:py-2">
+                    <div className="px-3 py-1.5 sm:px-4 sm:py-2">
                         <div className="max-w-4xl mx-auto w-full">
                             <ChatInput
                                 onSend={handleSend}

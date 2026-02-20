@@ -20,8 +20,8 @@ export function VoiceConversationModeToggle({
     return (
         <div className={cn(isCompact && 'flex items-center gap-2', className)}>
             <div className={cn(
-                'text-sm font-medium text-gray-700',
-                isCompact && 'shrink-0 text-xs text-gray-600'
+                'text-sm font-medium text-slate-700',
+                isCompact && 'shrink-0 text-xs text-[var(--text-muted)]'
             )}
             >
                 会話モード
@@ -49,7 +49,7 @@ export function VoiceConversationModeToggle({
                 </Button>
             </div>
             {!isCompact && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
                     初期状態は通常モードです。
                 </p>
             )}

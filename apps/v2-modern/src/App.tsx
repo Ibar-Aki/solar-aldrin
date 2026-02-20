@@ -16,7 +16,7 @@ function App() {
     <BrowserRouter>
       <Suspense
         fallback={
-          <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center text-gray-500">
+          <div className="min-h-screen bg-[var(--surface-page)] p-4 flex items-center justify-center text-[var(--text-muted)]">
             読み込み中...
           </div>
         }

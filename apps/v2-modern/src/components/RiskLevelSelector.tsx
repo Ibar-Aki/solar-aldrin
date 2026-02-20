@@ -15,7 +15,8 @@ const LEVELS = [
 export function RiskLevelSelector({ value, onChange, disabled = false }: RiskLevelSelectorProps) {
     return (
         <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">危険度を選択</p>
+            <p className="text-sm font-medium text-slate-700">危険度を選択</p>
+            <p className="text-xs text-[var(--text-muted)]">AIの質問に対して、最も近い危険度を選んでください。</p>
             <div className="flex gap-2">
                 {LEVELS.map((level) => (
                     <button
@@ -26,8 +27,8 @@ export function RiskLevelSelector({ value, onChange, disabled = false }: RiskLev
                         className={`
               flex-1 py-3 px-2 rounded-lg border-2 transition-all
               ${value === level.value
-                                ? `${level.color} border-current ring-2 ring-offset-1`
-                                : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                                ? `${level.color} border-current ring-2 ring-offset-1 ring-[color:color-mix(in_oklab,var(--focus-ring)_30%,transparent)]`
+                                : 'bg-[var(--surface-card)] border-[color:var(--surface-border)] text-[var(--text-muted)] hover:border-[color:var(--brand-200)]'
                             }
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}

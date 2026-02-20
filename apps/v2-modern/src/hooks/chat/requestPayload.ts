@@ -1,4 +1,4 @@
-export const MAX_CLIENT_HISTORY_MESSAGES = 12
+export const MAX_CLIENT_HISTORY_MESSAGES = 10
 export const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
 
 type ChatMessage = {

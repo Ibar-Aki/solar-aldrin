@@ -49,18 +49,18 @@ export const ChatBubble = memo(function ChatBubble({ message, autoSpeak = false 
         <div className="mb-3 w-full" data-testid="chat-bubble" data-role={message.role}>
             <div className={`flex w-full items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                 {isUser && (
-                    <span className="shrink-0 text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
+                    <span className="shrink-0 text-xs text-[var(--text-soft)]" aria-label={`時刻 ${timeLabel}`}>
                         {timeLabel}
                     </span>
                 )}
 
                 <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2 ${isUser
-                        ? 'bg-blue-500 text-white rounded-br-md'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                        ? 'rounded-br-md bg-[var(--brand-600)] text-[var(--brand-foreground)] shadow-sm'
+                        : 'rounded-bl-md border border-[color:var(--surface-border)] bg-[var(--surface-card)] text-foreground'
                         }`}
                 >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-sm leading-6 whitespace-pre-wrap">{message.content}</p>
                 </div>
 
                 {/* AIメッセージの場合: 読み上げボタンは時刻の上に表示 */}
@@ -69,13 +69,13 @@ export const ChatBubble = memo(function ChatBubble({ message, autoSpeak = false 
                         {isSupported && (
                             <button
                                 onClick={handleSpeak}
-                                className="p-2 text-gray-400 hover:text-blue-500 rounded-full hover:bg-gray-100 transition-colors"
+                                className="rounded-full p-2 text-[var(--text-soft)] transition-colors hover:bg-[var(--brand-50)] hover:text-[var(--brand-600)]"
                                 title={isSpeaking ? "読み上げ停止" : "読み上げ"}
                             >
                                 {isSpeaking ? <Square size={16} /> : <Volume2 size={16} />}
                             </button>
                         )}
-                        <span className="text-xs text-gray-400" aria-label={`時刻 ${timeLabel}`}>
+                        <span className="text-xs text-[var(--text-soft)]" aria-label={`時刻 ${timeLabel}`}>
                             {timeLabel}
                         </span>
                     </div>

@@ -276,18 +276,22 @@ export function CompletionPage() {
         setPolishedActionGoal(null)
     }
 
+    const kyFeedbackItems = useMemo(() => {
+        if (!session) return []
+        return session.workItems.slice(0, 2).map((item, idx) => ({
+            id: item.id,
+            title: `KY${idx + 1}`,
+            hazard: item.hazardDescription.trim(),
+            measures: item.countermeasures
+                .map((cm) => cm.text.trim())
+                .filter((text) => text.length > 0)
+                .slice(0, 2),
+        }))
+    }, [session])
+
     if (!session || status !== 'completed') return null
 
     const displayActionGoal = polishedActionGoal ?? session.actionGoal
-    const kyFeedbackItems = useMemo(() => session.workItems.slice(0, 2).map((item, idx) => ({
-        id: item.id,
-        title: `KY${idx + 1}`,
-        hazard: item.hazardDescription.trim(),
-        measures: item.countermeasures
-            .map((cm) => cm.text.trim())
-            .filter((text) => text.length > 0)
-            .slice(0, 2),
-    })), [session.workItems])
 
     const hasFeedback = Boolean(feedback && feedback.praise && feedback.tip)
     const hasSupplements = supplements.length > 0

@@ -107,20 +107,22 @@ export function ChatInput({
         <div
             className={cn(
                 'flex flex-col gap-1',
-                variant === 'default' && 'p-4 border-t bg-white',
+                variant === 'default' && 'border-t border-[color:var(--surface-border)] bg-[var(--surface-card)] p-4',
                 containerClassName
             )}
         >
-            {micError && (
-                <div
-                    className="w-fit max-w-[80%] rounded-sm border border-amber-400 bg-amber-50 px-3 py-1 text-xs leading-5 text-slate-700"
-                    role="status"
-                    aria-live="polite"
-                    data-testid="mic-error-message"
-                >
-                    {micError}
-                </div>
-            )}
+            <div className="min-h-6">
+                {micError && (
+                    <div
+                        className="w-fit max-w-[80%] rounded-md border border-[color:var(--warning-border)] bg-[var(--warning-bg)] px-3 py-1 text-xs leading-5 text-[var(--warning-text)]"
+                        role="status"
+                        aria-live="polite"
+                        data-testid="mic-error-message"
+                    >
+                        {micError}
+                    </div>
+                )}
+            </div>
 
             <div className="flex gap-2 items-center">
                 <MicButton
@@ -142,7 +144,7 @@ export function ChatInput({
                     disabled={disabled}
                     rows={1}
                     className={cn(
-                        'flex-1 min-h-10 sm:min-h-11 max-h-[5.5rem] resize-none rounded-2xl px-4 py-2 text-base leading-6 placeholder:text-muted-foreground/70',
+                        'flex-1 min-h-10 max-h-[5.5rem] resize-none rounded-2xl border-[color:var(--surface-border)] bg-[var(--surface-card)] px-4 py-2 text-base leading-6 placeholder:text-muted-foreground/70 sm:min-h-11',
                         inputClassName
                     )}
                     maxLength={USER_CONTENT_MAX_LENGTH}
@@ -152,7 +154,7 @@ export function ChatInput({
                     onClick={handleSubmit}
                     disabled={disabled || !value.trim()}
                     className={cn(
-                        'h-10 w-10 sm:h-11 sm:w-11 rounded-full p-0 bg-blue-400 text-white hover:bg-blue-500',
+                        'h-10 w-10 rounded-full bg-[var(--brand-600)] p-0 text-[var(--brand-foreground)] hover:bg-[var(--brand-700)] disabled:bg-[var(--brand-200)] disabled:text-white/90 sm:h-11 sm:w-11',
                         buttonClassName
                     )}
                     aria-label="送信"
