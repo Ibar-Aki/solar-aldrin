@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI KYアシスタント - アプリ概要</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 210mm; height: 297mm;
+    font-family: 'Noto Sans JP', sans-serif;
+    background: #0a0f1c;
+    color: #e8ecf4;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* --- Background --- */
+  .bg-glow {
+    position: absolute; border-radius: 50%; filter: blur(80px); opacity: .25; z-index: 0;
+  }
+  .bg-glow.a { width: 420px; height: 420px; background: #3b82f6; top: -80px; left: -60px; }
+  .bg-glow.b { width: 340px; height: 340px; background: #10b981; bottom: -40px; right: -40px; }
+  .bg-glow.c { width: 260px; height: 260px; background: #8b5cf6; top: 40%; right: 10%; opacity: .12; }
+
+  .page { position: relative; z-index: 1; padding: 28px 34px 20px; height: 100%; display: flex; flex-direction: column; }
+
+  /* --- Header --- */
+  .header { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; }
+  .logo-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: linear-gradient(135deg, #3b82f6, #10b981);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; box-shadow: 0 4px 20px rgba(59,130,246,.35);
+  }
+  .header h1 { font-size: 26px; font-weight: 900; letter-spacing: -.5px; }
+  .header h1 span { color: #60a5fa; }
+  .header .badge {
+    margin-left: auto; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    background: linear-gradient(135deg, #10b981, #059669); color: #fff; letter-spacing: .5px;
+  }
+
+  .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 18px; line-height: 1.6; }
+  .subtitle strong { color: #e2e8f0; }
+
+  /* --- Flow --- */
+  .flow-section { margin-bottom: 16px; }
+  .flow-section h2 { font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .flow-section h2::before { content: ''; display: inline-block; width: 3px; height: 16px; background: #3b82f6; border-radius: 2px; }
+
+  .flow-steps {
+    display: flex; align-items: center; gap: 0; justify-content: space-between;
+  }
+  .flow-step {
+    flex: 1; text-align: center; padding: 12px 6px;
+    background: rgba(30, 41, 59, .7); border-radius: 12px;
+    border: 1px solid rgba(100, 116, 139, .2);
+    transition: transform .2s;
+    position: relative;
+  }
+  .flow-step .icon { font-size: 28px; margin-bottom: 6px; }
+  .flow-step .label { font-size: 11px; font-weight: 700; margin-bottom: 3px; }
+  .flow-step .desc { font-size: 9px; color: #94a3b8; line-height: 1.4; }
+  .flow-arrow { font-size: 18px; color: #3b82f6; margin: 0 2px; flex-shrink: 0; }
+
+  /* --- Features Grid --- */
+  .features { margin-bottom: 14px; }
+  .features h2 { font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .features h2::before { content: ''; display: inline-block; width: 3px; height: 16px; background: #3b82f6; border-radius: 2px; }
+
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .feature-card {
+    padding: 14px 12px; border-radius: 12px;
+    background: rgba(30, 41, 59, .55); border: 1px solid rgba(100, 116, 139, .2);
+    backdrop-filter: blur(4px);
+  }
+  .feature-card .card-icon { font-size: 22px; margin-bottom: 6px; }
+  .feature-card h3 { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .feature-card p { font-size: 9.5px; color: #94a3b8; line-height: 1.5; }
+
+  /* --- Stats Bar --- */
+  .stats-bar {
+    display: flex; gap: 10px; margin-bottom: 14px;
+  }
+  .stat-item {
+    flex: 1; text-align: center; padding: 10px 6px; border-radius: 10px;
+    background: rgba(30, 41, 59, .55); border: 1px solid rgba(100, 116, 139, .15);
+  }
+  .stat-item .num { font-size: 22px; font-weight: 900; background: linear-gradient(135deg, #60a5fa, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .stat-item .lbl { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+
+  /* --- Bottom CTA --- */
+  .bottom-section { margin-top: auto; display: flex; align-items: center; gap: 16px; }
+  .tech-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+  .tech-tag {
+    padding: 4px 10px; border-radius: 6px; font-size: 9px; font-weight: 500;
+    background: rgba(100, 116, 139, .2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, .15);
+  }
+  .cta-block { text-align: right; }
+  .cta-block .url { font-size: 9px; color: #64748b; }
+  .cta-block .ver { font-size: 10px; color: #94a3b8; font-weight: 700; }
+
+  /* --- Screen Mockup --- */
+  .screen-area { margin-bottom: 14px; }
+  .screen-area h2 { font-size: 14px; font-weight: 700; color: #60a5fa; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .screen-area h2::before { content: ''; display: inline-block; width: 3px; height: 16px; background: #3b82f6; border-radius: 2px; }
+
+  .screens-row { display: flex; gap: 12px; }
+  .screen-mock {
+    flex: 1; border-radius: 14px; padding: 12px 10px;
+    background: rgba(15, 23, 42, .8); border: 1px solid rgba(100, 116, 139, .25);
+    position: relative; overflow: hidden;
+  }
+  .screen-mock::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #3b82f6, #10b981);
+  }
+  .screen-mock .s-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; padding-top: 4px; }
+  .screen-mock .s-row {
+    display: flex; gap: 6px; align-items: center; margin-bottom: 5px;
+  }
+  .s-bubble {
+    padding: 5px 8px; border-radius: 8px; font-size: 8.5px; line-height: 1.4; max-width: 80%;
+  }
+  .s-bubble.ai { background: rgba(59, 130, 246, .2); border: 1px solid rgba(59, 130, 246, .25); color: #93c5fd; }
+  .s-bubble.user { background: rgba(16, 185, 129, .15); border: 1px solid rgba(16, 185, 129, .2); color: #6ee7b7; margin-left: auto; }
+  .s-bubble .avatar { font-size: 12px; margin-right: 4px; }
+
+  .screen-mock.pdf .pdf-row { display: flex; gap: 6px; margin-bottom: 4px; }
+  .pdf-block { flex: 1; padding: 5px; border-radius: 4px; background: rgba(100, 116, 139, .12); }
+  .pdf-block .pb-label { font-size: 7px; color: #64748b; margin-bottom: 2px; }
+  .pdf-block .pb-val { font-size: 8px; color: #cbd5e1; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+  <div class="bg-glow a"></div>
+  <div class="bg-glow b"></div>
+  <div class="bg-glow c"></div>
+
+  <div class="page">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo-icon">🛡️</div>
+      <h1><span>AI</span> KYアシスタント</h1>
+      <div class="badge">v2-modern</div>
+    </div>
+
+    <p class="subtitle">
+      <strong>音声AIで、現場の安全を変える。</strong><br>
+      建設現場の危険予知（KY）活動を、会話型AIが完全サポート。<br>
+      スマートフォンに話しかけるだけで、プロ品質のKY記録が完成します。
+    </p>
+
+    <!-- Flow -->
+    <div class="flow-section">
+      <h2>使い方の流れ</h2>
+      <div class="flow-steps">
+        <div class="flow-step"><div class="icon">👷</div><div class="label">現場情報入力</div><div class="desc">作業者名・現場名<br>天候・気温</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="icon">🎤</div><div class="label">音声で対話</div><div class="desc">AIが質問<br>音声/テキストで回答</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="icon">🤖</div><div class="label">AI解析</div><div class="desc">危険要因を自動抽出<br>対策を提案</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="icon">📋</div><div class="label">KYシート完成</div><div class="desc">PDF出力対応<br>フィードバック付き</div></div>
+      </div>
+    </div>
+
+    <!-- Screen Mockups -->
+    <div class="screen-area">
+      <h2>画面イメージ</h2>
+      <div class="screens-row">
+        <div class="screen-mock">
+          <div class="s-title">💬 AIチャット画面</div>
+          <div class="s-row"><div class="s-bubble ai"><span class="avatar">🤖</span>どんな作業をされますか？</div></div>
+          <div class="s-row"><div class="s-bubble user">高所での鉄骨の組み立てです</div></div>
+          <div class="s-row"><div class="s-bubble ai"><span class="avatar">🤖</span>危険な点はどんなことが考えられますか？</div></div>
+          <div class="s-row"><div class="s-bubble user">🎤 足場からの転落が心配です</div></div>
+          <div class="s-row"><div class="s-bubble ai"><span class="avatar">🤖</span>対策として安全帯の使用と…</div></div>
+        </div>
+        <div class="screen-mock pdf">
+          <div class="s-title">📄 KYシートPDF出力</div>
+          <div class="pdf-row"><div class="pdf-block"><div class="pb-label">作業内容</div><div class="pb-val">高所での鉄骨組立</div></div><div class="pdf-block"><div class="pb-label">危険度</div><div class="pb-val">⚠️ レベル4</div></div></div>
+          <div class="pdf-row"><div class="pdf-block"><div class="pb-label">危険要因</div><div class="pb-val">足場からの転落<br>工具の落下</div></div></div>
+          <div class="pdf-row"><div class="pdf-block"><div class="pb-label">対策</div><div class="pb-val">✅ 安全帯の着用<br>✅ 工具の落下防止措置</div></div></div>
+          <div class="pdf-row"><div class="pdf-block"><div class="pb-label">行動目標</div><div class="pb-val">「安全帯ヨシ！」</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features Grid -->
+    <div class="features">
+      <h2>主な機能</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="card-icon">🎤</div>
+          <h3>完全音声対応</h3>
+          <p>手がふさがる現場でもハンズフリーで入力。Web Speech API＋TTS読み上げ対応。</p>
+        </div>
+        <div class="feature-card">
+          <div class="card-icon">🧠</div>
+          <h3>AI自動抽出</h3>
+          <p>会話から危険要因・対策・行動目標を自動抽出。OpenAI/Gemini両対応。</p>
+        </div>
+        <div class="feature-card">
+          <div class="card-icon">📄</div>
+          <h3>PDF出力</h3>
+          <p>従来の紙のKYシートと同じフォーマットでPDF出力。そのまま提出可能。</p>
+        </div>
+        <div class="feature-card">
+          <div class="card-icon">💬</div>
+          <h3>AIフィードバック</h3>
+          <p>記入内容にAIが改善提案。補足リスク・行動目標の添削まで自動化。</p>
+        </div>
+        <div class="feature-card">
+          <div class="card-icon">📱</div>
+          <h3>スマホ最適化</h3>
+          <p>iOS/Android対応。PWAとしてホーム画面追加可能。現場でそのまま使える。</p>
+        </div>
+        <div class="feature-card">
+          <div class="card-icon">🔒</div>
+          <h3>セキュリティ</h3>
+          <p>CORS・レート制限・認証トークン・Sentry監視で安全な運用を実現。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat-item"><div class="num">55</div><div class="lbl">テストケース</div></div>
+      <div class="stat-item"><div class="num">13</div><div class="lbl">UIコンポーネント</div></div>
+      <div class="stat-item"><div class="num">2</div><div class="lbl">AIプロバイダ</div></div>
+      <div class="stat-item"><div class="num">5</div><div class="lbl">画面構成</div></div>
+      <div class="stat-item"><div class="num">0</div><div class="lbl">インストール不要</div></div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="bottom-section">
+      <div class="tech-tags">
+        <span class="tech-tag">React</span>
+        <span class="tech-tag">TypeScript</span>
+        <span class="tech-tag">Cloudflare Workers</span>
+        <span class="tech-tag">OpenAI / Gemini</span>
+        <span class="tech-tag">Zustand</span>
+        <span class="tech-tag">Vitest</span>
+      </div>
+      <div class="cta-block">
+        <div class="ver">v2-modern / 2026</div>
+        <div class="url">Cloudflare Pages でデプロイ</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

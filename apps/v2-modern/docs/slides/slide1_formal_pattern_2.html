@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice KY Assistant システム概要・業務適用プラン</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', 'Roboto', sans-serif;
+            background-color: #f1f5f9;
+            /* slate-100 */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .a4-landscape {
+            width: 297mm;
+            height: 210mm;
+            margin: 0 auto;
+            background: white;
+            border-top: 20px solid #1e293b;
+            /* slate-800 */
+            border-bottom: 8px solid #cbd5e1;
+            /* slate-300 */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media print {
+            body {
+                background: transparent;
+            }
+
+            .a4-landscape {
+                box-shadow: none;
+                margin: 0;
+            }
+        }
+
+        .tech-box {
+            border: 1px solid #94a3b8;
+            background-color: #f8fafc;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-weight: 700;
+            letter-spacing: 0.025em;
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen">
+    <div class="a4-landscape pt-8 pb-8 px-12 relative">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8 border-b-2 border-slate-200 pb-3">
+            <div>
+                <p class="text-sm font-bold text-blue-800 mb-1 border-b-2 border-blue-600 inline-block">SYSTEM
+                    ARCHITECTURE & FEATURES</p>
+                <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Voice KY Assistant システム概要・業務適用プラン</h1>
+            </div>
+            <div class="text-right flex flex-col items-end">
+                <div class="bg-slate-800 text-white text-xs font-bold px-3 py-1 rounded">Ver 2.0 Modern</div>
+                <p class="text-xs text-slate-500 mt-2">2026.03</p>
+            </div>
+        </header>
+
+        <main class="flex-1 grid grid-cols-2 gap-8">
+            <!-- Left: Architecture & Tech Stack -->
+            <div class="flex flex-col gap-6">
+                <!-- 業務フローとシステム機能 -->
+                <section>
+                    <h2 class="text-xl text-slate-800 border-l-8 border-slate-700 pl-3 mb-4 bg-slate-100 py-1">
+                        標準業務フロー適応モデル</h2>
+
+                    <div
+                        class="relative pl-6 space-y-4 before:absolute before:inset-0 before:ml-[1.45rem] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-slate-300">
+                        <!-- Step 1 -->
+                        <div
+                            class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                            <div
+                                class="flex items-center justify-center w-8 h-8 rounded-full border-4 border-white bg-slate-700 text-slate-50 shadow shrink-0 text-sm font-bold z-10">
+                                1</div>
+                            <div
+                                class="ml-4 bg-white border border-slate-200 p-3 rounded shadow-sm w-[calc(100%-3rem)]">
+                                <h4 class="font-bold text-slate-800 text-sm">基本情報の手軽な入力</h4>
+                                <p class="text-xs text-slate-600 mt-1">作業内容・場所・日時・天候を素早く入力。PWAオフライン対応済み。</p>
+                            </div>
+                        </div>
+                        <!-- Step 2 -->
+                        <div
+                            class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                            <div
+                                class="flex items-center justify-center w-8 h-8 rounded-full border-4 border-white bg-blue-600 text-slate-50 shadow shrink-0 text-sm font-bold z-10">
+                                2</div>
+                            <div
+                                class="ml-4 bg-blue-50 border border-blue-200 p-3 rounded shadow-sm w-[calc(100%-3rem)]">
+                                <h4 class="font-bold text-blue-900 text-sm">音声対話KY（主要機能）</h4>
+                                <p class="text-xs text-slate-700 mt-1">音声によるAIの深掘り質問で「ヨシ」の思考停止を防止。新たな視点・潜在リスクをサジェスト。</p>
+                            </div>
+                        </div>
+                        <!-- Step 3 -->
+                        <div
+                            class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                            <div
+                                class="flex items-center justify-center w-8 h-8 rounded-full border-4 border-white bg-slate-700 text-slate-50 shadow shrink-0 text-sm font-bold z-10">
+                                3</div>
+                            <div
+                                class="ml-4 bg-white border border-slate-200 p-3 rounded shadow-sm w-[calc(100%-3rem)]">
+                                <h4 class="font-bold text-slate-800 text-sm">即時PDF出力と保存</h4>
+                                <p class="text-xs text-slate-600 mt-1">対話完了と同時に監査品質のPDFを生成。30日間ローカル保管（Phase2時点）</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 非機能要件 / セキュリティ -->
+                <section>
+                    <h2 class="text-xl text-slate-800 border-l-8 border-slate-700 pl-3 mb-3 bg-slate-100 py-1">
+                        非機能要件・セキュリティ方針</h2>
+                    <ul class="grid grid-cols-2 gap-3 text-xs text-slate-700">
+                        <li class="bg-slate-50 p-2 border border-slate-200 rounded">
+                            <strong class="block text-slate-900 mb-1">環境耐性（オフライン・騒音）</strong>
+                            通信切断時の内容保持、マイク認識失敗時のテキスト入力切替UIを実装。
+                        </li>
+                        <li class="bg-slate-50 p-2 border border-slate-200 rounded">
+                            <strong class="block text-slate-900 mb-1">堅牢なエラー復旧</strong>
+                            AI応答エラー時のサイレントリトライ機構など、ユーザー操作を中断させないリカバリ。
+                        </li>
+                        <li class="bg-slate-50 p-2 border border-slate-200 rounded">
+                            <strong class="block text-slate-900 mb-1">レスポンス要件</strong>
+                            音声入力完了からAI応答開始まで3秒以内の高速処理を実現する最適化。
+                        </li>
+                        <li class="bg-slate-50 p-2 border border-slate-200 rounded">
+                            <strong class="block text-slate-900 mb-1">機密情報・API保護</strong>
+                            APIキーはBFF(Workers)経由のみとし、クライアント非保持。現場写真は取得後破棄等。
+                        </li>
+                    </ul>
+                </section>
+            </div>
+
+            <!-- Right: Functions & Extensibility -->
+            <div class="flex flex-col gap-6">
+                <!-- システム構成 (Architecture) -->
+                <section>
+                    <h2 class="text-xl text-slate-800 border-l-8 border-slate-700 pl-3 mb-4 bg-slate-100 py-1">
+                        システムアーキテクチャ構成</h2>
+                    <div class="bg-slate-800 p-4 rounded-md text-white">
+                        <div class="flex items-center justify-between mb-2">
+                            <div
+                                class="text-center w-[30%] border border-slate-600 rounded bg-slate-900 py-2 shadow-inner">
+                                <p class="text-[10px] font-bold text-slate-400">Front-End (PWA)</p>
+                                <p class="font-bold text-sm">React 19 + Vite</p>
+                                <p class="text-[10px] mt-1 text-slate-300">状態管理: Zustand</p>
+                            </div>
+                            <div class="text-xl text-slate-400">⇄</div>
+                            <div
+                                class="text-center w-[30%] border border-blue-500 rounded bg-blue-900 bg-opacity-40 py-2 shadow-inner">
+                                <p class="text-[10px] font-bold text-blue-300">Back-End (API/BFF)</p>
+                                <p class="font-bold text-sm">Cloudflare Workers</p>
+                                <p class="text-[10px] mt-1 text-blue-200">Hono Framework</p>
+                            </div>
+                            <div class="text-xl text-slate-400">⇄</div>
+                            <div
+                                class="text-center w-[30%] border border-emerald-600 rounded bg-emerald-900 bg-opacity-40 py-2 shadow-inner">
+                                <p class="text-[10px] font-bold text-emerald-300">AI Engine</p>
+                                <p class="font-bold text-sm">OpenAI & Gemini</p>
+                                <p class="text-[10px] mt-1 text-emerald-200">API切り替え対応</p>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-slate-300 mt-2 px-1 text-center">
+                            IndexedDBを用いたクライアント保存、Analytics Engineによる監視体制を標準組込。
+                        </div>
+                    </div>
+                </section>
+
+                <!-- データフォーマットと管理要件 -->
+                <section>
+                    <h2 class="text-xl text-slate-800 border-l-8 border-slate-700 pl-3 mb-3 bg-slate-100 py-1">
+                        管理データ要件と拡張性（Phase 3・4想定）</h2>
+                    <table class="w-full text-xs text-left border-collapse bg-white">
+                        <thead class="bg-slate-200 text-slate-700">
+                            <tr>
+                                <th class="py-2 px-3 border border-slate-300">項目</th>
+                                <th class="py-2 px-3 border border-slate-300">仕様・要件</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-slate-700">
+                            <tr>
+                                <td class="py-2 px-3 border border-slate-300 font-bold bg-slate-50">保存データ属性</td>
+                                <td class="py-2 px-3 border border-slate-300">基本情報（作業内容・場所・日時）、抽出データ（危険ポイント・対策・行動目標）
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-3 border border-slate-300 font-bold bg-slate-50">保存と破棄の基準</td>
+                                <td class="py-2 px-3 border border-slate-300">
+                                    ローカル保存（30日経過で通知・削除）。今後はサーバー保管＋月1回定期エクスポート後に削除。</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-3 border border-slate-300 font-bold bg-slate-50">将来拡張（入力連携）</td>
+                                <td class="py-2 px-3 border border-slate-300">
+                                    既存の他社指定KY用紙のOCR取り込み変換。現場写真の画像認識による危険箇所提示・連携。</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-3 border border-slate-300 font-bold bg-slate-50">エクスポート機能</td>
+                                <td class="py-2 px-3 border border-slate-300">
+                                    全KY記録を規定CSV/Excelフォーマットで一括・定期ダウンロード可能な口を用意（改ざん防止ハッシュ付与予定）。</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer
+            class="mt-4 border-t border-slate-300 pt-3 flex justify-between items-center text-[10px] text-slate-500 font-bold">
+            <p>※ 本資料記載の内容はシステム導入・開発に向けた要件定義に基づく基本設計概要です。</p>
+            <p>Voice KY Assistant System Overview | CONFIDENTIAL</p>
+        </footer>
+    </div>
+</body>
+
+</html>

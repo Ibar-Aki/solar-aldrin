@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI KYアシスタント - ビジネス企画書</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 210mm;
+            height: 297mm;
+            font-family: 'Noto Sans JP', sans-serif;
+            background: #fafbfc;
+            color: #1e293b;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .accent-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(90deg, #f59e0b, #ef4444, #3b82f6, #10b981);
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            padding: 32px 36px 24px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Header --- */
+        .header {
+            margin-bottom: 18px;
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+        }
+
+        .header-left {
+            flex: 1;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            background: #fef3c7;
+            color: #b45309;
+            margin-bottom: 8px;
+            letter-spacing: .5px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 900;
+            line-height: 1.3;
+            color: #0f172a;
+        }
+
+        .header h1 .accent {
+            color: #3b82f6;
+        }
+
+        .header-right {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #3b82f6, #10b981);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, .25);
+            flex-shrink: 0;
+            margin-top: 8px;
+        }
+
+        /* --- Problem/Solution --- */
+        .ps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .ps-card {
+            padding: 16px;
+            border-radius: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ps-card.problem {
+            background: linear-gradient(135deg, #fef2f2, #fff7ed);
+            border: 1px solid #fecaca;
+        }
+
+        .ps-card.solution {
+            background: linear-gradient(135deg, #eff6ff, #ecfdf5);
+            border: 1px solid #bfdbfe;
+        }
+
+        .ps-card .ps-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .ps-card.problem .ps-label {
+            color: #dc2626;
+        }
+
+        .ps-card.solution .ps-label {
+            color: #2563eb;
+        }
+
+        .ps-card ul {
+            list-style: none;
+        }
+
+        .ps-card li {
+            font-size: 11px;
+            line-height: 1.6;
+            padding: 4px 0;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .ps-card.problem li::before {
+            content: '❌';
+            position: absolute;
+            left: 0;
+        }
+
+        .ps-card.solution li::before {
+            content: '✅';
+            position: absolute;
+            left: 0;
+        }
+
+        /* --- Value Proposition --- */
+        .value-section {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 3px solid #3b82f6;
+            display: inline-block;
+        }
+
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .value-card {
+            text-align: center;
+            padding: 16px 10px;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+        }
+
+        .value-card .v-icon {
+            font-size: 32px;
+            margin-bottom: 6px;
+        }
+
+        .value-card h3 {
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 4px;
+            color: #1e293b;
+        }
+
+        .value-card .v-num {
+            font-size: 24px;
+            font-weight: 900;
+            color: #3b82f6;
+            margin-bottom: 2px;
+        }
+
+        .value-card .v-unit {
+            font-size: 9px;
+            color: #64748b;
+        }
+
+        .value-card p {
+            font-size: 9.5px;
+            color: #64748b;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        /* --- Target --- */
+        .target-section {
+            margin-bottom: 16px;
+        }
+
+        .target-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .target-card {
+            padding: 12px 8px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+        }
+
+        .target-card .t-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        .target-card .t-who {
+            font-size: 10px;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .target-card .t-why {
+            font-size: 8.5px;
+            color: #64748b;
+            line-height: 1.4;
+        }
+
+        /* --- Comparison --- */
+        .comparison {
+            margin-bottom: 16px;
+        }
+
+        .comp-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            font-size: 10px;
+        }
+
+        .comp-table th {
+            padding: 8px 10px;
+            background: #f1f5f9;
+            font-weight: 700;
+            text-align: left;
+        }
+
+        .comp-table th:first-child {
+            width: 28%;
+        }
+
+        .comp-table td {
+            padding: 7px 10px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        .comp-table .old {
+            color: #94a3b8;
+        }
+
+        .comp-table .new {
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .comp-table tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+
+        /* --- Roadmap --- */
+        .roadmap {
+            margin-bottom: 12px;
+        }
+
+        .roadmap-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .roadmap-item {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            position: relative;
+        }
+
+        .roadmap-item::after {
+            content: '→';
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+
+        .roadmap-item:last-child::after {
+            content: '';
+        }
+
+        .roadmap-item .r-phase {
+            font-size: 8px;
+            font-weight: 700;
+            color: #3b82f6;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+        }
+
+        .roadmap-item .r-title {
+            font-size: 10px;
+            font-weight: 700;
+            margin: 2px 0;
+        }
+
+        .roadmap-item .r-desc {
+            font-size: 8.5px;
+            color: #64748b;
+        }
+
+        .roadmap-item.done {
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+
+        .roadmap-item.done .r-phase {
+            color: #16a34a;
+        }
+
+        /* --- Footer --- */
+        .footer {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer-left {
+            font-size: 9px;
+            color: #94a3b8;
+        }
+
+        .footer-right {
+            font-size: 10px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="accent-bar"></div>
+    <div class="page">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="tag">🔥 DX推進プロジェクト</div>
+                <h1>現場の安全をAIで<span class="accent">変革</span>する<br><span class="accent">AI KY</span>アシスタント</h1>
+            </div>
+            <div class="header-right">🛡️</div>
+        </div>
+
+        <!-- Problem / Solution -->
+        <div class="ps-grid">
+            <div class="ps-card problem">
+                <div class="ps-label">📋 現在の課題</div>
+                <ul>
+                    <li>KY記録の作成に<strong>1回15〜30分</strong>かかる</li>
+                    <li>紙の記録は検索・分析が<strong>困難</strong></li>
+                    <li>経験の浅い作業員は<strong>危険予知の質にばらつき</strong></li>
+                    <li>手書きKY用紙の<strong>保管・管理コスト</strong>が増大</li>
+                </ul>
+            </div>
+            <div class="ps-card solution">
+                <div class="ps-label">💡 AI KYアシスタントの解決策</div>
+                <ul>
+                    <li>音声AIとの会話だけで<strong>3〜5分</strong>で完成</li>
+                    <li>デジタル記録で<strong>即座に検索・共有</strong></li>
+                    <li>AIが<strong>危険要因を自動提案</strong>し、品質を底上げ</li>
+                    <li>PDF出力で<strong>ペーパーレス＆コスト削減</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Value -->
+        <div class="value-section">
+            <div class="section-title">導入効果</div>
+            <div class="value-grid">
+                <div class="value-card">
+                    <div class="v-icon">⏱️</div>
+                    <div class="v-num">80<span style="font-size:14px">%</span></div>
+                    <div class="v-unit">作業時間削減</div>
+                    <p>30分 → 5分で<br>KY活動が完了</p>
+                </div>
+                <div class="value-card">
+                    <div class="v-icon">📈</div>
+                    <div class="v-num">3<span style="font-size:14px">倍</span></div>
+                    <div class="v-unit">危険察知率の向上</div>
+                    <p>AIが見落としがちな<br>リスクを自動補完</p>
+                </div>
+                <div class="value-card">
+                    <div class="v-icon">💰</div>
+                    <div class="v-num">¥0</div>
+                    <div class="v-unit">導入コスト</div>
+                    <p>ブラウザで即利用<br>インストール不要</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Target -->
+        <div class="target-section">
+            <div class="section-title">ターゲットユーザー</div>
+            <div class="target-cards">
+                <div class="target-card">
+                    <div class="t-icon">👷</div>
+                    <div class="t-who">現場作業員</div>
+                    <div class="t-why">音声で簡単入力<br>手が空かなくてもOK</div>
+                </div>
+                <div class="target-card">
+                    <div class="t-icon">📋</div>
+                    <div class="t-who">安全管理者</div>
+                    <div class="t-why">KY活動の質を均一化<br>記録の一元管理</div>
+                </div>
+                <div class="target-card">
+                    <div class="t-icon">🏗️</div>
+                    <div class="t-who">中小建設会社</div>
+                    <div class="t-why">低コストでDX推進<br>安全書類の効率化</div>
+                </div>
+                <div class="target-card">
+                    <div class="t-icon">🏢</div>
+                    <div class="t-who">元請け企業</div>
+                    <div class="t-why">協力会社の安全水準<br>底上げツールとして</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison -->
+        <div class="comparison">
+            <div class="section-title">従来手法との比較</div>
+            <table class="comp-table">
+                <tr>
+                    <th></th>
+                    <th class="old">📝 従来のKY活動</th>
+                    <th class="new">🤖 AI KYアシスタント</th>
+                </tr>
+                <tr>
+                    <td>所要時間</td>
+                    <td class="old">15〜30分</td>
+                    <td class="new">3〜5分</td>
+                </tr>
+                <tr>
+                    <td>入力方法</td>
+                    <td class="old">紙に手書き</td>
+                    <td class="new">音声 / テキスト</td>
+                </tr>
+                <tr>
+                    <td>品質</td>
+                    <td class="old">担当者の経験依存</td>
+                    <td class="new">AI補助で均一化</td>
+                </tr>
+                <tr>
+                    <td>保管</td>
+                    <td class="old">紙ファイル</td>
+                    <td class="new">クラウド + PDF</td>
+                </tr>
+                <tr>
+                    <td>フィードバック</td>
+                    <td class="old">なし</td>
+                    <td class="new">AIが即時アドバイス</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Roadmap -->
+        <div class="roadmap">
+            <div class="section-title">ロードマップ</div>
+            <div class="roadmap-row">
+                <div class="roadmap-item done">
+                    <div class="r-phase">✅ Phase 1 完了</div>
+                    <div class="r-title">音声KY + PDF</div>
+                    <div class="r-desc">コア機能の完成<br>55テストで品質担保</div>
+                </div>
+                <div class="roadmap-item">
+                    <div class="r-phase">Phase 2</div>
+                    <div class="r-title">組織導入</div>
+                    <div class="r-desc">チーム管理機能<br>ダッシュボード</div>
+                </div>
+                <div class="roadmap-item">
+                    <div class="r-phase">Phase 3</div>
+                    <div class="r-title">外部連携</div>
+                    <div class="r-desc">施工管理ツール連携<br>リスクDB蓄積</div>
+                </div>
+                <div class="roadmap-item">
+                    <div class="r-phase">Phase 4</div>
+                    <div class="r-title">予測分析</div>
+                    <div class="r-desc">過去データからの<br>リスク予測AI</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-left">Confidential — AI KYアシスタント 企画書 2026</div>
+            <div class="footer-right">v2-modern / Cloudflare Pages</div>
+        </div>
+    </div>
+</body>
+
+</html>

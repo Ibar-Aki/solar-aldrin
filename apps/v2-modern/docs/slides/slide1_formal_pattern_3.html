@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice KY Assistant 展開ロードマップと将来ビジョン</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+
+        @page {
+            size: A4 landscape;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .a4-landscape {
+            width: 297mm;
+            height: 210mm;
+            margin: 0 auto;
+            background: white;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+
+        @media print {
+            .a4-landscape {
+                border: none;
+            }
+        }
+
+        .title-font {
+            font-family: 'Montserrat', 'Noto Sans JP', sans-serif;
+        }
+
+        .accent-bar {
+            width: 6px;
+            height: 100%;
+            background: #991b1b;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        .accent-top {
+            width: 100%;
+            height: 6px;
+            background: #991b1b;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        /* Roadmap specific styles */
+        .roadmap-card {
+            border-top: 4px solid #cbd5e1;
+            transition: border-color 0.3s ease;
+        }
+
+        .roadmap-card.active {
+            border-top-color: #991b1b;
+            background-color: #fff1f2;
+        }
+
+        .roadmap-card.future {
+            border-top-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen bg-slate-200">
+    <div class="a4-landscape px-14 py-10 flex flex-col">
+        <div class="accent-top"></div>
+        <div class="accent-bar"></div>
+
+        <!-- Header -->
+        <header class="flex justify-between items-end mb-8">
+            <div class="pl-2">
+                <span class="text-rose-800 font-bold text-sm tracking-widest title-font">STRATEGIC ROADMAP</span>
+                <h1 class="text-3xl font-black text-slate-900 mt-1 title-font">Voice KY Assistant 中長期ロードマップとビジョン</h1>
+                <p class="text-slate-600 text-sm mt-2 font-medium">作成・組織展開から「全社ダッシュボード連携・データ資産化」までの4フェーズ計画</p>
+            </div>
+            <div>
+                <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTkxYjFiIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTMgMTJ2NE0xOSAxMnY0TTUgMTd2NE0xNyAxN3Y0TTEyIDZ2NW0tNiAydjcwbTEyLTd2N20wLTk2LTVNNyAxNW00LTkuNW0tNC0uNW0xMC0wbS0xMCA0bS0yIDJzNi0yIDExIDJ2LTJoLTExMXoiLz48L3N2Zz4="
+                    class="w-12 h-12 opacity-80" alt="icon">
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col justify-between">
+
+            <!-- Vision Box -->
+            <div class="bg-slate-800 text-white rounded p-5 mb-8 shadow-md">
+                <h2 class="text-lg font-bold mb-2 flex items-center">
+                    <span class="bg-rose-700 text-white text-xs px-2 py-1 rounded mr-3">MISSION</span>
+                    「二度書きの無駄をなくし、現場の知恵をつなぐ」
+                </h2>
+                <p class="text-sm text-slate-300 leading-relaxed">
+                    フェーズの進行に伴い、対象ユーザーを「個人」から「組織・チーム」へ拡大。
+                    現場作業者の負担ゼロから始まり、最終段階では蓄積されたデータが組織横断的な安全指針（ダッシュボード分析・複数人参加のチームKY）へと進化し、現場の労働災害をシステム的に予防する資産へと飛躍します。
+                </p>
+            </div>
+
+            <!-- Roadmap Progress -->
+            <div class="grid grid-cols-4 gap-4 mb-6 relative">
+                <!-- Line joining the cards (Background) -->
+                <div class="absolute top-4 left-0 w-full h-1 bg-slate-200 z-0"></div>
+
+                <!-- Phase 1 -->
+                <div
+                    class="roadmap-card bg-white p-4 rounded shadow-sm relative z-10 border border-slate-200 opacity-60">
+                    <div
+                        class="w-8 h-8 rounded-full bg-slate-300 text-slate-700 font-bold flex items-center justify-center text-sm absolute -top-[18px] left-4 border-4 border-white">
+                        P1</div>
+                    <h3 class="font-bold text-slate-800 text-sm mt-3 border-b border-slate-200 pb-1 mb-2">MVP / 実証実験
+                    </h3>
+                    <p class="text-xs text-slate-600 mb-2 font-bold text-rose-800">利用規模: 1人 (開発・PoC)</p>
+                    <ul class="text-[11px] text-slate-600 pl-4 list-disc space-y-1">
+                        <li>音声対話の実現可能性検証</li>
+                        <li>最低限のPDF出力機能実装</li>
+                        <li>完全ローカル保存による基盤構築</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 2 (Active) -->
+                <div
+                    class="roadmap-card active p-4 rounded shadow-md relative z-10 border border-slate-200 scale-105 origin-center">
+                    <div
+                        class="w-8 h-8 rounded-full bg-rose-700 text-white font-bold flex items-center justify-center text-sm absolute -top-[18px] left-4 border-4 border-white shadow">
+                        P2</div>
+                    <div class="absolute top-2 right-2 bg-rose-600 text-white text-[9px] px-1 font-bold rounded">CURRENT
+                    </div>
+                    <h3 class="font-bold text-rose-900 text-sm mt-3 border-b border-rose-200 pb-1 mb-2">ソロKYの安定化と定着</h3>
+                    <p class="text-xs text-slate-700 mb-2 font-bold">利用規模: 1〜10人規模</p>
+                    <ul class="text-[11px] text-slate-700 pl-4 list-disc space-y-1">
+                        <li>マンネリ化を防ぐ「新たな視点」の提供</li>
+                        <li>音声対話とレスポンスの安定稼働化</li>
+                        <li>高品質レコード(PDF)の自動生成</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 3 -->
+                <div class="roadmap-card future p-4 rounded shadow-sm relative z-10 border border-slate-200">
+                    <div
+                        class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm absolute -top-[18px] left-4 border-4 border-white">
+                        P3</div>
+                    <h3 class="font-bold text-blue-900 text-sm mt-3 border-b border-blue-200 pb-1 mb-2">情報の統合と組織展開</h3>
+                    <p class="text-xs text-slate-700 mb-2 font-bold">利用規模: 10〜100人規模</p>
+                    <ul class="text-[11px] text-slate-700 pl-4 list-disc space-y-1">
+                        <li>他社指定KY用紙のOCR取り込み変換</li>
+                        <li>現場写真・画像認識による危険箇所提示</li>
+                        <li>CSV等へのサーバー定期的エクスポート抽出</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 4 -->
+                <div class="roadmap-card future p-4 rounded shadow-sm relative z-10 border border-slate-200 opacity-80">
+                    <div
+                        class="w-8 h-8 rounded-full bg-blue-400 text-white font-bold flex items-center justify-center text-sm absolute -top-[18px] left-4 border-4 border-white">
+                        P4</div>
+                    <h3 class="font-bold text-slate-800 text-sm mt-3 border-b border-slate-200 pb-1 mb-2">分析活用とチームKY
+                    </h3>
+                    <p class="text-xs text-slate-700 mb-2 font-bold">利用規模: 100〜200人〜</p>
+                    <ul class="text-[11px] text-slate-700 pl-4 list-disc space-y-1">
+                        <li>ダッシュボードによる現場横断の分析</li>
+                        <li>チームKY（1台端末で複数人の発言を統合）</li>
+                        <li>集合知による高度な予知インサイト生成</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Success Metrics -->
+            <div class="bg-white border text-center border-slate-300 rounded p-4 flex justify-around items-center">
+                <div class="text-left w-1/3 border-r border-slate-300 pr-4">
+                    <p class="text-sm font-bold text-slate-800 mb-1">各フェーズ進行に伴うKPI目標値達成に向けて：</p>
+                    <p class="text-xs text-slate-500">段階的な機能リリースにより利用者の負担感を払拭しつつ、最終目標値へと堅実に推移させます。</p>
+                </div>
+                <div class="text-center px-4">
+                    <p class="text-[10px] text-slate-500 font-bold mb-1">建築KY取り込み率目標 (P3)</p>
+                    <p class="text-xl font-black text-blue-700">70<span class="text-sm font-medium ml-1">% 以上</span></p>
+                </div>
+                <div class="text-center px-4">
+                    <p class="text-[10px] text-slate-500 font-bold mb-1">PDF作成・実働時間 (P4)</p>
+                    <p class="text-xl font-black text-rose-700"><span
+                            class="text-sm font-normal text-slate-500 mr-2">15分 →</span>8<span
+                            class="text-sm font-medium ml-1">分</span></p>
+                </div>
+                <div class="text-center px-4 border-l border-slate-300 pl-6">
+                    <p class="text-[10px] text-slate-500 font-bold mb-1">ROI・コスト維持 (恒久)</p>
+                    <p class="text-xl font-black text-emerald-700">5<span class="text-sm font-medium ml-1">円 / 回
+                            以下</span></p>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer
+            class="mt-6 pt-3 flex border-t border-slate-300 justify-between items-center text-[10px] text-slate-400">
+            <p>※記載のフェーズ時期や機能は今後の検証データに基づき見直される場合があります。</p>
+            <p class="font-bold">Voice KY Assistant Project Room</p>
+        </footer>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice KY Assistant 導入のご提案</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@600&display=swap"
+        rel="stylesheet">
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+            /* slate-50 */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: 'Noto Serif JP', serif;
+        }
+
+        .a4-landscape {
+            width: 297mm;
+            height: 210mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border-top: 12px solid #0f172a;
+            /* slate-900 */
+        }
+
+        @media print {
+            body {
+                background: transparent;
+            }
+
+            .a4-landscape {
+                box-shadow: none;
+                margin: 0;
+            }
+        }
+
+        .header-stripe {
+            background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
+        }
+
+        .table-cell-border {
+            border: 1px solid #cbd5e1;
+            /* slate-300 */
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen">
+    <div class="a4-landscape relative pt-8 pb-10 px-14">
+        <!-- Header -->
+        <header class="flex justify-between items-end mb-8 border-b-2 border-slate-800 pb-4">
+            <div>
+                <h2 class="text-slate-600 text-sm font-bold tracking-widest mb-1">PROPOSAL OVERVIEW</h2>
+                <h1 class="text-3xl font-bold text-slate-900 leading-tight">AIファシリ型KYシステム<br><span
+                        class="text-slate-700 text-2xl">「Voice KY Assistant」導入のご提案</span></h1>
+            </div>
+            <div class="text-right">
+                <p class="text-sm font-bold text-slate-500">2026.03</p>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="flex-1 grid grid-cols-12 gap-8">
+            <!-- Left Column: Problem & Solution -->
+            <div class="col-span-5 flex flex-col gap-6">
+                <!-- 背景と課題 -->
+                <section class="bg-slate-50 border border-slate-200 p-5 rounded-md">
+                    <h3 class="flex items-center text-lg font-bold text-slate-800 mb-4 border-l-4 border-red-600 pl-3">
+                        <svg class="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                            </path>
+                        </svg>
+                        現場が抱える深刻な課題（形骸化）
+                    </h3>
+                    <ul class="space-y-3 text-sm text-slate-700 font-medium">
+                        <li class="flex items-start">
+                            <span class="text-red-500 mr-2">■</span>
+                            一人KYのマンネリ化による思考の停止（潜在的危険の見落とし）
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-red-500 mr-2">■</span>
+                            記入負担の肥大化と、元請け・自社用の「二度書きのムダ」
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-red-500 mr-2">■</span>
+                            紙ベース運用による過去のヒヤリハットなど「知見の分断」
+                        </li>
+                    </ul>
+                </section>
+
+                <!-- 解決策 -->
+                <section class="bg-blue-50 border border-blue-200 p-5 rounded-md flex-1">
+                    <h3 class="flex items-center text-lg font-bold text-slate-900 mb-4 border-l-4 border-blue-600 pl-3">
+                        <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        音声AIによる本質的な課題解決
+                    </h3>
+                    <p class="text-sm text-slate-700 font-bold mb-3 leading-relaxed">
+                        「話すだけで、質の高い危険予知が完了し、現場の知恵をつなぐ」
+                    </p>
+                    <ul class="space-y-2 text-sm text-slate-600">
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-2 font-bold">1. 思考の深化</span>
+                            AIが対話を通じて深掘り質問を行い、マンネリな「ヨシ」を防止。新たな視点を提供。
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-2 font-bold">2. 入力負担ゼロ</span>
+                            音声入力でKY活動を完了。ハンズフリーかつテキスト打鍵不要。
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-2 font-bold">3. 成果物の自動化</span>
+                            監査耐用レベルのKY記録PDFを即時生成し、再利用可能なデータ資産へ移行。
+                        </li>
+                    </ul>
+                </section>
+            </div>
+
+            <!-- Right Column: Results & ROI -->
+            <div class="col-span-7 flex flex-col gap-6">
+                <!-- 達成すべき成果（KPI） -->
+                <section>
+                    <h3 class="text-lg font-bold text-slate-800 mb-3 border-b border-slate-300 pb-2">定量的な成功指標と期待効果</h3>
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <div class="bg-slate-100 p-4 rounded text-center border border-slate-200 shadow-sm">
+                            <p class="text-xs text-slate-500 font-bold mb-1">KY作成時間</p>
+                            <p class="text-2xl font-bold text-slate-800"><span
+                                    class="text-sm font-normal text-slate-500 mr-1">中央値 15分</span><span
+                                    class="text-red-600 mx-1">▶</span>8<span class="text-sm">分</span></p>
+                            <p class="text-[10px] text-slate-500 mt-1">大幅な業務効率化</p>
+                        </div>
+                        <div class="bg-slate-100 p-4 rounded text-center border border-slate-200 shadow-sm">
+                            <p class="text-xs text-slate-500 font-bold mb-1">音声入力成功率</p>
+                            <p class="text-2xl font-bold text-blue-700">90<span class="text-sm">%</span> 以上</p>
+                            <p class="text-[10px] text-slate-500 mt-1">高精度モデル採用</p>
+                        </div>
+                        <div class="bg-slate-100 p-4 rounded text-center border border-slate-200 shadow-sm">
+                            <p class="text-xs text-slate-500 font-bold mb-1">運用コスト</p>
+                            <p class="text-2xl font-bold text-emerald-600">5<span class="text-sm">円</span><span
+                                    class="text-xs text-slate-500"> / 回以下</span></p>
+                            <p class="text-[10px] text-slate-500 mt-1">インフラ費用込み</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 投資対効果 (ROI) -->
+                <section>
+                    <h3 class="text-lg font-bold text-slate-800 mb-3 border-b border-slate-300 pb-2">
+                        圧倒的な投資対効果（Phase2〜3想定）</h3>
+                    <table class="w-full text-sm text-left border-collapse">
+                        <thead class="bg-slate-800 text-white text-xs">
+                            <tr>
+                                <th class="py-2 px-3 border border-slate-700 w-1/4">利用規模</th>
+                                <th class="py-2 px-3 border border-slate-700 w-1/4">月間KY回数</th>
+                                <th class="py-2 px-3 border border-slate-700 w-1/4">システムコスト</th>
+                                <th class="py-2 px-3 border border-slate-700 w-1/4">削減される人件費(推計)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-slate-700">
+                            <tr>
+                                <td class="py-2 px-3 table-cell-border bg-slate-50 font-bold">1〜10人 (ソロ定着)</td>
+                                <td class="py-2 px-3 table-cell-border text-right">40〜400 回</td>
+                                <td class="py-2 px-3 table-cell-border text-right text-emerald-600 font-bold">〜 2,000
+                                    円/月</td>
+                                <td class="py-2 px-3 table-cell-border text-right bg-blue-50">+ 19,000 円相当</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-3 table-cell-border bg-slate-50 font-bold">10〜100人 (組織展開)</td>
+                                <td class="py-2 px-3 table-cell-border text-right">400〜4,000 回</td>
+                                <td class="py-2 px-3 table-cell-border text-right text-emerald-600 font-bold">〜 20,000
+                                    円/月</td>
+                                <td class="py-2 px-3 table-cell-border text-right bg-blue-50">+ 190,000 円相当</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-3 table-cell-border bg-slate-50 font-bold text-slate-500">100〜200人+
+                                    (全体最適)</td>
+                                <td class="py-2 px-3 table-cell-border text-right text-slate-500">4,000〜8,000 回</td>
+                                <td
+                                    class="py-2 px-3 table-cell-border text-right text-emerald-600 font-bold text-opacity-70">
+                                    〜 40,000 円/月</td>
+                                <td class="py-2 px-3 table-cell-border text-right bg-blue-50 text-slate-500">+ 380,000
+                                    円相当</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="text-xs text-slate-500 mt-2">
+                        ※GPT-4o-mini・Cloudflare基盤等の最新アーキテクチャ活用により、高機能を維持しながら低コスト運用を実現。KY1回7分の時間短縮を人件費換算（3,000円/h）として試算。
+                    </p>
+                </section>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="mt-8 border-t border-slate-300 pt-4 flex justify-between text-xs text-slate-500">
+            <p>機密情報：お取り扱いにご注意ください</p>
+            <p>Voice KY Assistant Planning Team / Confidential</p>
+        </footer>
+    </div>
+</body>
+
+</html>

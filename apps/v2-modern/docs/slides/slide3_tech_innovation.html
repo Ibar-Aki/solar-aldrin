@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI KYアシスタント - テクノロジー</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 210mm;
+            height: 297mm;
+            font-family: 'Noto Sans JP', sans-serif;
+            background: linear-gradient(165deg, #0c0a1a 0%, #1a1145 40%, #0d1b2a 100%);
+            color: #e2e8f0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- Decorations --- */
+        .deco-circle {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid rgba(139, 92, 246, .15);
+        }
+
+        .deco-circle.a {
+            width: 500px;
+            height: 500px;
+            top: -200px;
+            right: -100px;
+        }
+
+        .deco-circle.b {
+            width: 350px;
+            height: 350px;
+            bottom: -120px;
+            left: -80px;
+            border-color: rgba(59, 130, 246, .1);
+        }
+
+        .deco-glow {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: .18;
+        }
+
+        .deco-glow.a {
+            background: #8b5cf6;
+            top: 10%;
+            right: 5%;
+        }
+
+        .deco-glow.b {
+            background: #3b82f6;
+            bottom: 15%;
+            left: 10%;
+        }
+
+        .grid-bg {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(139, 92, 246, .04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(139, 92, 246, .04) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            padding: 28px 34px 22px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Header --- */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .logo-hex {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            position: relative;
+            background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            box-shadow: 0 0 24px rgba(139, 92, 246, .4);
+        }
+
+        .header-text h1 {
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: -.5px;
+        }
+
+        .header-text h1 .gr {
+            background: linear-gradient(90deg, #c084fc, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-text .sub {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+
+        .header .date-badge {
+            margin-left: auto;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 10px;
+            border: 1px solid rgba(139, 92, 246, .3);
+            color: #c084fc;
+        }
+
+        /* --- Architecture Diagram --- */
+        .arch-section {
+            margin-bottom: 14px;
+        }
+
+        .section-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #c084fc;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: .5px;
+        }
+
+        .section-label::before {
+            content: '◆';
+            font-size: 8px;
+        }
+
+        .arch-flow {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+        }
+
+        .arch-layer {
+            flex: 1;
+            padding: 12px 10px;
+            border-radius: 12px;
+            position: relative;
+            border: 1px solid rgba(139, 92, 246, .2);
+            background: rgba(15, 10, 40, .6);
+            backdrop-filter: blur(4px);
+        }
+
+        .arch-layer .layer-title {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #a78bfa;
+            margin-bottom: 8px;
+        }
+
+        .arch-layer .layer-item {
+            padding: 4px 8px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            font-size: 9px;
+            background: rgba(139, 92, 246, .08);
+            border: 1px solid rgba(139, 92, 246, .12);
+            color: #cbd5e1;
+        }
+
+        .arch-layer .layer-item.highlight {
+            border-color: rgba(96, 165, 250, .3);
+            background: rgba(59, 130, 246, .1);
+            color: #93c5fd;
+        }
+
+        .arch-arrow {
+            display: flex;
+            align-items: center;
+            color: #4c1d95;
+            font-size: 18px;
+        }
+
+        /* --- Tech Stack Grid --- */
+        .tech-section {
+            margin-bottom: 14px;
+        }
+
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .tech-card {
+            padding: 12px 10px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(139, 92, 246, .15);
+            background: rgba(15, 10, 40, .5);
+            transition: transform .2s;
+        }
+
+        .tech-card .t-icon {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .tech-card .t-name {
+            font-size: 10px;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .tech-card .t-role {
+            font-size: 8px;
+            color: #94a3b8;
+        }
+
+        .tech-card.primary {
+            border-color: rgba(59, 130, 246, .3);
+            background: rgba(59, 130, 246, .06);
+        }
+
+        /* --- AI Engine Detail --- */
+        .ai-section {
+            margin-bottom: 14px;
+        }
+
+        .ai-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .ai-card {
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(139, 92, 246, .2);
+            background: rgba(15, 10, 40, .5);
+        }
+
+        .ai-card .ai-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 8px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .ai-card.openai .ai-badge {
+            background: rgba(16, 185, 129, .15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, .2);
+        }
+
+        .ai-card.gemini .ai-badge {
+            background: rgba(251, 191, 36, .12);
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, .2);
+        }
+
+        .ai-card h3 {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .ai-card .model {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        .ai-card .ai-features {
+            list-style: none;
+        }
+
+        .ai-card .ai-features li {
+            font-size: 9px;
+            color: #94a3b8;
+            padding: 2px 0;
+            padding-left: 14px;
+            position: relative;
+        }
+
+        .ai-card .ai-features li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: #6366f1;
+        }
+
+        /* --- Security & Quality --- */
+        .sq-section {
+            margin-bottom: 14px;
+        }
+
+        .sq-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .sq-card {
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(139, 92, 246, .15);
+            background: rgba(15, 10, 40, .4);
+        }
+
+        .sq-card h3 {
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sq-card h3 .ic {
+            font-size: 14px;
+        }
+
+        .sq-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+
+        .sq-bar .bar-label {
+            font-size: 8.5px;
+            color: #94a3b8;
+            width: 70px;
+        }
+
+        .sq-bar .bar-track {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(100, 116, 139, .2);
+            overflow: hidden;
+        }
+
+        .sq-bar .bar-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        .sq-bar .bar-fill.green {
+            background: linear-gradient(90deg, #10b981, #34d399);
+        }
+
+        .sq-bar .bar-fill.blue {
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+        }
+
+        .sq-bar .bar-fill.purple {
+            background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+        }
+
+        .sq-bar .bar-val {
+            font-size: 8px;
+            color: #cbd5e1;
+            font-weight: 700;
+            width: 28px;
+            text-align: right;
+        }
+
+        /* --- Metrics --- */
+        .metrics-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .metric-box {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(139, 92, 246, .15);
+            background: rgba(15, 10, 40, .4);
+        }
+
+        .metric-box .m-val {
+            font-size: 20px;
+            font-weight: 900;
+            background: linear-gradient(90deg, #c084fc, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metric-box .m-label {
+            font-size: 8.5px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        /* --- Footer --- */
+        .footer {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer-tags {
+            display: flex;
+            gap: 6px;
+        }
+
+        .footer-tag {
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 8.5px;
+            border: 1px solid rgba(139, 92, 246, .15);
+            color: #94a3b8;
+        }
+
+        .footer-right {
+            font-size: 9px;
+            color: #64748b;
+        }
+
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="deco-circle a"></div>
+    <div class="deco-circle b"></div>
+    <div class="deco-glow a"></div>
+    <div class="deco-glow b"></div>
+    <div class="grid-bg"></div>
+
+    <div class="page">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-hex">🛡️</div>
+            <div class="header-text">
+                <h1><span class="gr">AI KY アシスタント</span></h1>
+                <div class="sub">Technology & Architecture Overview</div>
+            </div>
+            <div class="date-badge">2026 v2-modern</div>
+        </div>
+
+        <!-- Architecture -->
+        <div class="arch-section">
+            <div class="section-label">システムアーキテクチャ</div>
+            <div class="arch-flow">
+                <div class="arch-layer">
+                    <div class="layer-title">📱 Frontend</div>
+                    <div class="layer-item">React + TypeScript</div>
+                    <div class="layer-item">Zustand 状態管理</div>
+                    <div class="layer-item highlight">Web Speech API</div>
+                    <div class="layer-item">TTS 音声読み上げ</div>
+                    <div class="layer-item">React PDF</div>
+                </div>
+                <div class="arch-arrow">⟩</div>
+                <div class="arch-layer">
+                    <div class="layer-title">⚡ Edge</div>
+                    <div class="layer-item highlight">Cloudflare Workers</div>
+                    <div class="layer-item">CORS / Auth / Rate Limit</div>
+                    <div class="layer-item">KV Storage</div>
+                    <div class="layer-item">Analytics Engine</div>
+                    <div class="layer-item">Sentry 監視</div>
+                </div>
+                <div class="arch-arrow">⟩</div>
+                <div class="arch-layer">
+                    <div class="layer-title">🧠 AI Layer</div>
+                    <div class="layer-item highlight">OpenAI GPT-4o-mini</div>
+                    <div class="layer-item highlight">Gemini 2.5 Flash</div>
+                    <div class="layer-item">動的プロバイダ切替</div>
+                    <div class="layer-item">自動リトライ + 復旧</div>
+                    <div class="layer-item">JSON構造化応答</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tech Stack -->
+        <div class="tech-section">
+            <div class="section-label">技術スタック</div>
+            <div class="tech-grid">
+                <div class="tech-card primary">
+                    <div class="t-icon">⚛️</div>
+                    <div class="t-name">React 19</div>
+                    <div class="t-role">UI Framework</div>
+                </div>
+                <div class="tech-card">
+                    <div class="t-icon">📘</div>
+                    <div class="t-name">TypeScript</div>
+                    <div class="t-role">型安全</div>
+                </div>
+                <div class="tech-card primary">
+                    <div class="t-icon">⚡</div>
+                    <div class="t-name">Vite</div>
+                    <div class="t-role">ビルドツール</div>
+                </div>
+                <div class="tech-card">
+                    <div class="t-icon">🐻</div>
+                    <div class="t-name">Zustand</div>
+                    <div class="t-role">状態管理</div>
+                </div>
+                <div class="tech-card">
+                    <div class="t-icon">☁️</div>
+                    <div class="t-name">CF Workers</div>
+                    <div class="t-role">エッジAPI</div>
+                </div>
+                <div class="tech-card primary">
+                    <div class="t-icon">🤖</div>
+                    <div class="t-name">OpenAI</div>
+                    <div class="t-role">GPT-4o-mini</div>
+                </div>
+                <div class="tech-card primary">
+                    <div class="t-icon">💎</div>
+                    <div class="t-name">Gemini</div>
+                    <div class="t-role">2.5 Flash</div>
+                </div>
+                <div class="tech-card">
+                    <div class="t-icon">🧪</div>
+                    <div class="t-name">Vitest</div>
+                    <div class="t-role">55テスト</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Engine -->
+        <div class="ai-section">
+            <div class="section-label">デュアルAIエンジン</div>
+            <div class="ai-grid">
+                <div class="ai-card openai">
+                    <div class="ai-badge">PRIMARY</div>
+                    <h3>OpenAI</h3>
+                    <div class="model">gpt-4o-mini（デフォルト）</div>
+                    <ul class="ai-features">
+                        <li>高精度な危険要因抽出</li>
+                        <li>チャット履歴対応のコンテキスト保持</li>
+                        <li>JSON構造化出力 + Zodバリデーション</li>
+                        <li>指数バックオフ自動リトライ</li>
+                    </ul>
+                </div>
+                <div class="ai-card gemini">
+                    <div class="ai-badge">ALTERNATIVE</div>
+                    <h3>Google Gemini</h3>
+                    <div class="model">gemini-2.5-flash（デフォルト）</div>
+                    <ul class="ai-features">
+                        <li>高速レスポンス ＆ 低コスト</li>
+                        <li>OpenAI互換のAPIアダプタ</li>
+                        <li>環境変数で即座に切替可能</li>
+                        <li>同一の正規化・バリデーションパイプライン</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security & Quality -->
+        <div class="sq-section">
+            <div class="section-label">品質 & セキュリティ</div>
+            <div class="sq-grid">
+                <div class="sq-card">
+                    <h3><span class="ic">🧪</span> テストカバレッジ</h3>
+                    <div class="sq-bar">
+                        <div class="bar-label">Unit (45)</div>
+                        <div class="bar-track">
+                            <div class="bar-fill green" style="width:82%"></div>
+                        </div>
+                        <div class="bar-val">82%</div>
+                    </div>
+                    <div class="sq-bar">
+                        <div class="bar-label">Integration (5)</div>
+                        <div class="bar-track">
+                            <div class="bar-fill blue" style="width:91%"></div>
+                        </div>
+                        <div class="bar-val">91%</div>
+                    </div>
+                    <div class="sq-bar">
+                        <div class="bar-label">E2E (5)</div>
+                        <div class="bar-track">
+                            <div class="bar-fill purple" style="width:100%"></div>
+                        </div>
+                        <div class="bar-val">100%</div>
+                    </div>
+                </div>
+                <div class="sq-card">
+                    <h3><span class="ic">🔒</span> セキュリティ</h3>
+                    <div class="sq-bar">
+                        <div class="bar-label">CORS制御</div>
+                        <div class="bar-track">
+                            <div class="bar-fill green" style="width:100%"></div>
+                        </div>
+                        <div class="bar-val">✓</div>
+                    </div>
+                    <div class="sq-bar">
+                        <div class="bar-label">認証トークン</div>
+                        <div class="bar-track">
+                            <div class="bar-fill green" style="width:100%"></div>
+                        </div>
+                        <div class="bar-val">✓</div>
+                    </div>
+                    <div class="sq-bar">
+                        <div class="bar-label">レート制限</div>
+                        <div class="bar-track">
+                            <div class="bar-fill green" style="width:100%"></div>
+                        </div>
+                        <div class="bar-val">✓</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="metrics-row">
+            <div class="metric-box">
+                <div class="m-val">~1,800</div>
+                <div class="m-label">行のテクニカルドキュメント</div>
+            </div>
+            <div class="metric-box">
+                <div class="m-val">13+</div>
+                <div class="m-label">UIコンポーネント</div>
+            </div>
+            <div class="metric-box">
+                <div class="m-val">4</div>
+                <div class="m-label">AIプロンプト</div>
+            </div>
+            <div class="metric-box">
+                <div class="m-val">3</div>
+                <div class="m-label">APIエンドポイント</div>
+            </div>
+            <div class="metric-box">
+                <div class="m-val">6</div>
+                <div class="m-label">ミドルウェア</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-tags">
+                <span class="footer-tag">Edge Computing</span>
+                <span class="footer-tag">Dual AI Provider</span>
+                <span class="footer-tag">Voice First</span>
+                <span class="footer-tag">Zero Install</span>
+            </div>
+            <div class="footer-right">Powered by Cloudflare Workers</div>
+        </div>
+    </div>
+</body>
+
+</html>
