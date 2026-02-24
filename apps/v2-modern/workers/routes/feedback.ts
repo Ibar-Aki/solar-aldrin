@@ -28,6 +28,8 @@ type CachedFeedback = {
     clientId: string
 }
 
+type FeedbackFallbackReason = 'json_parse_failed' | 'schema_validation_failed' | 'upstream_error'
+
 type StoredSession = {
     clientId: string
     payload: FeedbackRequest
@@ -166,7 +168,7 @@ function sanitizePayload(payload: FeedbackRequest): FeedbackRequest {
     }
 }
 
-function buildFallbackResponse(requestId?: string) {
+function buildFallbackResponse(requestId: string | undefined, reason: FeedbackFallbackReason): FeedbackResponse {
     return {
         praise: '今日のKYは要点が押さえられていて良い取り組みです。',
         tip: '次回は作業順序の確認を一言添えるとさらに良くなります。今の視点は十分に良いです。',
@@ -175,8 +177,13 @@ function buildFallbackResponse(requestId?: string) {
         meta: {
             requestId,
             validationFallback: true,
+            fallbackReason: reason,
         },
     }
+}
+
+function resolveFeedbackStatusCode(response: FeedbackResponse): 200 | 206 {
+    return response.meta?.validationFallback ? 206 : 200
 }
 
 
@@ -238,14 +245,15 @@ feedback.post(
         const cacheKey = `feedback-cache:${payload.sessionId}`
         const cached = await loadCachedResponse(c, cacheKey)
         if (cached && cached.clientId === payload.clientId) {
-            return c.json({
+            const cachedResponse: FeedbackResponse = {
                 ...cached.response,
                 meta: {
                     ...(cached.response.meta ?? {}),
                     cached: true,
                     requestId: reqId,
                 }
-            })
+            }
+            return c.json(cachedResponse, resolveFeedbackStatusCode(cachedResponse))
         }
 
         const sanitized = stored.payload
@@ -281,15 +289,15 @@ feedback.post(
                 parsed = safeParseJSON(responseData.content)
             } catch {
                 logWarn('feedback_json_parse_failed', { reqId })
-                const fallback = buildFallbackResponse(reqId)
-                return c.json(fallback)
+                const fallback = buildFallbackResponse(reqId, 'json_parse_failed')
+                return c.json(fallback, resolveFeedbackStatusCode(fallback))
             }
 
             const validation = FeedbackResponseSchema.safeParse(parsed)
             if (!validation.success) {
                 logWarn('feedback_schema_validation_failed', { reqId })
-                const fallback = buildFallbackResponse(reqId)
-                return c.json(fallback)
+                const fallback = buildFallbackResponse(reqId, 'schema_validation_failed')
+                return c.json(fallback, resolveFeedbackStatusCode(fallback))
             }
 
             const result = validation.data
@@ -372,8 +380,8 @@ feedback.post(
                     upstreamCode: error.upstreamCode,
                     upstreamType: error.upstreamType,
                 })
-                const fallback = buildFallbackResponse(reqId)
-                return c.json(fallback)
+                const fallback = buildFallbackResponse(reqId, 'upstream_error')
+                return c.json(fallback, resolveFeedbackStatusCode(fallback))
             }
             logError('feedback_processing_error', { reqId })
             return c.json({

@@ -118,4 +118,35 @@ describe('Feedback API Integration', () => {
         expect(second.status).toBe(200)
         expect(vi.mocked(fetch).mock.calls.length).toBe(2)
     })
+
+    it('上流エラー時はフォールバック本文を206で返し、理由をmetaに残す', async () => {
+        const createUpstreamErrorResponse = (): Response => ({
+            ok: false,
+            status: 503,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: async () => JSON.stringify({ error: { message: 'upstream unavailable' } }),
+            json: async () => ({ error: { message: 'upstream unavailable' } }),
+        } as Response)
+
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => createUpstreamErrorResponse()))
+
+        const req = createRequest(createPayload('session-fallback-0004', 'client-fallback-0004'))
+        const env: FeedbackEnv = { OPENAI_API_KEY: 'mock-key' }
+
+        const res = await feedback.fetch(req, env)
+        expect(res.status).toBe(206)
+
+        const body = await res.json() as {
+            praise: string
+            tip: string
+            meta?: {
+                validationFallback?: boolean
+                fallbackReason?: string
+            }
+        }
+        expect(body.praise.length).toBeGreaterThan(0)
+        expect(body.tip.length).toBeGreaterThan(0)
+        expect(body.meta?.validationFallback).toBe(true)
+        expect(body.meta?.fallbackReason).toBe('upstream_error')
+    })
 })

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 
 const RETENTION_DAYS = 90
 const MAX_SESSIONS = 100
+const RETENTION_REAPPLY_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_PAST_RISK_DAYS = 30
 const DEFAULT_RECENT_DAYS = 3
 const MAX_SUMMARY_LENGTH = 50
@@ -35,7 +36,8 @@ type RiskQueryOptions = {
     withinDays?: number
 }
 
-let retentionApplied = false
+let lastRetentionAppliedAt = 0
+let retentionInFlight: Promise<void> | null = null
 
 function toDateLabel(iso: string): string {
     return iso.slice(0, 10)
@@ -126,35 +128,44 @@ function dedupeRisks(entries: RiskEntry[]): RiskEntry[] {
 }
 
 export async function applyHistoryRetention(): Promise<void> {
-    if (retentionApplied) return
+    const now = Date.now()
+    if (now - lastRetentionAppliedAt < RETENTION_REAPPLY_INTERVAL_MS) return
 
-    try {
-        const cutoff = new Date()
-        cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
-        const cutoffIso = cutoff.toISOString()
+    if (!retentionInFlight) {
+        retentionInFlight = (async () => {
+            try {
+                const cutoff = new Date()
+                cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
+                const cutoffIso = cutoff.toISOString()
 
-        const oldKeys = await db.sessions.where('createdAt').below(cutoffIso).primaryKeys()
-        if (oldKeys.length > 0) {
-            await db.sessions.bulkDelete(oldKeys)
-        }
+                const oldKeys = await db.sessions.where('createdAt').below(cutoffIso).primaryKeys()
+                if (oldKeys.length > 0) {
+                    await db.sessions.bulkDelete(oldKeys)
+                }
 
-        const count = await db.sessions.count()
-        if (count > MAX_SESSIONS) {
-            const deleteCount = count - MAX_SESSIONS
-            const excessKeys = await db.sessions.orderBy('createdAt').limit(deleteCount).primaryKeys()
-            if (excessKeys.length > 0) {
-                await db.sessions.bulkDelete(excessKeys)
+                const count = await db.sessions.count()
+                if (count > MAX_SESSIONS) {
+                    const deleteCount = count - MAX_SESSIONS
+                    const excessKeys = await db.sessions.orderBy('createdAt').limit(deleteCount).primaryKeys()
+                    if (excessKeys.length > 0) {
+                        await db.sessions.bulkDelete(excessKeys)
+                    }
+                }
+            } catch (error) {
+                console.warn('History retention failed:', error)
+            } finally {
+                lastRetentionAppliedAt = Date.now()
+                retentionInFlight = null
             }
-        }
-    } catch (error) {
-        console.warn('History retention failed:', error)
-    } finally {
-        retentionApplied = true
+        })()
     }
+
+    await retentionInFlight
 }
 
 export function resetRetentionState() {
-    retentionApplied = false
+    lastRetentionAppliedAt = 0
+    retentionInFlight = null
 }
 
 export async function getRecentSessions(days: number): Promise<SoloKYSession[]> {

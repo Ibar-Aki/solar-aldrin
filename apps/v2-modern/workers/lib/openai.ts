@@ -31,6 +31,10 @@ const MAX_RETRIES = 2
 const BACKOFF_BASE_MS = 250
 const BACKOFF_MAX_MS = 700
 
+function isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.name === 'AbortError'
+}
+
 function getRetryDelayMs(attempt: number): number {
     const baseDelay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * (2 ** attempt))
     const jitter = Math.floor(Math.random() * 120)
@@ -138,6 +142,11 @@ export async function fetchOpenAICompletion(options: OpenAIRequestOptions): Prom
 
             return response
         } catch (error) {
+            // Timeout retries are handled at a higher layer (soft/hard timeout control).
+            // Retrying AbortError here only elongates user-visible latency.
+            if (isAbortError(error)) {
+                throw error
+            }
             // Retry on timeout/network error
             if (currentRetry > 0) {
                 const delayMs = getRetryDelayMs(attempt)

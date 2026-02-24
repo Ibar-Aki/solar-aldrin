@@ -113,6 +113,11 @@ export const FeedbackResponseSchema = z.object({
         requestId: z.string().min(6).max(64).optional(),
         cached: z.boolean().optional(),
         validationFallback: z.boolean().optional(),
+        fallbackReason: z.enum([
+            'json_parse_failed',
+            'schema_validation_failed',
+            'upstream_error',
+        ]).optional(),
     }).optional(),
 })
 
