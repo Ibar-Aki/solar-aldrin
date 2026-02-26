@@ -1,82 +1,38 @@
-# 00_planning ドキュメント構成
+# 10_planning ドキュメント構成
 
-本ディレクトリには、Voice KY Assistant v2 の企画・計画に関するドキュメントが格納されています。
+更新日: 2026-02-25（現行ディレクトリ構成・参照リンクに合わせて再整理）
 
----
-
-## 📚 ドキュメント構成
-
-### コア文書（正本）
-
-以下の文書は、プロジェクトの意思決定の根拠となる**正式文書**です。  
-番号順に読むことで、プロジェクトの意思決定プロセスを追体験できます。
-
-1. **[01_Quality_Improvement.md](01_Quality_Improvement.md)**
-   * 現場課題と改善方針の整理（検討段階）
-   * なぜv2が必要なのか、何を目指すのか
-
-2. **[02_Feature_Expansion_Phase2x.md](02_Feature_Expansion_Phase2x.md)**
-   * 機能候補の棚卸しと判定
-   * どんなアイデアがあるか、優先度はどうするか
-
-3. **[03_Phase2_Roadmap.md](03_Phase2_Roadmap.md)** ⭐
-   * **採用された項目の決定事項（最重要・正本）**
-   * いつ、何を実装するか
-   * ※ 不整合時は本資料を正とします
-
-4. **[04_Requirements.md](04_Requirements.md)**
-   * 決定事項を開発要件に落とし込んだもの
-   * ISO準拠の詳細仕様
-
-5. **[05_Technical_Spec.md](05_Technical_Spec.md)**
-   * 要件を実現するための技術選定と設計方針
-
-6. **[06_System_Design.md](06_System_Design.md)**
-   * ER図、API設計、コンポーネント構成などの詳細設計
+このディレクトリには、Voice KY Assistant v2-modern の企画・計画ドキュメント（正本）を配置しています。  
+フェーズ別の実装計画・判定資料は `../20_phases/` を参照してください。
 
 ---
 
-### サブディレクトリ
+## コア文書（正本）
 
-#### 📁 [phases/](phases/)
-
-各開発フェーズ（Phase 2.1 〜 2.8）の判定シート（Decision Matrix）と実施レポート。
-
-* Phase 2.1: 運用防御とコスト制御
-* Phase 2.2: UX改善とリファクタリング
-* Phase 2.3: 履歴管理とデータ永続化
-* Phase 2.4: 対話品質強化
-* Phase 2.5: 運用品質基盤
-* Phase 2.6〜2.8: 各種機能拡張
-
-#### 📁 [reviews/](reviews/)
-
-実装計画のレビューやコードレビュー記録。
-
-* リファクタリング徹底レビュー
-* コードレビュー（current changes）
-* 実施可否判断レポート
-
-#### 📁 [specs/](specs/)
-
-特定機能の詳細設計書や実装計画書。
-
-* TTS読み上げ速度切替機能
+1. [01_Quality_Improvement.md](./01_Quality_Improvement.md)
+2. [02_Feature_Expansion_Phase2x.md](./02_Feature_Expansion_Phase2x.md)
+3. [03_Phase2_Roadmap.md](./03_Phase2_Roadmap.md)  
+   - 不整合時はこのロードマップ記載を優先
+4. [04_Requirements.md](./04_Requirements.md)
+5. [05_Technical_Spec.md](./05_Technical_Spec.md)
+6. [06_System_Design.md](./06_System_Design.md)
+7. [phase2-implementation-plan.md](./phase2-implementation-plan.md)  
+   - 旧来計画の履歴ファイル（現行の詳細フェーズは `../20_phases/` で管理）
 
 ---
 
-## 🔗 関連ドキュメント
+## 関連ディレクトリ
 
-* **設計ドキュメント**: [`../10_design/`](../10_design/) - アーキテクチャ、データモデル等
-* **レビュー記録**: [`../30_reviews/`](../30_reviews/) - Phase 1総括等
-* **マニュアル**: [`../20_manuals/`](../20_manuals/) - 環境構築、デプロイ手順
+- フェーズ別資料: [../20_phases/](../20_phases/)
+- 設計資料: [../30_design/](../30_design/)
+- 運用マニュアル: [../40_manuals/](../40_manuals/)
+- レビュー記録: [../50_reviews/](../50_reviews/)
 
 ---
 
-## 📝 ドキュメント更新ルール
+## 更新ルール
 
-1. **03_Phase2ロードマップ** を最優先で更新する（正本）
-2. 決定事項は **04_要件定義書** に反映
-3. Phase別の詳細検討は **phases/** 配下に新規作成
-4. コアドキュメント（01-06）の番号は変更しない
+1. 主要な意思決定は `03_Phase2_Roadmap.md` を先に更新する。
+2. フェーズ固有の実装計画・判定結果は `../20_phases/` に記録する。
+3. 本ファイルのリンクはディレクトリ変更時に必ず同期する。
 

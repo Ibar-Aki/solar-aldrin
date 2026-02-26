@@ -7,14 +7,15 @@
 **対象**: Voice KY Assistant v2-modern（Phase 2.1-2.8）  
 **目的**: 全体構成・責務・データフロー・運用境界を明確化する  
 **更新日**: 2026-02-03
+**更新日**: 2026-02-25（参照パス・AI構成・認証条件の記述を現行実装に合わせて更新）
 
 ---
 
 ## 1. 参照資料
 
-- `../ARCHITECTURE.md`
-- `../00_planning/03_Phase2_Roadmap.md`
-- `../00_planning/04_要件定義書_SRS.md`
+- `../00_overview/02_Architecture.md`
+- `../10_planning/03_Phase2_Roadmap.md`
+- `../10_planning/04_Requirements.md`
 
 ---
 
@@ -27,6 +28,7 @@ graph TD
   Browser --> Workers[Cloudflare Workers<br/>(Hono API)]
 
   Workers --> OpenAI[OpenAI API]
+  Workers --> Gemini[Gemini API (OpenAI互換)]
   Workers --> KV[Workers KV<br/>(Rate Limit / Feedback Cache)]
   Workers --> AE[Analytics Engine<br/>(Metrics)]
   Workers --> Sentry[Sentry / Logs]
@@ -56,6 +58,7 @@ flowchart LR
 
   subgraph External["外部サービス"]
     OpenAI["OpenAI API"]
+    Gemini["Gemini API (OpenAI互換)"]
     Sentry["Sentry"]
   end
 
@@ -63,6 +66,7 @@ flowchart LR
   UI --> Pages
   UI --> Workers
   Workers --> OpenAI
+  Workers --> Gemini
   Workers --> KV
   Workers --> AE
   Workers --> Sentry
@@ -79,14 +83,17 @@ sequenceDiagram
   participant UI as Browser UI
   participant Workers as Workers API
   participant OpenAI as OpenAI API
+  participant Gemini as Gemini API
   participant DB as IndexedDB
   participant AE as Analytics Engine
 
   User->>UI: 基本情報入力
   UI->>UI: Zustandへ保存
   UI->>Workers: /api/chat
-  Workers->>OpenAI: Chat Completion
+  Workers->>OpenAI: Chat Completion (AI_PROVIDER=openai)
+  Workers->>Gemini: Chat Completion (AI_PROVIDER=gemini)
   OpenAI-->>Workers: JSON応答
+  Gemini-->>Workers: JSON応答
   Workers-->>UI: reply/extracted
   UI->>DB: 完了セッション保存
   UI->>Workers: /api/feedback (任意)
@@ -141,7 +148,7 @@ flowchart LR
 | **Workers KV** | レート制限カウンタ、フィードバックキャッシュ |
 | **Analytics Engine** | KPIイベント保存（未設定時はログ） |
 | **Sentry / Logs** | 例外・構造化ログの収集 |
-| **OpenAI API** | チャット応答、フィードバック生成 |
+| **OpenAI API / Gemini API** | チャット応答、フィードバック生成（`AI_PROVIDER` で切替） |
 
 ---
 
@@ -149,7 +156,7 @@ flowchart LR
 
 1. **起動**: Browser が Pages から静的アセットを取得
 2. **セッション開始**: 基本情報を Zustand に保存
-3. **対話**: Browser → Workers `/api/chat` → OpenAI → Browser
+3. **対話**: Browser → Workers `/api/chat` → OpenAI or Gemini → Browser
 4. **履歴保存**: 完了時に IndexedDB へ保存
 5. **フィードバック**: 完了時に `/api/feedback` を任意で呼び出し
 6. **KPI**: `/api/metrics` にイベント送信
@@ -161,7 +168,7 @@ flowchart LR
 
 - **Origin Allowlist**: 許可オリジン以外は 403
 - **レート制限**: 1分あたり30回（KV利用）
-- **APIトークン**: `API_TOKEN` が設定されている場合は Bearer 必須
+- **APIトークン**: `REQUIRE_API_TOKEN=1` の場合は Bearer 必須（`API_TOKEN` が必要）
 - **入力検証**: Zodでリクエスト・レスポンスを検証
 
 ---
@@ -186,7 +193,7 @@ flowchart LR
 
 ## 8. 関連ドキュメント
 
-- `../10_design/02_Feature_Design_Phase2.md`
-- `../10_design/03_API_Design.md`
-- `../10_design/04_Data_Model_Design.md`
-- `../10_design/05_Conversation_UX_Design.md`
+- `./02_Feature_Design_Phase2.md`
+- `./03_API_Design.md`
+- `./04_Data_Model_Design.md`
+- `./05_Conversation_UX_Design.md`

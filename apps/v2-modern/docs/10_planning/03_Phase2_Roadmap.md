@@ -1,7 +1,8 @@
 # Phase 2/3 Roadmap : Voice KY Assistant
 
 **更新日**: 2026-01-27  
-**対象**: Phase 2.0-2.10 / Phase 3.0  
+**更新日**: 2026-02-25（Phase 2.11 の反映、2.10記述を現行実装に同期）  
+**対象**: Phase 2.0-2.11 / Phase 3.0  
 **前提**: Phase 2.0 は v2-modern 基盤として実施済み（詳細は後述）。
 
 ---
@@ -22,7 +23,9 @@
   機能カタログとして、公式ロードマップへの対応フェーズを付与済み。  
   `02_Feature_Expansion_Phase2x.md` を参照。
 - **R7: Phase 2.10 検証レポート**  
-  実費テストにて `gpt-5.2` の採用とAPIタイムアウト延長(30s)を決定。コスト目標(5円/回)をクリア。
+  実費テストで `gpt-5.2` の評価とAPIタイムアウト延長(30s)を実施。コスト目標(5円/回)をクリア。
+- **R8: Phase 2.11 Dual API 実装**  
+  OpenAI/Gemini の切替運用（`AI_PROVIDER`）と Gemini 429 時の条件付きフォールバック（`ENABLE_PROVIDER_FALLBACK`）を整備。
 
 ---
 
@@ -46,7 +49,7 @@
 
 ---
 
-## 3. Phase 2.1-2.10 ロードマップ
+## 3. Phase 2.1-2.11 ロードマップ
 
 **補足**: 詳細な機能候補は `02_Feature_Expansion_Phase2x.md` を参照。  
 **Phase 2.1** は運用防御（認証/レート制限/入力検証）に限定し、UX拡張は 2.2/2.5 で扱う。
@@ -60,7 +63,8 @@
 | **2.5** | 体験速度・信頼性・可観測性 | **[一部実装]** ~~SSEストリーミング~~（不採用→Skeleton UI代替）<br>~~天候APIキャッシュ~~（不採用）<br>Sentry/ログ/KPI収集 | **一部完了**<br>Sentry/Web Vitals 実装済<br>SSE/天候キャッシュ 不採用 | R1, R2 |
 | **2.6** | 事後フィードバック・補強 | KY品質フィードバック(ポジティブ評価)<br>AI自動補足(抜け漏れカバー)<br>行動目標添削 | **完了 (Implemented)**<br>「褒めて伸ばす」サイクル<br>安全性の最終担保 | User Req |
 | **2.7** | **コンテキスト注入/ナレッジ循環** | 過去ヒヤリハット/昨日指摘の参照<br>簡易RAG（履歴検索 + プロンプト注入）<br>天候/曜日の文脈強化 | **完了 (Verified)**<br>「毎回同じ助言」を抑制<br>過去の危険が再利用される | R3, R4 |
-| **2.10** | **品質・性能検証 (Validation)** | **実費テストフィールド (VAL-01)**<br>高精度モデル`gpt-5.2`採用 (VAL-02)<br>APIタイムアウト延長 (INF-01) | **完了 (Implemented)**<br>コスト目標内での品質向上達成<br>504エラー解消 | R7 |
+| **2.10** | **品質・性能検証 (Validation)** | **実費テストフィールド (VAL-01)**<br>高精度モデル`gpt-5.2`評価 (VAL-02)<br>APIタイムアウト延長 (INF-01) | **完了 (Implemented)**<br>コスト目標内での品質評価を達成<br>504エラー解消 | R7 |
+| **2.11** | **Dual API運用 (OpenAI/Gemini)** | `AI_PROVIDER` 切替<br>Gemini OpenAI互換endpoint対応<br>`ENABLE_PROVIDER_FALLBACK` による429時条件付きフォールバック<br>`GEMINI_*` 実行設定の分離 | **完了 (Implemented)**<br>provider切替と観測情報（`meta.ai`）の整備 | R8 |
 
 ---
 
@@ -114,8 +118,9 @@
 - **2.2**: F-01, F-02, F-04, F-05, F-06, F-07, O-01, O-02  
 - **2.3**: L-03, L-06, C-01, C-03  
 - **2.4**: L-01, L-04, L-05, P-01, P-02, P-03, P-04, P-05  
-- **2.5**: O-03, O-04, O-05  
+- **2.5**: O-05  
 - **2.10**: VAL-01, VAL-02, INF-01
+- **2.11**: AI_PROVIDER, GEMINI_*, ENABLE_PROVIDER_FALLBACK（運用実装）
 - **3.0**: D-01, D-02, D-03  
 
 ※ 判定の詳細は `02_Feature_Expansion_Phase2x.md` を参照。

@@ -7,6 +7,7 @@
 **目的**: APIの入力/出力/認証/エラー仕様を現状コードに合わせて定義する  
 **更新日**: 2026-02-06  
 **更新日**: 2026-02-11（フロントのトークン取り扱いを更新: バンドル埋め込み禁止、localStorage保存）
+**更新日**: 2026-02-25（認証必須条件の記述を現行コード仕様へ同期）
 
 ---
 
@@ -16,7 +17,7 @@
 - Content-Type: `application/json`
 - CORS: Allowlist Origin のみ許可
 - レート制限: 1分あたり30回（KV使用）
-- 認証: 本番は Bearer 必須（`API_TOKEN` 必須）。`REQUIRE_API_TOKEN` で強制可否を明示指定可能
+- 認証: `REQUIRE_API_TOKEN=1` の場合のみ Bearer 必須（`API_TOKEN` 必須）。`REQUIRE_API_TOKEN=0` または未設定時は任意
   - フロントエンドはトークンを **バンドルへ埋め込まない**（漏えい前提になるため）。端末のブラウザ localStorage に保存し、必要時に `Authorization` を付与する
   - 実費テスト/スモークでは `VITE_API_TOKEN`（実行環境変数）を用いてテスト側から注入する
 

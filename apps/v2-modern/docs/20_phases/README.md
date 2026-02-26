@@ -1,45 +1,38 @@
-# phases/ - Phase別記録
-更新日: 2026-02-11
+# 20_phases - フェーズ別記録
 
-このディレクトリには、各開発フェーズ（Phase 2.1 〜 2.8）の判定シート（Decision Matrix）と実施レポートが格納されています。
+更新日: 2026-02-25（Phase 2.9-2.11 を含む現行構成へ更新）
 
----
-
-## 📋 ファイル一覧
-
-| ファイル名 | 説明 |
-| :--- | :--- |
-| `Phase2.1_Decision_Matrix.md` | Phase 2.1（運用防御）の機能判定シート |
-| `Phase2.2_Decision_Matrix.md` | Phase 2.2（UX/リファクタリング）の機能判定シート |
-| `Phase2.2_Refactoring_Hold_Report.md` | Phase 2.2リファクタリング保留に関するレポート |
-| `Phase2.3_Decision_Matrix_Report.md` | Phase 2.3 判定レポート |
-| `Phase2.3_History_Decision_Matrix.md` | Phase 2.3（履歴管理）の判定シート |
-| `Phase2.3-2.5_Overall_Report.md` | Phase 2.3〜2.5 の横断的総合評価 |
-| `Phase2.4_Decision_Matrix.md` | Phase 2.4（対話品質）の機能判定シート |
-| `Phase2.4_Decision_Matrix_Report.md` | Phase 2.4 判定レポート |
-| `Phase2.5_Decision_Matrix.md` | Phase 2.5（運用品質）の機能判定シート |
-| `Phase2.5_Decision_Matrix_Report.md` | Phase 2.5 判定レポート |
-| `Phase2.6_Decision_Matrix.md` | Phase 2.6 の機能判定シート |
-| `Phase2.7_Context_Decision_Matrix.md` | Phase 2.7（コンテキスト拡張）の判定シート |
-| `Phase2.8_Decision_Matrix.md` | Phase 2.8（UI/UX強化）の機能判定シート |
+このディレクトリには、各フェーズの実装計画・判定シート・実施レポートを配置しています。
 
 ---
 
-## 📖 各フェーズの概要
+## 収録範囲
 
-- **Phase 2.1**: 運用防御とコスト制御（レート制限、入力検証）
-- **Phase 2.2**: UX改善とリファクタリング（構造化出力、Store分割）
-- **Phase 2.3**: 履歴管理とデータ永続化（IndexedDB、エクスポート機能）
-- **Phase 2.4**: 対話品質強化（深掘り、コーチング評価）
-- **Phase 2.5**: 運用品質基盤（可観測性、ログ、監視）
-- **Phase 2.6**: （詳細は Decision Matrix 参照）
-- **Phase 2.7**: コンテキスト拡張（工程・体調情報の活用）
-- **Phase 2.8**: UI/UX強化（完了演出、視覚的フィードバック）
+- Phase 2.1 〜 2.11 の判定資料
+- フェーズ横断レポート
+- 旧計画ファイル（履歴）
 
 ---
 
-## 🔗 関連ドキュメント
+## 主要ファイル（抜粋）
 
-- 正式ロードマップ: [`../03_Phase2_Roadmap.md`](../03_Phase2_Roadmap.md)
-- 要件定義書: [`../04_Requirements.md`](../04_Requirements.md)
+- `Phase2.1_Decision_Matrix.md`
+- `Phase2.2_Decision_Matrix.md`
+- `Phase2.3_History_Decision_Matrix.md`
+- `Phase2.4_Decision_Matrix.md`
+- `Phase2.5_Decision_Matrix.md`
+- `Phase2.6_Implementation_Plan.md`
+- `Phase2.7_Implementation_Plan.md`
+- `Phase2.8_Decision_Matrix.md`
+- `Phase2.9_Implementation_Plan.md`
+- `Phase2.10_Implementation_Report.md`
+- `Phase2.11_DualApi_Implementation_Plan.md`
+
+---
+
+## 関連ドキュメント
+
+- 正式ロードマップ: [../10_planning/03_Phase2_Roadmap.md](../10_planning/03_Phase2_Roadmap.md)
+- 要件定義: [../10_planning/04_Requirements.md](../10_planning/04_Requirements.md)
+- システム設計: [../10_planning/06_System_Design.md](../10_planning/06_System_Design.md)
 

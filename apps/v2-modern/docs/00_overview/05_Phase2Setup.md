@@ -3,6 +3,7 @@
 作成日時: 2026-02-18 00:41
 作成者: Codex＋GPT-5
 更新日: 2026-02-17（v2-modern 現行構成と iPhone 実機テスト手順へ更新）
+更新日: 2026-02-25（PDFフォント配置パスを現行実装に合わせて修正）
 
 Voice KY Assistant v2 の開発環境セットアップ、デプロイ、iPhone 実機確認までを一連でまとめた手順です。
 
@@ -22,8 +23,9 @@ npm install
 PDF生成で利用する `NotoSansJP-Regular.ttf` を配置します。
 
 1. Google Fonts から Noto Sans JP を取得
-2. `NotoSansJP-Regular.ttf` を次へ配置
-   - `apps/v2-modern/public/fonts/NotoSansJP-Regular.ttf`
+2. `NotoSansJP-Regular.ttf` / `NotoSansJP-Bold.ttf` を次へ配置
+   - `apps/v2-modern/public/fonts/Noto_Sans_JP/static/NotoSansJP-Regular.ttf`
+   - `apps/v2-modern/public/fonts/Noto_Sans_JP/static/NotoSansJP-Bold.ttf`
 
 ## 3. Workers 用のローカル設定（.dev.vars）
 

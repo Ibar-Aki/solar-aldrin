@@ -4,6 +4,11 @@
 **対象**: Voice KY Assistant v2 (Phase 2.0 - 2.5)  
 **版**: 2.0  
 **作成日**: 2026-01-27
+**更新日**: 2026-02-25（現行実装との差分注記とAPI通信方式の記述を更新）
+
+> [!NOTE]
+> 本書は Phase 2.0-2.5 時点の要件定義を保持する履歴文書です。  
+> 現行実装（Phase 2.11 含む）の正式状態は `03_Phase2_Roadmap.md` と `06_System_Design.md` を参照してください。
 
 ---
 
@@ -102,7 +107,7 @@
 
 ### 4.2 API設計方針
 
-* **Protocol**: Hono RPC (Type-safe JSON)
+* **Protocol**: HTTPS JSON（フロントは fetch クライアント、サーバーは Hono + Zod 検証）
 * **Auth**: Bearer Token (Phase 1/2), Supabase Auth (Phase 3)
 * **Validation**: Zodによる厳格な型チェック
 

@@ -2,29 +2,29 @@
 
 作成日時: 2026-02-18 00:41
 作成者: Codex＋GPT-5
-更新日: 2026-02-17（`apps/v2-modern/docs` 現行構成へ全面更新）
+更新日: 2026-02-17（apps/v2-modern/docs 現行構成へ全面更新）
+更新日: 2026-02-25（ファイル件数と一覧を現行構成へ再同期）
 
-対象ルート: `C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\docs`
+対象ルート: C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\docs
 
-- 総ファイル数: 84（`*.md` は 83、PDF は 1）
-- 除外: `.git`, `node_modules`, `dist`, `.wrangler`, `coverage`, `playwright-report`, `test-results`
+- 総ファイル数: 89（*.md は 88、PDF は 1）
+- 除外: .git, node_modules, dist, .wrangler, coverage, playwright-report, test-results
 
 ## ディレクトリ別件数
 
 | ディレクトリ | 件数 |
 | --- | ---: |
-| `00_overview` | 7 |
-| `10_planning` | 8 |
+| `00_overview` | 8 |
+| `10_planning` | 9 |
 | `20_phases` | 24 |
 | `30_design` | 15 |
 | `40_manuals` | 8 |
-| `50_reviews` | 20 |
+| `50_reviews` | 23 |
 | `90_appendix` | 1 |
 
 ## ファイル一覧（相対パス）
 
 ```text
-README.md
 00_overview\00_Master_Technical_Reference.md
 00_overview\00_Master_Technical_Reference.pdf
 00_overview\01_README.md
@@ -39,6 +39,7 @@ README.md
 10_planning\04_Requirements.md
 10_planning\05_Technical_Spec.md
 10_planning\06_System_Design.md
+10_planning\07_v2-modern_今後の展望_2026-02-25.md
 10_planning\phase2-implementation-plan.md
 10_planning\README.md
 20_phases\phase2-implementation-plan.md
@@ -102,6 +103,9 @@ README.md
 50_reviews\10_MAX_TOKENS_900_1500_多角検討レポート.md
 50_reviews\11_応答時間_エラー率_根本原因調査と修正計画_2026-02-11.md
 50_reviews\12_KYボード_原因欄誤混入_原因分析と修正提案_2026-02-14.md
+50_reviews\13_TestCase_Catalog_223cases_2026-02-19.md
+50_reviews\14_v2-modern_多角的批判レビュー_2026-02-25.md
+50_reviews\15_v2-modern_多角的批判レビューへの反論_2026-02-25.md
 50_reviews\archive\2026-02-07_repo-review-scorecard.md
 50_reviews\archive\Code_Review_Current_Changes.md
 50_reviews\archive\implementation_plan_review_report.md
@@ -109,4 +113,6 @@ README.md
 50_reviews\archive\README.md
 50_reviews\archive\リファクタリング徹底レビュー.md
 90_appendix\01_DualApiTesting_Investigation.md
+README.md
 ```
+

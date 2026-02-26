@@ -6,6 +6,7 @@
 更新日: 2026-02-11（HomePageの進行中セッション画面でもAPIトークン設定を可能化／PagesデプロイスクリプトでVITE_API_TOKENをビルド前に明示解除）
 更新日: 2026-02-12（AIプロバイダ切替を追加: OpenAI/Gemini を `AI_PROVIDER` で切替、Gemini OpenAI互換エンドポイントに対応）
 更新日: 2026-02-13（Gemini最適化: フォールバック時のOpenAIモデル固定、Gemini専用 `GEMINI_*` 実行設定、429フォールバックのフラグ制御、`meta.ai` 追加）
+更新日: 2026-02-25（実装計画リンクを現行パスへ修正／API_TOKEN必須条件の記述を実装仕様に合わせて更新）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -78,8 +79,8 @@ npm run dev:workers
 - 任意: `OPENAI_TIMEOUT_MS` / `OPENAI_RETRY_COUNT` / `OPENAI_MAX_TOKENS`
 - 任意: `GEMINI_TIMEOUT_MS` / `GEMINI_RETRY_COUNT` / `GEMINI_MAX_TOKENS`（既定: `18000ms / 0 / 700`）
 - 任意: `ENABLE_PROVIDER_FALLBACK`（`1` で Gemini 429 でも OpenAI フォールバックを許可。既定 `0`）
-- 本番必須: `API_TOKEN`（`REQUIRE_API_TOKEN=1` または `SENTRY_ENV/ENVIRONMENT=production` の場合）
-- 任意: `REQUIRE_API_TOKEN`（`1` で常時必須化、`0` で常時任意）
+- 必須（`REQUIRE_API_TOKEN=1` の場合）: `API_TOKEN`
+- 任意: `REQUIRE_API_TOKEN`（`1` で必須化、`0` で任意。未設定時の既定は `0`）
 - 任意: `STRICT_CORS`（`1` で厳格CORS、`0` で開発許可を有効）
 - 任意: `REQUIRE_RATE_LIMIT_KV`（`1` で `RATE_LIMIT_KV` 未設定時にフェイルクローズ）
 - 予約済み（現状未使用）: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `WEATHER_API_BASE_URL`
@@ -189,12 +190,12 @@ apps/v2-modern/
 ├── workers/             # Hono API (Cloudflare Workers)
 ├── tests/               # Vitest / Playwright
 ├── public/              # 静的ファイル
-└── docs/00_planning/phases/phase2-implementation-plan.md  # 実装計画
+└── docs/20_phases/phase2-implementation-plan.md  # 実装計画（履歴）
 ```
 
 ## 実装計画
 
-詳細は [docs/00_planning/phases/phase2-implementation-plan.md](./docs/00_planning/phases/phase2-implementation-plan.md) を参照。
+詳細は [docs/20_phases/phase2-implementation-plan.md](./docs/20_phases/phase2-implementation-plan.md) を参照。
 
 ## 開発状況
 

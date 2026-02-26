@@ -1,4 +1,5 @@
 # システム設計書 (System Design Document)
+更新日: 2026-02-25（AIプロバイダ構成・通信方式・データモデル記述を現行実装へ更新）
 
 ## 1. システムアーキテクチャ (System Architecture)
 
@@ -7,26 +8,26 @@
 ```mermaid
 graph TD
     User[📱 作業員 (User)] -->|HTTPS / Voice| CF[☁️ Cloudflare Pages (Frontend)]
-    CF -->|Hono RPC (JSON)| Workers[⚡ Cloudflare Workers (Backend)]
+    CF -->|HTTPS (JSON)| Workers[⚡ Cloudflare Workers (Backend)]
     
     subgraph Frontend [React SPA]
         UI[Components (UI)]
         Store[Zustand (State)]
         VoiceHook[useVoiceRecognition]
-        APIClient[Hono RPC Client]
+        APIClient[fetch API Client]
     end
     
     subgraph Backend [Hono API]
         Router[Router / Validator]
         Logic[Business Logic]
         Prompt[System Prompts]
-        OpenAI[🤖 OpenAI API (GPT-4o-mini)]
+        AIProvider[🤖 OpenAI / Gemini API]
     end
     
     CF --- Frontend
     Workers --- Backend
     
-    Backend -->|Chat Completion| OpenAI
+    Backend -->|Chat Completion| AIProvider
     Frontend -->|Client-side Generation| PDF[📄 PDF Renderer]
 ```
 
@@ -62,7 +63,7 @@ erDiagram
         datetime created_at
     }
 
-    %% 作業・KY項目（１回のセッションで複数あり得るが、現状は１つ）
+    %% 作業・KY項目（１回のセッションで最大2件）
     WORK_ITEM {
         string item_id PK "UUID"
         string session_id FK
@@ -70,8 +71,8 @@ erDiagram
         text hazard_description "どんな危険があるか"
         json why_dangerous "なぜ危険か(配列)"
         json countermeasures "対策(配列)"
-        string risk_level "危険度(高/中/低)"
-        json action_targets "行動目標(指差し呼称)"
+        int risk_level "危険度(1〜5)"
+        string action_goal "行動目標(指差し呼称)"
     }
 ```
 
@@ -86,7 +87,7 @@ erDiagram
   * `useTTSStore`: 音声合成の状態管理。
 * **Hooks**
   * `useVoiceRecognition`: Web Speech APIラッパー。音声認識の開始/停止、エラーハンドリング。
-  * `useChat`: Hono RPCクライアントを用いたAPI通信と、応答データのストア反映。
+  * `useChat`: fetch APIクライアントを用いたAPI通信と、応答データのストア反映。
   * `useTTS`: ブラウザ標準の読み上げ機能ラッパー。
 * **UI Components**
   * `ChatInterface`: メイン画面。チャットログと入力エリア。
@@ -95,8 +96,8 @@ erDiagram
 ### 3.2 バックエンド (Backend)
 
 * **Framework**: Hono (Cloudflare Workers)
-* **Communication**: Hono RPC Mode
-  * フロントエンドと型定義 (`AppType`) を共有し、完全な型安全性を実現。
+* **Communication**: fetch + Zodスキーマ検証
+  * フロントエンドは `src/lib/api.ts` のfetch実装を利用し、`src/lib/schema.ts` で入出力を型検証。
 * **Middleware**
   * `zValidator`: Zodスキーマによるリクエストバリデーション。
   * `cors`: クロスオリジンリソース共有設定。
@@ -126,7 +127,7 @@ erDiagram
 | **Language** | TypeScript | 型安全性による品質担保、開発効率向上 |
 | **Frontend** | React, Vite, Tailwind CSS | モダンな開発体験、エコシステムの充実、スタイリング効率 |
 | **State** | Zustand | Reduxより軽量で、Context APIより高機能。ボイラープレートが少ない |
-| **Backend** | Cloudflare Workers (Hono) | 低レイテンシ、安価な運用コスト、RPCモードの恩恵 |
+| **Backend** | Cloudflare Workers (Hono) | 低レイテンシ、安価な運用コスト、API実装の単純性 |
 | **Validation** | Zod | TypeScriptとの親和性が高く、ランタイムチェックが可能 |
-| **AI/LLM** | OpenAI API (GPT-4o-mini) | 高速な応答速度（リアルタイム対話に必須）、高いコストパフォーマンス |
+| **AI/LLM** | OpenAI API / Gemini API（OpenAI互換） | `AI_PROVIDER` で切替可能。可用性とコスト最適化を両立 |
 | **PDF** | @react-pdf/renderer | ReactコンポーネントとしてPDFを定義・生成できる |
