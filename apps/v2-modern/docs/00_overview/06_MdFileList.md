@@ -3,24 +3,25 @@
 作成日時: 2026-02-18 00:41
 作成者: Codex＋GPT-5
 更新日: 2026-02-17（apps/v2-modern/docs 現行構成へ全面更新）
-更新日: 2026-02-25（ファイル件数と一覧を現行構成へ再同期）
+更新日: 2026-02-26（ファイル件数と一覧を現行構成へ再同期）
+更新日: 2026-02-26（ディレクトリ別件数の名称不整合を修正）
 
 対象ルート: C:\Users\AKIHIRO\.gemini\antigravity\playground\solar-aldrin\apps\v2-modern\docs
 
-- 総ファイル数: 89（*.md は 88、PDF は 1）
+- 総ファイル数: 90（*.md は 89、PDF は 1）
 - 除外: .git, node_modules, dist, .wrangler, coverage, playwright-report, test-results
 
 ## ディレクトリ別件数
 
 | ディレクトリ | 件数 |
 | --- | ---: |
-| `00_overview` | 8 |
-| `10_planning` | 9 |
-| `20_phases` | 24 |
-| `30_design` | 15 |
-| `40_manuals` | 8 |
-| `50_reviews` | 23 |
-| `90_appendix` | 1 |
+| 00_overview | 8 |
+| 10_planning | 9 |
+| 20_phases | 24 |
+| 30_design | 15 |
+| 40_manuals | 8 |
+| 50_reviews | 24 |
+| 90_appendix | 1 |
 
 ## ファイル一覧（相対パス）
 
@@ -106,6 +107,7 @@
 50_reviews\13_TestCase_Catalog_223cases_2026-02-19.md
 50_reviews\14_v2-modern_多角的批判レビュー_2026-02-25.md
 50_reviews\15_v2-modern_多角的批判レビューへの反論_2026-02-25.md
+50_reviews\16_ドキュメント整合監査表_2026-02-26.md
 50_reviews\archive\2026-02-07_repo-review-scorecard.md
 50_reviews\archive\Code_Review_Current_Changes.md
 50_reviews\archive\implementation_plan_review_report.md
