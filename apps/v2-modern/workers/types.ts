@@ -62,6 +62,9 @@ export type Bindings = {
     ALLOWED_ORIGINS?: string
     REQUIRE_API_TOKEN?: string
     REQUIRE_RATE_LIMIT_KV?: string
+    DAILY_USAGE_SOFT_REQUEST_LIMIT?: string
+    DAILY_USAGE_SOFT_TOKEN_LIMIT?: string
+    DAILY_USAGE_HARD_BLOCK?: string
     STRICT_CORS?: string
     ALLOW_DEV_ORIGIN_WILDCARDS?: string
 

@@ -64,6 +64,54 @@ describe('Chat API Integration Flow', () => {
         expect(body.meta?.server?.maxTokens).toBe(900)
     })
 
+    it('日次soft limit超過時もAI呼び出しはブロックせず警告を返す', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{
+                    message: {
+                        content: JSON.stringify({
+                            reply: '了解しました。',
+                            extracted: { nextAction: 'ask_hazard' },
+                        }),
+                    },
+                }],
+                usage: { total_tokens: 30 },
+            }),
+            text: async () => '',
+        } as Response)
+
+        const makeRequest = () => new Request('http://localhost/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-client-id': 'soft-limit-test-client',
+            },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: '足場組立をします' }],
+                sessionContext: {
+                    userName: 'TestUser',
+                    siteName: 'TestSite',
+                    weather: 'Sunny',
+                    workItemCount: 0,
+                },
+            }),
+        })
+        const env = {
+            OPENAI_API_KEY: 'mock-key',
+            DAILY_USAGE_SOFT_REQUEST_LIMIT: '1',
+            DAILY_USAGE_SOFT_TOKEN_LIMIT: '999',
+        }
+
+        const first = await chat.fetch(makeRequest(), env)
+        const second = await chat.fetch(makeRequest(), env)
+
+        expect(first.status).toBe(200)
+        expect(second.status).toBe(200)
+        const body = await second.json()
+        expect(body.usageWarning?.code).toBe('DAILY_REQUEST_SOFT_LIMIT_EXCEEDED')
+    })
+
     it('AI_POLICY_VERSION が設定されている場合は policyVersion に最優先で反映する', async () => {
         vi.mocked(fetch).mockResolvedValue({
             ok: true,

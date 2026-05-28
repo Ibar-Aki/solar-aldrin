@@ -22,6 +22,7 @@ import { runChatCompletionFlow } from '../lib/chat/execution'
 import { formatUpstreamAIErrorMessage, getErrorStatus } from '../lib/chat/errors'
 import { OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import { logError } from '../observability/logger'
+import { trackDailyUsage } from '../lib/usageTracking'
 import type { Bindings } from '../types'
 
 const chat = new Hono<{
@@ -145,10 +146,25 @@ chat.post('/', zValidator('json', ChatRequestSchema, (result, c) => {
             }, 502)
         }
 
+        const usageWarning = await trackDailyUsage({
+            env: c.env,
+            clientId: c.req.header('x-client-id'),
+            endpoint: 'chat',
+            tokenCount: result.usage.totalTokens,
+            reqId,
+        }).catch((trackingError) => {
+            logError('daily_usage_tracking_error', {
+                reqId,
+                message: trackingError instanceof Error ? trackingError.message : 'unknown_error',
+            })
+            return undefined
+        })
+
         return c.json({
             reply: result.reply,
             extracted: result.extracted,
             usage: result.usage,
+            usageWarning,
             meta: result.meta,
         })
 

@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from 'vitest'
-import { ChatMessageSchema } from '../../src/lib/schema'
+import { ChatMessageSchema, ChatRequestSchema, ChatSuccessResponseSchema, MAX_CHAT_MESSAGES } from '../../src/lib/schema'
 
 describe('ChatMessageSchema', () => {
     it('should accept valid messages', () => {
@@ -54,5 +54,34 @@ describe('ChatMessageSchema', () => {
         if (!result.success) {
             expect(result.error.issues[0].message).toContain('制御文字が含まれています')
         }
+    })
+
+    it('should reject too many chat messages', () => {
+        const result = ChatRequestSchema.safeParse({
+            messages: Array.from({ length: MAX_CHAT_MESSAGES + 1 }, (_, index) => ({
+                role: index % 2 === 0 ? 'user' : 'assistant',
+                content: `message-${index}`,
+            })),
+        })
+
+        expect(result.success).toBe(false)
+        if (!result.success) {
+            expect(result.error.issues[0].code).toBe('too_big')
+        }
+    })
+})
+
+describe('ChatSuccessResponseSchema', () => {
+    it('should accept optional usageWarning for soft usage limits', () => {
+        const result = ChatSuccessResponseSchema.safeParse({
+            reply: '了解しました。',
+            usage: { totalTokens: 10 },
+            usageWarning: {
+                code: 'DAILY_REQUEST_SOFT_LIMIT_EXCEEDED',
+                message: '本日の利用回数が目安を超えています。',
+            },
+        })
+
+        expect(result.success).toBe(true)
     })
 })

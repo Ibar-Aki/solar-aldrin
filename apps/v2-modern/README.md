@@ -7,6 +7,7 @@
 更新日: 2026-02-12（AIプロバイダ切替を追加: OpenAI/Gemini を `AI_PROVIDER` で切替、Gemini OpenAI互換エンドポイントに対応）
 更新日: 2026-02-13（Gemini最適化: フォールバック時のOpenAIモデル固定、Gemini専用 `GEMINI_*` 実行設定、429フォールバックのフラグ制御、`meta.ai` 追加）
 更新日: 2026-02-25（実装計画リンクを現行パスへ修正／API_TOKEN必須条件の記述を実装仕様に合わせて更新）
+更新日: 2026-05-28（公開リンク配布を維持する運用方針、依存監査、入力サイズ上限を追記）
 
 Phase 2の音声KYアシスタントアプリ。
 
@@ -85,11 +86,13 @@ npm run dev:workers
 - 任意: `REQUIRE_RATE_LIMIT_KV`（`1` で `RATE_LIMIT_KV` 未設定時にフェイルクローズ）
 - 予約済み（現状未使用）: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `WEATHER_API_BASE_URL`
 
+公開リンクを LINE 等で共有する運用では、`REQUIRE_API_TOKEN=0` を維持し、利用者にトークン入力を求めません。濫用対策は `RATE_LIMIT_KV` によるIP単位レート制限、`OPENAI_MAX_TOKENS` / `GEMINI_MAX_TOKENS`、API body上限（64KB）、チャット履歴件数上限（20件）で行います。
+
 #### フロントエンド環境変数
 
 - 任意: `VITE_API_BASE_URL`（例: `https://voice-ky-v2.solar-aldrin-ky.workers.dev/api`）
 - 実費テスト/スモーク用: `VITE_API_TOKEN`（**フロントのバンドルへ埋め込まず**、Playwright/事前チェックで利用）
-- ブラウザ実行時の認証: ホーム画面の「APIトークン設定」でトークンを保存（localStorage）。進行中セッション画面からも更新可能
+- ブラウザ実行時の認証: `VITE_REQUIRE_API_TOKEN=1` の環境のみ、ホーム画面の「APIトークン設定」でトークンを保存（localStorage）。公開リンク配布では表示しません。
 
 #### /api/chat のエラーコードと観測用フィールド（実費テスト向け）
 

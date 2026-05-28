@@ -1,6 +1,7 @@
 # Solar Aldrin: Voice KY Assistant
 
 更新日: 2026-02-07（ファイル整理：ドキュメント移動/リネーム）
+更新日: 2026-05-28（v1レガシー化とv2現行導線を明確化）
 
 **「話すだけで、質の高い危険予知が完了する」**
 **「二度書きの無駄をなくし、現場の知恵をつなぐ」**
@@ -27,6 +28,7 @@
 - **Target**: 実現可能性検証
 - **Code**: [`./apps/v1-legacy/`](./apps/v1-legacy/)
 - **Tech**: GAS, Vanilla JS
+- **Legacy Status**: [`./apps/v1-legacy/LEGACY_STATUS.md`](./apps/v1-legacy/LEGACY_STATUS.md)
 - **[Documentation](./apps/v1-legacy/docs/)**: Phase 1 時代の企画書、設計書アーカイブ
 
 ### [Phase 2: v2-modern (Current)](./apps/v2-modern/)
@@ -47,6 +49,6 @@
 
 ## 📚 Quick Links
 
-- [Phase 2 Setup Guide](./apps/v2-modern/docs/PHASE2_SETUP.md)
+- [Phase 2 Setup Guide](./apps/v2-modern/docs/00_overview/05_Phase2Setup.md)
 - Development Diary (開発日誌): リポジトリ外（ローカル管理のためリンクは掲載しません）
 

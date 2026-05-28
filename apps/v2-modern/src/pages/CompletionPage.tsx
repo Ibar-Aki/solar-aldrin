@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle, CheckCircle2, Download, Home } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, Home, Share2 } from 'lucide-react'
 import { useKYStore } from '@/stores/kyStore'
 import { usePDFGenerator } from '@/hooks/usePDFGenerator'
 import { FanfareManager } from '@/components/fanfare/FanfareManager'
@@ -41,7 +41,7 @@ export function CompletionPage() {
         setFeedbackLoading,
         setFeedbackError,
     } = useKYStore()
-    const { generateAndDownload, isGenerating } = usePDFGenerator()
+    const { generateAndDownload, generateAndShare, isGenerating } = usePDFGenerator()
 
     const shouldAutoFanfare = !!session && status === 'completed'
 
@@ -50,6 +50,7 @@ export function CompletionPage() {
     const [showSkeleton, setShowSkeleton] = useState(false)
     const [recentRisks, setRecentRisks] = useState<RecentRiskMatch[]>([])
     const [recentRiskLoading, setRecentRiskLoading] = useState(false)
+    const [shareHint, setShareHint] = useState<string | null>(null)
 
     // FIX-03: useRefで保存試行をガード（依存配列問題を回避）
     const saveAttemptedRef = useRef(false)
@@ -192,6 +193,9 @@ export function CompletionPage() {
                     sessionId: session.id,
                 })
             } catch (e) {
+                if (e instanceof DOMException && e.name === 'AbortError') {
+                    return
+                }
                 console.error('Feedback error:', e)
                 setFeedbackError(e instanceof Error ? e.message : 'フィードバック取得に失敗しました')
                 applyFallback()
@@ -260,6 +264,22 @@ export function CompletionPage() {
             actionGoalOverride,
             recentRisks,
         })
+    }
+
+    const handleSharePdf = async () => {
+        if (!session) return
+        setShareHint(null)
+        const result = await generateAndShare(session, {
+            feedback: feedback ?? null,
+            supplements,
+            actionGoalOverride: polishedActionGoal ?? null,
+            recentRisks,
+        })
+        if (!result) {
+            setShareHint('PDF共有に失敗しました。ダウンロードを試してください。')
+            return
+        }
+        setShareHint(result === 'shared' ? '共有画面を開きました。' : '共有非対応のためPDFをダウンロードしました。')
     }
 
     const handleHome = () => {
@@ -420,6 +440,23 @@ export function CompletionPage() {
                         <Download className="mr-2 h-5 w-5" />
                         {isGenerating ? '生成中...' : 'PDF記録をダウンロード'}
                     </Button>
+
+                    <Button
+                        variant="outline"
+                        onClick={handleSharePdf}
+                        className="w-full h-12"
+                        disabled={isGenerating}
+                        data-testid="button-share-pdf"
+                    >
+                        <Share2 className="mr-2 h-5 w-5" />
+                        PDFを共有
+                    </Button>
+
+                    {shareHint && (
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            {shareHint}
+                        </div>
+                    )}
 
                     <Button
                         variant="outline"

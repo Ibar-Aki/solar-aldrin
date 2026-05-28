@@ -5,6 +5,7 @@
 更新日: 2026-02-07
 更新日: 2026-02-11（APIトークン認証の既定運用を更新）
 更新日: 2026-02-11（認証フラグ解釈と任意モードのBearer挙動を明記）
+更新日: 2026-05-28（公開リンク配布モードと入力サイズ上限を明記）
 
 ---
 
@@ -39,8 +40,10 @@
 
 ### APIトークン認証の運用方針
 
-* **既定（推奨）**: `REQUIRE_API_TOKEN=0`（APIトークン認証を必須化しない）
+* **公開リンク配布（推奨）**: `REQUIRE_API_TOKEN=0`（APIトークン認証を必須化しない）
   * iPhoneや共有リンクで初回アクセスした利用者でも、設定なしで利用開始できます。
+  * LINE 等でURLだけを共有する場合は、このモードを維持します。
+  * 濫用対策は、IP単位レート制限、AI出力トークン上限、API body上限、チャット履歴件数上限で行います。
 * **必須化したい場合のみ**:
   * Workers: `REQUIRE_API_TOKEN=1` と `API_TOKEN=<secret>` を設定
   * Frontend: `VITE_REQUIRE_API_TOKEN=1` を設定（ホーム画面にAPIトークン入力欄を表示）
@@ -53,11 +56,19 @@
 
 * **現状設定**: 1分あたり **30リクエスト** / IP
 * **ファイル**: `workers/index.ts`
+* 本番では `RATE_LIMIT_KV` を設定し、必要に応じて `REQUIRE_RATE_LIMIT_KV=1` でKV未設定時にフェイルクローズします。
 * **変更方法**:
 
     ```typescript
     app.use('/api/*', rateLimit({ maxRequests: 50, windowMs: 60000 })) // 50回に変更する場合
     ```
+
+### 入力サイズ・トークン上限
+
+* API body上限: 64KB（超過時は `413 REQUEST_BODY_TOO_LARGE`）
+* `/api/chat` の履歴件数上限: 20件
+* ユーザー発話上限: 1メッセージ1000文字
+* AI出力上限: `OPENAI_MAX_TOKENS` / `GEMINI_MAX_TOKENS` で調整
 
 ### Origin制限 (CORS)
 

@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context, type Next } from 'hono'
 import { cors } from 'hono/cors'
 import { chat } from './routes/chat'
 import { rateLimit } from './middleware/rateLimit'
@@ -10,7 +10,7 @@ import { captureException } from './observability/sentry'
 import { shouldAllowDevOriginWildcards, shouldRequireApiToken, shouldRequireRateLimitKV, shouldUseStrictCors } from './lib/securityMode'
 import type { Bindings } from './types'
 
-const app = new Hono<{
+type AppEnv = {
     Bindings: Bindings
     Variables: {
         reqId: string
@@ -18,7 +18,9 @@ const app = new Hono<{
         tokenFingerprint?: string
         sentryTestId?: string
     }
-}>()
+}
+
+const app = new Hono<AppEnv>()
 
 const DEV_ALLOWED_ORIGINS = [
     'http://localhost:5173',
@@ -30,6 +32,7 @@ const PRODUCTION_ALLOWED_ORIGINS = [
     'https://v2.voice-ky-assistant.pages.dev',
     'https://voice-ky-v2.pages.dev',
 ]
+const API_BODY_LIMIT_BYTES = 64 * 1024
 
 function parseBearerToken(authHeader: string | null | undefined): string | null {
     if (!authHeader?.startsWith('Bearer ')) return null
@@ -45,6 +48,60 @@ function resolveSentryTracesSampleRate(raw: string | undefined): number {
     const parsed = Number(raw ?? '0')
     if (!Number.isFinite(parsed)) return 0
     return Math.max(0, Math.min(1, parsed))
+}
+
+async function enforceApiBodyLimit(
+    c: Context<AppEnv>,
+    next: Next
+) {
+    const rawBody = c.req.raw.body
+    if (!rawBody) return next()
+
+    const contentLengthRaw = c.req.header('content-length')
+    const contentLength = contentLengthRaw ? Number.parseInt(contentLengthRaw, 10) : undefined
+    if (Number.isFinite(contentLength) && (contentLength as number) > API_BODY_LIMIT_BYTES) {
+        return c.json({
+            error: 'Request body too large',
+            code: 'REQUEST_BODY_TOO_LARGE',
+            requestId: c.get('reqId'),
+        }, 413)
+    }
+
+    const reader = rawBody.getReader()
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            totalBytes += value.byteLength
+            if (totalBytes > API_BODY_LIMIT_BYTES) {
+                await reader.cancel().catch(() => undefined)
+                return c.json({
+                    error: 'Request body too large',
+                    code: 'REQUEST_BODY_TOO_LARGE',
+                    requestId: c.get('reqId'),
+                }, 413)
+            }
+            chunks.push(value)
+        }
+    } finally {
+        reader.releaseLock()
+    }
+
+    const bodyBuffer = new ArrayBuffer(totalBytes)
+    const bodyBytes = new Uint8Array(bodyBuffer)
+    let offset = 0
+    for (const chunk of chunks) {
+        bodyBytes.set(chunk, offset)
+        offset += chunk.byteLength
+    }
+
+    c.req.raw = new Request(c.req.raw, {
+        body: new Blob([bodyBuffer], { type: c.req.header('content-type') ?? undefined }),
+    })
+    return next()
 }
 
 function isSentryTestEndpointEnabled(env: Bindings): boolean {
@@ -207,10 +264,14 @@ app.use('*', async (c, next) => {
             'baggage',
             'x-sentry-test-token',
             'x-request-id',
+            'x-client-id',
         ],
     })
     return corsMiddleware(c, next)
 })
+
+// リクエストボディ上限（公開リンク配布を維持しつつ、巨大JSONでの濫用を先に遮断）
+app.use('/api/*', enforceApiBodyLimit)
 
 // レート制限（全API）- 1分あたり30回
 app.use('/api/*', rateLimit({ maxRequests: 30, windowMs: 60000 }))

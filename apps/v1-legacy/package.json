@@ -7,8 +7,8 @@
         "dev": "npx serve src/public -l 3000",
         "dev:workers": "cd src/workers && npx wrangler dev",
         "build": "echo 'No build step required'",
-        "deploy:workers": "cd src/workers && npx wrangler publish",
-        "deploy:pages": "npx wrangler pages publish src/public"
+        "deploy:workers": "node -e \"console.error('v1-legacy is archived. Deploy apps/v2-modern instead.'); process.exit(1)\"",
+        "deploy:pages": "node -e \"console.error('v1-legacy is archived. Deploy apps/v2-modern instead.'); process.exit(1)\""
     },
     "keywords": [
         "pwa",

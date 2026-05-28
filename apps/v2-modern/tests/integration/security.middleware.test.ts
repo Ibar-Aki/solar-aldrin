@@ -219,4 +219,52 @@ describe('security middleware integration', () => {
         expect(body.issues).toContain('API_TOKEN_REQUIRED')
         expect(body.issues).toContain('RATE_LIMIT_KV_REQUIRED')
     })
+
+    it('巨大なAPIリクエスト本文はルート処理前に413で拒否する', async () => {
+        const res = await appWithRoutes.fetch(
+            new Request('http://localhost/api/metrics', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    event: 'session_start',
+                    sessionId: '11111111-1111-4111-8111-111111111111',
+                    data: {
+                        padding: 'x'.repeat(70 * 1024),
+                    },
+                }),
+            }),
+            {
+                ...baseEnv,
+                REQUIRE_RATE_LIMIT_KV: '0',
+            }
+        )
+
+        expect(res.status).toBe(413)
+        const body = await res.json() as { code?: string }
+        expect(body.code).toBe('REQUEST_BODY_TOO_LARGE')
+    })
+
+    it('CORS preflightでx-client-idヘッダーを許可する', async () => {
+        const res = await appWithRoutes.fetch(
+            new Request('http://localhost/api/chat', {
+                method: 'OPTIONS',
+                headers: {
+                    Origin: 'https://voice-ky-v2.pages.dev',
+                    'Access-Control-Request-Method': 'POST',
+                    'Access-Control-Request-Headers': 'content-type,x-client-id',
+                },
+            }),
+            {
+                ...baseEnv,
+                REQUIRE_API_TOKEN: '0',
+                REQUIRE_RATE_LIMIT_KV: '0',
+                STRICT_CORS: '1',
+            }
+        )
+
+        expect(res.status).toBe(204)
+        expect(res.headers.get('Access-Control-Allow-Headers')?.toLowerCase()).toContain('x-client-id')
+    })
 })

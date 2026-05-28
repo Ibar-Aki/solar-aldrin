@@ -20,6 +20,7 @@ const baseRequest: FeedbackRequest = {
 describe('postFeedback error classification', () => {
     beforeEach(() => {
         vi.restoreAllMocks()
+        window.localStorage.clear()
     })
 
     it('ネットワーク失敗を network として分類する', async () => {
@@ -99,5 +100,23 @@ describe('postFeedback error classification', () => {
 
         const result = await postFeedback(baseRequest)
         expect(result).toBeNull()
+    })
+
+    it('feedback APIにx-client-idを付与する', async () => {
+        const res = new Response(JSON.stringify({
+            praise: '良いKYです。',
+            tip: '次回も確認を続けましょう。',
+            supplements: [],
+            polishedGoal: null,
+        }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        })
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(res))
+
+        await postFeedback(baseRequest)
+
+        const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+        expect((init.headers as Record<string, string>)['x-client-id']).toBeTruthy()
     })
 })

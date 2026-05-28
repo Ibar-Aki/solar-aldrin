@@ -11,6 +11,7 @@ import type { SoloKYSession } from '@/types/ky'
 import { getSessionById, deleteSession } from '@/lib/db'
 import { formatDateLong } from '@/lib/dateUtils'
 import { HEALTH_CONDITION_LABELS } from '@/constants/ky'
+import { usePDFGenerator } from '@/hooks/usePDFGenerator'
 
 export function HistoryDetailPage() {
     const navigate = useNavigate()
@@ -18,6 +19,7 @@ export function HistoryDetailPage() {
     const [session, setSession] = useState<SoloKYSession | null>(null)
     const [loading, setLoading] = useState(true)
     const [deleting, setDeleting] = useState(false)
+    const { generateAndDownload, isGenerating } = usePDFGenerator()
 
     useEffect(() => {
         if (id) {
@@ -69,6 +71,11 @@ export function HistoryDetailPage() {
                 }
             }
         })
+    }
+
+    async function handleDownloadPdf() {
+        if (!session) return
+        await generateAndDownload(session)
     }
 
     // FIX-08: formatDateLong はdateUtilsからインポート
@@ -216,6 +223,15 @@ export function HistoryDetailPage() {
                         className="w-full bg-blue-600 hover:bg-blue-700"
                     >
                         この記録を元に新規作成
+                    </Button>
+                    <Button
+                        onClick={handleDownloadPdf}
+                        variant="outline"
+                        className="w-full"
+                        disabled={isGenerating}
+                        data-testid="button-history-pdf"
+                    >
+                        {isGenerating ? 'PDF生成中...' : 'PDFを再出力'}
                     </Button>
                     <Button
                         onClick={handleDelete}

@@ -9,6 +9,7 @@ const baseRequest: ChatRequest = {
 describe('postChat error classification', () => {
     beforeEach(() => {
         vi.restoreAllMocks()
+        window.localStorage.clear()
     })
 
     it('ネットワーク失敗を network として分類する', async () => {
@@ -51,5 +52,17 @@ describe('postChat error classification', () => {
             retriable: true,
             retryAfterSec: 12,
         })
+    })
+
+    it('chat APIにx-client-idを付与する', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(
+            JSON.stringify({ reply: 'ok', usage: { totalTokens: 1 } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )))
+
+        await postChat(baseRequest)
+
+        const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+        expect((init.headers as Record<string, string>)['x-client-id']).toBeTruthy()
     })
 })

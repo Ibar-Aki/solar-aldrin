@@ -1,4 +1,5 @@
 export const MAX_CLIENT_HISTORY_MESSAGES = 10
+export const MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES = 6
 export const CONVERSATION_SUMMARY_MIN_MESSAGES = 6
 
 type ChatMessage = {
@@ -20,8 +21,9 @@ export function buildRequestMessages(params: {
     text: string
     skipUserMessage: boolean
     retryAssistantMessage: string
+    maxMessages?: number
 }): RequestMessage[] {
-    const { messages, text, skipUserMessage, retryAssistantMessage } = params
+    const { messages, text, skipUserMessage, retryAssistantMessage, maxMessages = MAX_CLIENT_HISTORY_MESSAGES } = params
 
     const chatMessages: RequestMessage[] = messages
         .filter((message): message is RequestMessage => isRequestRole(message.role))
@@ -29,7 +31,7 @@ export function buildRequestMessages(params: {
 
     if (!skipUserMessage) {
         const combined = [...chatMessages, { role: 'user' as const, content: text }]
-        return combined.slice(-MAX_CLIENT_HISTORY_MESSAGES)
+        return combined.slice(-maxMessages)
     }
 
     // リトライ時は末尾のエラーメッセージを除去し、同じユーザー発言を末尾に置く
@@ -42,5 +44,5 @@ export function buildRequestMessages(params: {
     if (!lastAfter || lastAfter.role !== 'user' || lastAfter.content !== text) {
         sanitized.push({ role: 'user' as const, content: text })
     }
-    return sanitized.slice(-MAX_CLIENT_HISTORY_MESSAGES)
+    return sanitized.slice(-maxMessages)
 }

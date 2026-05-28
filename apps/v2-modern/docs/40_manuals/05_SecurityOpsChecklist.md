@@ -3,17 +3,22 @@
 - 作成日時: 2026-02-06 21:54:36 +09:00
 - 作成者: Codex＋GPT-5
 - 更新日: 2026-02-07（実費テスト preflight/運用コマンドを追記）
+- 更新日: 2026-05-28（LINE等の公開リンク配布を維持するセキュリティ運用へ更新）
 - 対象: `apps/v2-modern`
 
 ## 0. 最初にあなたがやること（本日中）
 
 1. 露出した `OPENAI_API_KEY` を失効し、新しいキーを発行する。
-2. 本番に `API_TOKEN` を設定し、`REQUIRE_API_TOKEN=1` を有効化する。
-3. 本番に `REQUIRE_RATE_LIMIT_KV=1` を設定し、`RATE_LIMIT_KV` バインディングを確認する。
+2. LINE等でURLだけを共有する公開リンク配布では、`REQUIRE_API_TOKEN=0` を維持する。
+3. 本番に `RATE_LIMIT_KV` バインディングを設定し、必要に応じて `REQUIRE_RATE_LIMIT_KV=1` でフェイルクローズする。
 4. 本番に `STRICT_CORS=1` と `ALLOWED_ORIGINS` を設定する。
-5. 動作確認で `health=ok`、未認証 `401`、不正Origin `403` を確認する。
+5. 動作確認で `health=ok`、正規Origin `200`、不正Origin `403`、巨大body `413` を確認する。
 
-## 0.5 最小作業モード（推奨）
+> 認証トークン必須化は、URLだけで簡単に使える配布体験を犠牲にします。友人配布・試験導入では任意認証を維持し、レート制限、AI出力トークン上限、API body上限、チャット履歴件数上限でコストと濫用を抑えます。
+
+## 0.5 認証必須モード（限定運用）
+
+以下は、公開リンク配布ではなく、利用者にAPIトークン入力を許容できる限定運用向けです。
 
 1. `wrangler` にログインする（初回のみ）。
 ```bash
@@ -62,7 +67,16 @@ npx wrangler secret put OPENAI_API_KEY
 
 ## 3. 本番セキュリティ設定反映
 
-### 3.1 認証必須化
+### 3.0 公開リンク配布モード（推奨）
+
+1. `REQUIRE_API_TOKEN=0` を維持する。
+2. `VITE_REQUIRE_API_TOKEN=0` でビルドし、利用者にトークン入力欄を出さない。
+3. `RATE_LIMIT_KV` バインディングを設定する。
+4. 本番で `STRICT_CORS=1` と `ALLOWED_ORIGINS` を設定する。
+5. `OPENAI_MAX_TOKENS` / `GEMINI_MAX_TOKENS` を高くしすぎない。
+6. API body上限64KB、チャット履歴20件上限、1分30リクエスト/IPの制限が有効であることをテストで確認する。
+
+### 3.1 認証必須化（限定運用のみ）
 
 1. 強固な `API_TOKEN` を発行する。
 ```bash
@@ -109,15 +123,16 @@ curl.exe -i "https://<your-worker-or-pages-domain>/api/health"
 ```
 - 期待値: `200` + `{"status":"ok","version":"v2"}`
 
-2. 未認証アクセスが拒否されることを確認する。
+2. 公開リンク配布モードでは正規Originからの未認証アクセスが通ることを確認する。
 ```bash
 curl.exe -i "https://<your-worker-or-pages-domain>/api/metrics" ^
+  -H "Origin: https://voice-ky-v2.pages.dev" ^
   -H "Content-Type: application/json" ^
   -d "{\"event\":\"session_start\"}"
 ```
-- 期待値: `401`
+- 期待値: `200`
 
-3. 認証付きアクセスが通ることを確認する。
+3. 認証必須モードの場合のみ、認証付きアクセスが通ることを確認する。
 ```bash
 curl.exe -i "https://<your-worker-or-pages-domain>/api/metrics" ^
   -H "Content-Type: application/json" ^

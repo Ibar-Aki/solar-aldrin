@@ -10,9 +10,10 @@ import { useKYStore } from '@/stores/kyStore'
 import { useVoiceConversationModeStore } from '@/stores/useVoiceConversationModeStore'
 import type { ProcessPhase, HealthCondition } from '@/types/ky'
 import { PROCESS_PHASES, HEALTH_CONDITIONS, WEATHER_OPTIONS } from '@/constants/ky'
-import { History } from 'lucide-react'
+import { History, Share2 } from 'lucide-react'
 import { clearApiToken, getApiToken, maskApiToken, setApiToken } from '@/lib/apiToken'
 import { shouldRequireApiTokenClient } from '@/lib/envFlags'
+import { shareUrl } from '@/lib/shareUtils'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -47,6 +48,7 @@ export function HomePage() {
     const [apiTokenInput, setApiTokenInput] = useState('')
     const [apiTokenMasked, setApiTokenMasked] = useState(() => maskApiToken(getApiToken()))
     const [apiTokenHint, setApiTokenHint] = useState<string | null>(null)
+    const [shareHint, setShareHint] = useState<string | null>(null)
     const requireApiToken = shouldRequireApiTokenClient()
 
     // Clear location state after prefill applied (prevent re-prefill on refresh)
@@ -138,6 +140,21 @@ export function HomePage() {
             setProcessPhase((latest.processPhase ?? 'フリー') as ProcessPhase)
         } catch (error) {
             console.error('Failed to apply latest session:', error)
+        }
+    }
+
+    const handleShareApp = async () => {
+        setShareHint(null)
+        try {
+            const result = await shareUrl({
+                title: 'Voice KY Assistant',
+                text: '一人KY活動を対話で進められるWebアプリです。',
+            })
+            setShareHint(result === 'shared' ? '共有画面を開きました。' : 'URLをコピーしました。')
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') return
+            console.error('Failed to share app URL:', error)
+            setShareHint('共有に失敗しました。ブラウザのURLをコピーして共有してください。')
         }
     }
 
@@ -373,6 +390,22 @@ export function HomePage() {
                 >
                     過去の記録を見る
                 </Button>
+
+                <Button
+                    variant="outline"
+                    className="h-12 w-full border-[color:var(--surface-border)] bg-[var(--surface-card)] text-[var(--accent-royal-600)] font-semibold shadow-xs hover:bg-[var(--brand-50)] hover:border-[color:var(--brand-200)]"
+                    onClick={handleShareApp}
+                    data-testid="button-share-app"
+                >
+                    <Share2 className="mr-2 h-4 w-4" />
+                    このアプリを共有
+                </Button>
+
+                {shareHint && (
+                    <Alert className="border-[color:var(--surface-border)] bg-[var(--surface-card)] text-slate-700">
+                        <AlertDescription>{shareHint}</AlertDescription>
+                    </Alert>
+                )}
 
                 {/* 説明 */}
                 <Card className="border-[color:var(--surface-border)] bg-[var(--surface-card)] py-3 shadow-sm">

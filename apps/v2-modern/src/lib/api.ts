@@ -14,6 +14,7 @@ import {
 } from '@/lib/schema'
 import { resolveRuntimeApiBase } from '@/lib/apiBase'
 import { getApiToken } from '@/lib/apiToken'
+import { getClientId } from '@/lib/clientId'
 
 function resolveApiBase(): string {
     return resolveRuntimeApiBase({
@@ -62,21 +63,25 @@ function inferErrorType(status?: number): ChatErrorType {
     return 'unknown'
 }
 
+function buildApiHeaders(): HeadersInit {
+    const token = getApiToken()
+    return {
+        'Content-Type': 'application/json',
+        'x-client-id': getClientId(),
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    }
+}
+
 /**
  * Chat API を呼び出す
  * エラーレスポンスの場合は例外をスロー
  */
 export async function postChat(request: ChatRequest): Promise<ChatSuccessResponse> {
-    const token = getApiToken()
-
     let res: Response
     try {
         res = await fetch(`${API_BASE}/chat`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-            },
+            headers: buildApiHeaders(),
             body: JSON.stringify(request),
         })
     } catch {
@@ -143,16 +148,11 @@ export async function postFeedback(
     request: FeedbackRequest,
     options?: { signal?: AbortSignal }
 ): Promise<FeedbackResponse | null> {
-    const token = getApiToken()
-
     let res: Response
     try {
         res = await fetch(`${API_BASE}/feedback`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-            },
+            headers: buildApiHeaders(),
             body: JSON.stringify(request),
             signal: options?.signal,
         })

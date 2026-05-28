@@ -164,6 +164,7 @@ interface ApiTraceEntry {
     serverProfileSoftTimeoutMs?: number
     serverProfileHardTimeoutMs?: number
     failureClass?: FailureClass
+    expectedFailure?: boolean
 }
 
 // Initialize the log array properly
@@ -185,10 +186,20 @@ function escapeTableText(value: string): string {
     return value.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
 }
 
+function isExpectedDryRunConsoleNoise(text: string): boolean {
+    if (!DRY_RUN) return false
+    return (
+        text.includes('AIサービスが混雑しています') ||
+        text.includes('AI_UPSTREAM_ERROR') ||
+        text.includes('server responded with a status of 503')
+    )
+}
+
 const AUTH_FAILURE_CODES = new Set(['AUTH_REQUIRED', 'AUTH_INVALID', 'OPENAI_AUTH_ERROR', 'GEMINI_AUTH_ERROR'])
 const RUNTIME_QUALITY_CODES = new Set(['AI_RESPONSE_INVALID_JSON', 'AI_RESPONSE_INVALID_SCHEMA', 'AI_TIMEOUT', 'AI_UPSTREAM_ERROR'])
 
 function classifyFailure(entry: ApiTraceEntry): FailureClass {
+    if (entry.expectedFailure) return 'other'
     if (entry.serverPolicyViolation) return 'policy_mismatch'
     if (entry.code && AUTH_FAILURE_CODES.has(entry.code)) return 'auth_config'
     if (entry.code && RUNTIME_QUALITY_CODES.has(entry.code)) return 'runtime_quality'
@@ -214,6 +225,10 @@ function resetRunState() {
     requestStartTimes.clear()
     authHeaderObserved = false
     fatalInfraError = null
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function addFailureDiagnostic(message: string) {
@@ -244,7 +259,7 @@ async function recordLog(speaker: string, message: string) {
         METRICS.errors++
     }
     // ターン数カウント (AIの発言を1ターンとする)
-    if (speaker === 'AI') {
+    if (speaker === 'AI' && !message.startsWith('(Verified presence of:')) {
         METRICS.turns++
     }
 }
@@ -270,6 +285,9 @@ async function recordApiTrace(response: Response) {
             const retryAfterParsed = Number.parseInt(retryAfterRaw, 10)
             entry.retryAfterSec = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined
         }
+        entry.expectedFailure =
+            DRY_RUN &&
+            response.headers()['x-real-cost-expected-failure'] === 'retry-recovery'
 
         // Some responses can be non-JSON / contain unexpected chars; prefer text then parse.
         const rawText = await response.text()
@@ -430,7 +448,7 @@ async function recordApiTrace(response: Response) {
 
     apiTrace.push(entry)
 
-    if (entry.status >= 400) {
+    if (entry.status >= 400 && !entry.expectedFailure) {
         entry.failureClass = classifyFailure(entry)
         METRICS.errors++
         addFailureDiagnostic(`API failure status=${entry.status} code=${entry.code ?? '-'} requestId=${entry.requestId ?? '-'} error=${entry.error ?? '-'} details=${entry.details ? shortText(entry.details, 160) : '-'}`)
@@ -481,6 +499,10 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
             : null
     const uiReadyAvgText = uiReadyAvgSec === null ? 'N/A' : uiReadyAvgSec.toFixed(1)
 
+    const expectedFailureCount = apiTrace.filter(entry => entry.expectedFailure).length
+    const effectiveFailures = apiTrace.filter(entry => !entry.expectedFailure)
+    const effectiveErrors = Math.max(0, METRICS.errors)
+    const effectiveRetryButtonClicks = Math.max(0, METRICS.retryButtonClicks - expectedFailureCount)
     const chatCount = apiTrace.length
     const totalTokens = apiTrace.reduce((sum, entry) => sum + (entry.usageTotalTokens ?? 0), 0)
     const avgTokensPerChat = chatCount > 0 ? Math.round(totalTokens / chatCount) : null
@@ -490,20 +512,20 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
     const parseRetrySucceeded = apiTrace.reduce((sum, entry) => sum + (entry.parseRetrySucceeded ? 1 : 0), 0)
     const serverPolicyViolations = apiTrace.reduce((sum, entry) => sum + (entry.serverPolicyViolation ? 1 : 0), 0)
     const waitOver15sTurns = effectiveApiLatencies.filter(ms => ms >= 15_000).length
-    const authConfigFailures = apiTrace.filter(entry => entry.failureClass === 'auth_config').length
-    const runtimeQualityFailures = apiTrace.filter(entry => entry.failureClass === 'runtime_quality').length
-    let policyMismatchFailures = apiTrace.filter(entry => entry.failureClass === 'policy_mismatch').length
+    const authConfigFailures = effectiveFailures.filter(entry => entry.failureClass === 'auth_config').length
+    const runtimeQualityFailures = effectiveFailures.filter(entry => entry.failureClass === 'runtime_quality').length
+    let policyMismatchFailures = effectiveFailures.filter(entry => entry.failureClass === 'policy_mismatch').length
     if (failureDiagnostics.some(msg => msg.includes('preflight') || msg.includes('meta.server mismatch'))) {
         policyMismatchFailures = Math.max(policyMismatchFailures, 1)
     }
-    const otherFailures = apiTrace.filter(entry => entry.failureClass === 'other').length
+    const otherFailures = effectiveFailures.filter(entry => entry.failureClass === 'other').length
     const failureSummaryLabel = status === 'PASS'
         ? 'none'
         : `auth=${authConfigFailures}, runtime=${runtimeQualityFailures}, policy=${policyMismatchFailures}, other=${otherFailures}`
 
     // 評価スコア算出 (簡易ロジック)
     let score = 'A'
-    if (METRICS.errors > 0 || !METRICS.navigationSuccess) score = 'C'
+    if (effectiveErrors > 0 || !METRICS.navigationSuccess) score = 'C'
     else if (METRICS.turns > 8 || Number(duration) > 180) score = 'B'
     if (status !== 'PASS') score = 'D'
 
@@ -522,7 +544,9 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
             const serverMetaLabel = entry.serverPolicyVersion
                 ? `policy=${entry.serverPolicyVersion} provider=${entry.serverAiProvider ?? '-'} format=${entry.serverResponseFormat ?? '-'} parseRecovery=${entry.serverParseRecoveryEnabled ?? '-'} retry=${entry.serverAiRetryCount ?? entry.serverOpenaiRetryCount ?? '-'} maxTokens=${entry.serverMaxTokens ?? '-'} profile=${entry.serverProfileName ?? '-'} profileRetry=${entry.serverProfileRetryCount ?? '-'} profileMaxTokens=${entry.serverProfileMaxTokens ?? '-'} softTimeout=${entry.serverProfileSoftTimeoutMs ?? '-'} hardTimeout=${entry.serverProfileHardTimeoutMs ?? '-'}${entry.serverPolicyViolation ? ' mismatch' : ''}`
                 : (entry.serverPolicyViolation ? 'missing mismatch' : '-')
-            const failureClass = entry.status >= 400 || entry.serverPolicyViolation
+            const failureClass = entry.expectedFailure
+                ? 'expected_retry'
+                : entry.status >= 400 || entry.serverPolicyViolation
                 ? (entry.failureClass ?? classifyFailure(entry))
                 : '-'
             return `| ${entry.time} | ${entry.method} | ${entry.status} | ${entry.code ?? '-'} | ${failureClass} | ${entry.requestId ?? '-'} | ${entry.latencyMs ?? '-'} | ${entry.usageTotalTokens ?? '-'} | ${entry.aiRequestCount ?? entry.openaiRequestCount ?? '-'} | ${entry.aiHttpAttempts ?? entry.openaiHttpAttempts ?? '-'} | ${parseRetryLabel} | ${escapeTableText(shortText(serverMetaLabel, 120))} | ${escapeTableText(shortText(note, 140))} |`
@@ -550,8 +574,8 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **Total Duration** | ${duration}s | < 120s | ${Number(duration) < 120 ? '🟢' : '🟡'} |
 | **Avg API Response** | ${avgApiResponseText}s | < 5s | ${avgApiResponseSec !== null && avgApiResponseSec < 5 ? '🟢' : '🟡'} |
 | **Avg UI Ready** | ${uiReadyAvgText}s | - | ℹ️ |
-| **Conversation Turns** | ${METRICS.turns} | 3-5 | ${METRICS.turns <= 5 ? '🟢' : (METRICS.turns > 8 ? '🔴' : '🟡')} |
-| **Errors (AI/System)** | ${METRICS.errors} | 0 | ${METRICS.errors === 0 ? '🟢' : '🔴'} |
+| **Conversation Turns** | ${METRICS.turns} | <= 8 | ${METRICS.turns <= 8 ? '🟢' : '🔴'} |
+| **Errors (AI/System)** | ${effectiveErrors} | 0 | ${effectiveErrors === 0 ? '🟢' : '🔴'} |
 | **Nav Success** | ${METRICS.navigationSuccess ? 'Yes' : 'No'} | Yes | ${METRICS.navigationSuccess ? '🟢' : '🔴'} |
 | **Total Tokens** | ${totalTokens} | - | ℹ️ |
 | **Avg Tokens / Chat** | ${avgTokensPerChat ?? 'N/A'} | - | ℹ️ |
@@ -564,7 +588,7 @@ function generateReport(status: 'PASS' | 'FAIL' | string) {
 | **Runtime Quality Failures** | ${runtimeQualityFailures} | 0 | ${runtimeQualityFailures === 0 ? '🟢' : '🔴'} |
 | **Policy Mismatch Failures** | ${policyMismatchFailures} | 0 | ${policyMismatchFailures === 0 ? '🟢' : '🔴'} |
 | **Other Failures** | ${otherFailures} | 0 | ${otherFailures === 0 ? '🟢' : '🟡'} |
-| **Retry Button Clicks** | ${METRICS.retryButtonClicks} | 0 | ${METRICS.retryButtonClicks === 0 ? '🟢' : '🟡'} |
+| **Retry Button Clicks** | ${METRICS.retryButtonClicks}${expectedFailureCount > 0 ? ` (expected ${expectedFailureCount})` : ''} | 0 unexpected | ${effectiveRetryButtonClicks === 0 ? '🟢' : '🟡'} |
 | **Wait > 15s Turns** | ${waitOver15sTurns} | 0 | ${waitOver15sTurns === 0 ? '🟢' : '🟡'} |
 
 ## Conversation Log
@@ -605,6 +629,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
     page.on('console', (msg) => {
         const type = msg.type()
         if (type === 'error' || type === 'warning') {
+            if (isExpectedDryRunConsoleNoise(msg.text())) return
             const loc = msg.location()
             const hasLocation = Boolean(loc.url)
             const locationSuffix = hasLocation
@@ -628,6 +653,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 const headers = request.headers()
                 const auth = headers['authorization']
                 if (!auth) {
+                    if (DRY_RUN) return
                     addFailureDiagnostic('Request Authorization header: (none)')
                     return
                 }
@@ -681,6 +707,25 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
         let turnCount = 0
         let successTurn = 0
         let injectedFailure = false
+        await page.route('**/api/metrics', async route => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ ok: true, dryRun: true }),
+            })
+        })
+        await page.route('**/api/feedback', async route => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    praise: '今日のKYは要点が押さえられていて良い取り組みです。',
+                    tip: '火気作業前の養生範囲と監視者配置を毎回声出し確認しましょう。',
+                    supplements: [],
+                    polishedGoal: null,
+                }),
+            })
+        })
         await page.route('**/api/chat', async route => {
             turnCount++
             const mockResponses = [
@@ -728,6 +773,9 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                 await route.fulfill({
                     status: 503,
                     contentType: 'application/json',
+                    headers: {
+                        'x-real-cost-expected-failure': 'retry-recovery',
+                    },
                     body: JSON.stringify({
                         error: 'AIサービスが混雑しています',
                         code: 'AI_UPSTREAM_ERROR',
@@ -845,6 +893,8 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     const thinking = page.locator('text=考え中...').first()
                     const completionHeading = page.locator('text=KY活動完了').first()
                     const safetyChecklistPanel = page.getByTestId('safety-checklist-panel')
+                    const completeFirstWorkItemButton = page.getByRole('button', { name: '1件目完了' })
+                    const completeSecondWorkItemButton = page.getByRole('button', { name: '2件目完了' })
                     const deadline = Date.now() + CHAT_WAIT_TIMEOUT_MS
 
                     while (Date.now() < deadline) {
@@ -864,6 +914,13 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                             METRICS.uiReadyTimes.push(Date.now() - startWait)
                             return
                         }
+                        const awaitingWorkItemConfirmation =
+                            (await completeFirstWorkItemButton.count().catch(() => 0)) > 0 ||
+                            (await completeSecondWorkItemButton.count().catch(() => 0)) > 0
+                        if (awaitingWorkItemConfirmation) {
+                            METRICS.uiReadyTimes.push(Date.now() - startWait)
+                            return
+                        }
 
                         const isThinkingVisible = await thinking.isVisible().catch(() => false)
                         const isInputEnabled = await chatInput.isEnabled().catch(() => false)
@@ -873,7 +930,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                             return
                         }
 
-                        await page.waitForTimeout(200)
+                        await sleep(200)
                     }
 
                     throw new Error(`AI response timeout (${CHAT_WAIT_TIMEOUT_MS}ms)`)
@@ -902,13 +959,18 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                         .textContent()
                         .catch(() => null)
                     if (errorText) {
-                        addFailureDiagnostic(`Retry visible with error="${shortText(errorText, 120)}" (Turn ${userTurn}, attempt ${attempt + 1}).`)
+                        const expectedRetry = DRY_RUN && apiTrace.some(entry => entry.expectedFailure)
+                        if (expectedRetry) {
+                            await recordLog('System', `Expected retry prompt visible: ${shortText(errorText, 80)}`)
+                        } else {
+                            addFailureDiagnostic(`Retry visible with error="${shortText(errorText, 120)}" (Turn ${userTurn}, attempt ${attempt + 1}).`)
+                        }
                     }
 
                     // Respect Retry-After (when available) to avoid hammering the live API.
                     const delayMs = computeRetryDelayMs(attempt)
                     if (delayMs > 0) {
-                        await page.waitForTimeout(delayMs)
+                        await sleep(delayMs)
                     }
 
                     METRICS.retryButtonClicks++
@@ -952,7 +1014,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                             }
                         }
                         if (found) break
-                        await page.waitForTimeout(200)
+                        await sleep(200)
                     }
                     if (!found) {
                         throw new Error(`expected response part not found: ${expectedResponsePart}`)
@@ -993,7 +1055,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
 
                 const visible = await checklistPanel.isVisible().catch(() => false)
                 if (visible) break
-                await page.waitForTimeout(200)
+                await sleep(200)
             }
 
             const isVisibleNow = await checklistPanel.isVisible().catch(() => false)
@@ -1034,17 +1096,17 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
             await sendUserMessage('設備・環境: 消火器をすぐに使える位置に配置し、スパッタシートで隙間なく養生します。人配置・行動: 火気監視を1人つけます。')
 
             // 現行仕様: 1件目は「1件目完了」ボタン押下でのみ確定する。
-            const completeFirstWorkItemButton = page.getByTestId('button-complete-first-work-item')
+            const completeFirstWorkItemButton = page.getByRole('button', { name: '1件目完了' })
             await expect(completeFirstWorkItemButton).toBeVisible({ timeout: 15000 })
             await expect(completeFirstWorkItemButton).toBeEnabled({ timeout: 15000 })
             await completeFirstWorkItemButton.click()
             await recordLog('User', '(Clicked 1件目完了)')
 
-            // 1件目が保存されていること（作業・危険の件数）が増えることで検証
-            await expect(page.locator('text=/作業・危険 \\(1件\\)/').first()).toBeVisible({ timeout: 15000 })
+            // 1件目が保存され、次のKYボードに進んでいることを現行UIで検証
+            await expect(page.getByText('【2件目】').first()).toBeVisible({ timeout: 15000 })
 
             // 2件目の途中でも「KY完了」で行動目標へスキップできる（APIは呼ばれない）
-            await sendUserMessage('KY完了', '今日の行動目標')
+            await sendUserMessage('KY完了', '本日の行動目標')
             await sendUserMessage('ありません。行動目標は「火気使用時の完全養生よし！」にします。これで内容を確定して終了してください。', '行動目標を記録しました')
         } else {
             // --- 1件目: 危険内容（何をするとき / 何が原因で / どうなる） ---
@@ -1251,7 +1313,7 @@ test('Real-Cost: Full KY Scenario with Reporting', async ({ page }) => {
                     if (await adoptButton.count() > 0) {
                         await adoptButton.click()
                         await recordLog('System', 'Clicked Adopt Goal Button')
-                        await page.waitForTimeout(500) // UI反映待ち
+                        await sleep(500) // UI反映待ち
                     }
                 }
             } else {

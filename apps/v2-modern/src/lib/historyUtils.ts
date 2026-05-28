@@ -3,7 +3,6 @@ import { db } from '@/lib/db'
 
 const RETENTION_DAYS = 90
 const MAX_SESSIONS = 100
-const RETENTION_REAPPLY_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_PAST_RISK_DAYS = 30
 const DEFAULT_RECENT_DAYS = 3
 const MAX_SUMMARY_LENGTH = 50
@@ -29,15 +28,23 @@ export type RecentRiskMatch = {
     daysAgo: number
 }
 
+export type HistoryRetentionPreview = {
+    retentionDays: number
+    maxSessions: number
+    oldSessionIds: string[]
+    excessSessionIds: string[]
+    deleteSessionIds: string[]
+    oldCount: number
+    excessCount: number
+    deleteCount: number
+}
+
 type RiskQueryOptions = {
     siteName?: string
     workDescription?: string
     excludeSessionId?: string
     withinDays?: number
 }
-
-let lastRetentionAppliedAt = 0
-let retentionInFlight: Promise<void> | null = null
 
 function toDateLabel(iso: string): string {
     return iso.slice(0, 10)
@@ -80,7 +87,6 @@ function diffDays(from: Date, to: Date): number {
 }
 
 async function getAllSessionsSorted(): Promise<SoloKYSession[]> {
-    await applyHistoryRetention()
     return db.sessions.orderBy('createdAt').reverse().toArray()
 }
 
@@ -127,45 +133,40 @@ function dedupeRisks(entries: RiskEntry[]): RiskEntry[] {
     return result
 }
 
-export async function applyHistoryRetention(): Promise<void> {
-    const now = Date.now()
-    if (now - lastRetentionAppliedAt < RETENTION_REAPPLY_INTERVAL_MS) return
+export async function getHistoryRetentionPreview(): Promise<HistoryRetentionPreview> {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
+    const cutoffIso = cutoff.toISOString()
 
-    if (!retentionInFlight) {
-        retentionInFlight = (async () => {
-            try {
-                const cutoff = new Date()
-                cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
-                const cutoffIso = cutoff.toISOString()
+    const oldSessionIds = (await db.sessions.where('createdAt').below(cutoffIso).primaryKeys())
+        .map(String)
+    const allSessionsAsc = await db.sessions.orderBy('createdAt').toArray()
+    const excessCount = Math.max(0, allSessionsAsc.length - MAX_SESSIONS)
+    const excessSessionIds = allSessionsAsc.slice(0, excessCount).map((session) => session.id)
+    const deleteSessionIds = Array.from(new Set([...oldSessionIds, ...excessSessionIds]))
 
-                const oldKeys = await db.sessions.where('createdAt').below(cutoffIso).primaryKeys()
-                if (oldKeys.length > 0) {
-                    await db.sessions.bulkDelete(oldKeys)
-                }
-
-                const count = await db.sessions.count()
-                if (count > MAX_SESSIONS) {
-                    const deleteCount = count - MAX_SESSIONS
-                    const excessKeys = await db.sessions.orderBy('createdAt').limit(deleteCount).primaryKeys()
-                    if (excessKeys.length > 0) {
-                        await db.sessions.bulkDelete(excessKeys)
-                    }
-                }
-            } catch (error) {
-                console.warn('History retention failed:', error)
-            } finally {
-                lastRetentionAppliedAt = Date.now()
-                retentionInFlight = null
-            }
-        })()
+    return {
+        retentionDays: RETENTION_DAYS,
+        maxSessions: MAX_SESSIONS,
+        oldSessionIds,
+        excessSessionIds,
+        deleteSessionIds,
+        oldCount: oldSessionIds.length,
+        excessCount,
+        deleteCount: deleteSessionIds.length,
     }
+}
 
-    await retentionInFlight
+export async function applyHistoryRetention(): Promise<HistoryRetentionPreview> {
+    const preview = await getHistoryRetentionPreview()
+    if (preview.deleteSessionIds.length > 0) {
+        await db.sessions.bulkDelete(preview.deleteSessionIds)
+    }
+    return preview
 }
 
 export function resetRetentionState() {
-    lastRetentionAppliedAt = 0
-    retentionInFlight = null
+    // Kept for old tests; retention is now explicit and has no in-memory throttle.
 }
 
 export async function getRecentSessions(days: number): Promise<SoloKYSession[]> {

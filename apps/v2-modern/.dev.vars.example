@@ -33,6 +33,11 @@ GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
 # Gemini→OpenAI フォールバック（既定: 無効）
 # ENABLE_PROVIDER_FALLBACK="0"
 
+# 公開リンク配布向けの日次soft tracking（既定はブロックしない）
+# DAILY_USAGE_SOFT_REQUEST_LIMIT="50"
+# DAILY_USAGE_SOFT_TOKEN_LIMIT="30000"
+# DAILY_USAGE_HARD_BLOCK="0"
+
 # Supabase設定（Phase 3以降で使用予定）
 SUPABASE_URL=""
 SUPABASE_ANON_KEY=""

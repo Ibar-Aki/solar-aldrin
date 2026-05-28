@@ -4,7 +4,6 @@ import type { SoloKYSession, SessionStatus, ProcessPhase, HealthCondition, Safet
 import type { KYStore } from '../kyStore'
 import { saveSession } from '@/lib/db'
 import { sendTelemetry } from '@/lib/observability/telemetry'
-import { applyHistoryRetention } from '@/lib/historyUtils'
 
 export interface SessionSlice {
     session: SoloKYSession | null
@@ -167,11 +166,6 @@ export const createSessionSlice: StateCreator<KYStore, [], [], SessionSlice> = (
         }
         try {
             await saveSession(session)
-            try {
-                await applyHistoryRetention()
-            } catch (error) {
-                console.warn('History retention failed after save:', error)
-            }
             if (import.meta.env.DEV) console.log('Session saved to IndexedDB:', session.id)
             return true
         } catch (e) {

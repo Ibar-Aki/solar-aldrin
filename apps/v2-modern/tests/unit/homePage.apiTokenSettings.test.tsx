@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HomePage } from '@/pages/HomePage'
 import { useKYStore } from '@/stores/kyStore'
+import { shareUrl } from '@/lib/shareUtils'
 
 const navigateMock = vi.fn()
 
@@ -18,6 +19,10 @@ vi.mock('@/lib/db', () => ({
     getLatestSession: vi.fn(async () => null),
 }))
 
+vi.mock('@/lib/shareUtils', () => ({
+    shareUrl: vi.fn(),
+}))
+
 const initialState = useKYStore.getState()
 
 describe('HomePage API token settings', () => {
@@ -26,6 +31,7 @@ describe('HomePage API token settings', () => {
         useKYStore.setState(initialState, true)
         window.localStorage.clear()
         vi.stubEnv('VITE_REQUIRE_API_TOKEN', '0')
+        vi.mocked(shareUrl).mockReset()
     })
 
     afterEach(() => {
@@ -62,5 +68,21 @@ describe('HomePage API token settings', () => {
         render(<HomePage />)
 
         expect(screen.getByTestId('input-api-token')).toBeInTheDocument()
+    })
+
+    it('共有ボタンからアプリURL共有を呼び出す', async () => {
+        vi.mocked(shareUrl).mockResolvedValueOnce('copied')
+
+        render(<HomePage />)
+
+        fireEvent.click(screen.getByTestId('button-share-app'))
+
+        await waitFor(() => {
+            expect(shareUrl).toHaveBeenCalledWith({
+                title: 'Voice KY Assistant',
+                text: '一人KY活動を対話で進められるWebアプリです。',
+            })
+        })
+        expect(await screen.findByText('URLをコピーしました。')).toBeInTheDocument()
     })
 })

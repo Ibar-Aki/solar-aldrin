@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildRequestMessages, MAX_CLIENT_HISTORY_MESSAGES } from '@/hooks/chat/requestPayload'
+import {
+    buildRequestMessages,
+    MAX_CLIENT_HISTORY_MESSAGES,
+    MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES,
+} from '@/hooks/chat/requestPayload'
 
 describe('buildRequestMessages', () => {
     it('user/assistant 以外の role を除外する', () => {
@@ -54,6 +58,24 @@ describe('buildRequestMessages', () => {
         })
 
         expect(payload).toHaveLength(MAX_CLIENT_HISTORY_MESSAGES)
+        expect(payload.at(-1)).toEqual({ role: 'user', content: 'latest' })
+    })
+
+    it('会話要約を付ける場合は履歴上限を6件に縮小できる', () => {
+        const seed = Array.from({ length: MAX_CLIENT_HISTORY_MESSAGES + 5 }, (_, index) => ({
+            role: index % 2 === 0 ? 'user' : 'assistant',
+            content: `m-${index}`,
+        })) as Array<{ role: unknown; content: string }>
+
+        const payload = buildRequestMessages({
+            messages: seed,
+            text: 'latest',
+            skipUserMessage: false,
+            retryAssistantMessage: 'retry',
+            maxMessages: MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES,
+        })
+
+        expect(payload).toHaveLength(MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES)
         expect(payload.at(-1)).toEqual({ role: 'user', content: 'latest' })
     })
 })

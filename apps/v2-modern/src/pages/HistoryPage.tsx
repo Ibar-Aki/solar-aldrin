@@ -2,20 +2,35 @@
  * 履歴一覧ページ
  * Phase 2.3: HIS-02
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
 import type { SoloKYSession } from '@/types/ky'
 import { getAllSessions } from '@/lib/db'
 import { exportToJSON, exportToCSV } from '@/lib/exportUtils'
 import { formatDate } from '@/lib/dateUtils'
+import { filterSessionsForHistory, type HistoryDateFilter } from '@/lib/historyFilters'
+import { applyHistoryRetention, getHistoryRetentionPreview, type HistoryRetentionPreview } from '@/lib/historyUtils'
+
+const DATE_FILTERS: Array<{ value: HistoryDateFilter; label: string }> = [
+    { value: 'all', label: 'すべて' },
+    { value: 'today', label: '今日' },
+    { value: '7d', label: '7日' },
+    { value: '30d', label: '30日' },
+]
 
 export function HistoryPage() {
     const navigate = useNavigate()
     const [sessions, setSessions] = useState<SoloKYSession[]>([])
     const [loading, setLoading] = useState(true)
     const [exporting, setExporting] = useState(false)
+    const [query, setQuery] = useState('')
+    const [dateFilter, setDateFilter] = useState<HistoryDateFilter>('all')
+    const [retentionPreview, setRetentionPreview] = useState<HistoryRetentionPreview | null>(null)
+    const [cleaning, setCleaning] = useState(false)
 
     useEffect(() => {
         loadSessions()
@@ -26,10 +41,28 @@ export function HistoryPage() {
         try {
             const data = await getAllSessions()
             setSessions(data)
+            setRetentionPreview(await getHistoryRetentionPreview())
         } catch (e) {
             console.error('Failed to load sessions:', e)
         } finally {
             setLoading(false)
+        }
+    }
+
+    async function handleCleanupHistory() {
+        setCleaning(true)
+        try {
+            const preview = await applyHistoryRetention()
+            if (preview.deleteCount > 0) {
+                await loadSessions()
+            } else {
+                setRetentionPreview(await getHistoryRetentionPreview())
+            }
+        } catch (e) {
+            console.error('Failed to cleanup history:', e)
+            alert('履歴整理に失敗しました')
+        } finally {
+            setCleaning(false)
         }
     }
 
@@ -59,6 +92,13 @@ export function HistoryPage() {
 
     // FIX-08: formatDate はdateUtilsからインポート
 
+
+    const filteredSessions = useMemo(() => filterSessionsForHistory(sessions, {
+        query,
+        dateFilter,
+    }), [sessions, query, dateFilter])
+
+    const hasRetentionTargets = Boolean(retentionPreview && retentionPreview.deleteCount > 0)
 
     return (
         <div className="min-h-screen bg-gray-50 p-4">
@@ -103,6 +143,56 @@ export function HistoryPage() {
                     </div>
                 )}
 
+                {hasRetentionTargets && retentionPreview && (
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                        <AlertDescription>
+                            <div className="space-y-2">
+                                <p>
+                                    整理候補が{retentionPreview.deleteCount}件あります。
+                                    {retentionPreview.retentionDays}日超または{retentionPreview.maxSessions}件超の記録です。
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                                    onClick={handleCleanupHistory}
+                                    disabled={cleaning || exporting}
+                                >
+                                    {cleaning ? '整理中...' : 'エクスポート後に履歴を整理'}
+                                </Button>
+                            </div>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                {sessions.length > 0 && (
+                    <Card>
+                        <CardContent className="space-y-3 py-4">
+                            <Input
+                                value={query}
+                                onChange={(event) => setQuery(event.target.value)}
+                                placeholder="現場名・工程・危険・対策で検索"
+                                data-testid="input-history-search"
+                            />
+                            <div className="grid grid-cols-4 gap-2">
+                                {DATE_FILTERS.map((filter) => (
+                                    <Button
+                                        key={filter.value}
+                                        type="button"
+                                        size="sm"
+                                        variant={dateFilter === filter.value ? 'default' : 'outline'}
+                                        onClick={() => setDateFilter(filter.value)}
+                                        data-testid={`button-history-filter-${filter.value}`}
+                                    >
+                                        {filter.label}
+                                    </Button>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* ローディング */}
                 {loading && (
                     <Card>
@@ -123,8 +213,16 @@ export function HistoryPage() {
                     </Card>
                 )}
 
+                {!loading && sessions.length > 0 && filteredSessions.length === 0 && (
+                    <Card>
+                        <CardContent className="py-8 text-center text-gray-500">
+                            条件に合う履歴がありません。
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* 履歴リスト */}
-                {!loading && sessions.map((session) => (
+                {!loading && filteredSessions.map((session) => (
                     <Card
                         key={session.id}
                         className="cursor-pointer hover:bg-gray-50 transition-colors"
@@ -156,7 +254,7 @@ export function HistoryPage() {
                 {/* 件数表示 */}
                 {!loading && sessions.length > 0 && (
                     <p className="text-center text-sm text-gray-500">
-                        全{sessions.length}件
+                        表示{filteredSessions.length}件 / 全{sessions.length}件
                     </p>
                 )}
             </div>

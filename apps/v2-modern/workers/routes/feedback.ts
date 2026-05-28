@@ -6,6 +6,7 @@ import { logError, logWarn } from '../observability/logger'
 import { fetchOpenAICompletion, safeParseJSON, OpenAIHTTPErrorWithDetails } from '../lib/openai'
 import type { Bindings } from '../types'
 import { DEFAULT_AI_MODELS, resolveAIProvider, resolveModelByProvider, resolveProviderApiKey } from '../lib/aiProvider'
+import { trackDailyUsage } from '../lib/usageTracking'
 
 const feedback = new Hono<{
     Bindings: Bindings
@@ -282,6 +283,20 @@ feedback.post(
                 timeoutMs: FEEDBACK_TIMEOUT_MS,
                 reqId,
                 provider: aiProvider,
+            })
+
+            await trackDailyUsage({
+                env: c.env,
+                clientId: c.req.header('x-client-id') ?? payload.clientId,
+                endpoint: 'feedback',
+                tokenCount: responseData.usage?.total_tokens ?? 0,
+                reqId,
+            }).catch((trackingError) => {
+                logError('daily_usage_tracking_error', {
+                    reqId,
+                    message: trackingError instanceof Error ? trackingError.message : 'unknown_error',
+                })
+                return undefined
             })
 
             let parsed: unknown

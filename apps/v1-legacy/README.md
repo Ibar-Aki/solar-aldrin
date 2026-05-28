@@ -1,5 +1,9 @@
 # Voice KY Assistant
 
+更新日: 2026-05-28（v1をレガシーアーカイブとして明記し、誤デプロイ防止方針を追加）
+
+> **Legacy notice:** この v1 は Phase 1 の実現可能性検証アーカイブです。現在の配布・運用・改修対象は `../v2-modern` です。詳細は [LEGACY_STATUS.md](./LEGACY_STATUS.md) を参照してください。
+
 🏗️ 音声でKY活動を完了するPWAアプリ
 
 > **Demo:** [Voice KY Assistant](https://voice-ky-assistant.pages.dev)
@@ -62,12 +66,12 @@ npm run dev:workers
 
 ### デプロイ
 
-```bash
-# Cloudflare Workersにデプロイ
-npm run deploy:workers
+v1 はアーカイブ扱いのため、新規デプロイしません。`deploy:workers` / `deploy:pages` は誤公開防止のため失敗する設定です。
 
-# Cloudflare Pagesにデプロイ
-npm run deploy:pages
+```bash
+# 現行版は apps/v2-modern を使用
+cd ../v2-modern
+npm run build
 ```
 
 ### 環境変数（Workers）

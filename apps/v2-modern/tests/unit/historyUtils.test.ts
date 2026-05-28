@@ -72,6 +72,21 @@ describe('History Utils', () => {
     })
 
     describe('Retention Policy', () => {
+        it('preview only reports retention targets without deleting', async () => {
+            const sessions: SoloKYSession[] = []
+            for (let i = 0; i < 105; i++) {
+                const date = new Date(Date.now() - (105 - i) * 60000).toISOString()
+                sessions.push(createSession(`preview-${i}`, date, `Risk ${i}`))
+            }
+
+            await db.sessions.bulkAdd(sessions)
+
+            const preview = await historyUtils.getHistoryRetentionPreview()
+
+            expect(preview.deleteCount).toBe(5)
+            expect(await db.sessions.count()).toBe(105)
+        })
+
         it('should enforce retention policy (max items)', async () => {
             // Insert 105 sessions
             const sessions: SoloKYSession[] = []

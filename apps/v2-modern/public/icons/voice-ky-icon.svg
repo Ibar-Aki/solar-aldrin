@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Voice KY">
+  <rect width="512" height="512" rx="96" fill="#2563eb"/>
+  <path d="M128 176c0-26.5 21.5-48 48-48h160c26.5 0 48 21.5 48 48v160c0 26.5-21.5 48-48 48H176c-26.5 0-48-21.5-48-48V176Z" fill="#ffffff"/>
+  <path d="M184 230h144M184 282h104" stroke="#1d4ed8" stroke-width="32" stroke-linecap="round"/>
+  <path d="M184 344l40-40 36 36 76-92" fill="none" stroke="#16a34a" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

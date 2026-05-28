@@ -15,6 +15,7 @@ function hasInvalidControlChars(value: string): boolean {
 
 /** チャットメッセージのスキーマ */
 export const USER_CONTENT_MAX_LENGTH = 1000
+export const MAX_CHAT_MESSAGES = 20
 const ASSISTANT_CONTENT_MAX_LENGTH = 3000
 const CONTEXT_FIELD_MAX_LENGTH = 120
 const contentSchema = (max: number) => z.string().max(max)
@@ -45,7 +46,7 @@ export const SessionContextSchema = z.object({
 
 /** チャットリクエストのスキーマ */
 export const ChatRequestSchema = z.object({
-    messages: z.array(ChatMessageSchema).min(1),
+    messages: z.array(ChatMessageSchema).min(1).max(MAX_CHAT_MESSAGES),
     sessionContext: SessionContextSchema.optional(),
     contextInjection: contentSchema(1200).optional(),
     conversationSummary: contentSchema(1200).optional(),
@@ -57,6 +58,10 @@ export const ChatSuccessResponseSchema = z.object({
     extracted: ExtractedDataSchema.optional(),
     usage: z.object({
         totalTokens: z.number(),
+    }).optional(),
+    usageWarning: z.object({
+        code: z.string(),
+        message: z.string(),
     }).optional(),
 })
 

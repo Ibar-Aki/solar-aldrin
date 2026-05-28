@@ -1,0 +1,18 @@
+{
+  "name": "Voice KY Assistant",
+  "short_name": "Voice KY",
+  "description": "一人KY活動を対話で進めるWebアプリです。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icons/voice-ky-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

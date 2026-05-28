@@ -1,6 +1,7 @@
 # Voice KY Assistant v2 Documentation
 更新日: 2026-02-17（iPhone実機テストと Master Technical Reference の導線を更新）
 更新日: 2026-02-25（現行ディレクトリ構成に合わせて索引を更新）
+更新日: 2026-03-27（V2改善提案レポートへの導線を追加）
 
 ## Overview
 
@@ -27,3 +28,4 @@ Voice KY Assistant は、建設現場での危険予知（KY）活動を支援�
 - [User Guide](./40_manuals/02_UserGuide.md)
 - [Phase 2 Roadmap](./10_planning/03_Phase2_Roadmap.md)
 - [Phase 2 Completion Report](./50_reviews/02_Phase2CompletionReport.md)
+- [V2改善提案レポート](./50_reviews/16_v2-modern_V2改善提案レポート_2026-03-27.md)

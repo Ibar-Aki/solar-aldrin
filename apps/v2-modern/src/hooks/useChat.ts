@@ -24,7 +24,11 @@ import {
     shouldSilentRetry,
     sleep,
 } from '@/hooks/chat/errorHandling'
-import { buildRequestMessages, CONVERSATION_SUMMARY_MIN_MESSAGES } from '@/hooks/chat/requestPayload'
+import {
+    buildRequestMessages,
+    CONVERSATION_SUMMARY_MIN_MESSAGES,
+    MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES,
+} from '@/hooks/chat/requestPayload'
 import {
     countValidCountermeasures,
     isFirstWorkItemCompletionPending,
@@ -392,34 +396,38 @@ export function useChat() {
                 contextInjection = contextRef.current.injection ?? undefined
             }
 
-            const requestChat = async (shouldSkipUserMessage: boolean) => postChat({
-                messages: [...buildRequestMessages({
-                    messages,
-                    text,
-                    skipUserMessage: shouldSkipUserMessage,
-                    retryAssistantMessage: RETRY_ASSISTANT_MESSAGE,
-                })],
-                sessionContext: {
-                    userName: session.userName,
-                    siteName: session.siteName,
-                    weather: session.weather,
-                    workItemCount: session.workItems.length,
-                    processPhase: session.processPhase ?? undefined,
-                    healthCondition: session.healthCondition ?? undefined,
-                },
-                contextInjection,
-                conversationSummary: (() => {
-                    // Short chats shouldn't pay the summary token cost.
-                    const baseCount = messages.filter(m => m.role !== 'system').length
-                    const effectiveCount = baseCount + (shouldSkipUserMessage ? 0 : 1)
-                    if (effectiveCount < CONVERSATION_SUMMARY_MIN_MESSAGES) return undefined
-                    return buildConversationSummary({
+            const requestChat = async (shouldSkipUserMessage: boolean) => {
+                const baseCount = messages.filter(m => m.role !== 'system').length
+                const effectiveCount = baseCount + (shouldSkipUserMessage ? 0 : 1)
+                const conversationSummary = effectiveCount >= CONVERSATION_SUMMARY_MIN_MESSAGES
+                    ? buildConversationSummary({
                         session,
                         currentWorkItem,
                         status,
                     })
-                })(),
-            })
+                    : undefined
+                const maxMessages = conversationSummary ? MAX_SUMMARIZED_CLIENT_HISTORY_MESSAGES : undefined
+
+                return postChat({
+                    messages: [...buildRequestMessages({
+                        messages,
+                        text,
+                        skipUserMessage: shouldSkipUserMessage,
+                        retryAssistantMessage: RETRY_ASSISTANT_MESSAGE,
+                        maxMessages,
+                    })],
+                    sessionContext: {
+                        userName: session.userName,
+                        siteName: session.siteName,
+                        weather: session.weather,
+                        workItemCount: session.workItems.length,
+                        processPhase: session.processPhase ?? undefined,
+                        healthCondition: session.healthCondition ?? undefined,
+                    },
+                    contextInjection,
+                    conversationSummary,
+                })
+            }
 
             let data: Awaited<ReturnType<typeof postChat>> | undefined
             try {

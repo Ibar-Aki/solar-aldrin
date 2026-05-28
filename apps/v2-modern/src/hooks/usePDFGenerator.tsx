@@ -4,6 +4,7 @@
 import { createElement, useCallback, useState } from 'react'
 import type { SoloKYSession, FeedbackSummary, SupplementItem } from '@/types/ky'
 import type { RecentRiskMatch } from '@/lib/historyUtils'
+import { shareFileOrDownload, type FileShareResult } from '@/lib/shareUtils'
 
 type PDFOptions = {
     feedback?: FeedbackSummary | null
@@ -50,6 +51,24 @@ async function buildPdfBlob(session: SoloKYSession, options?: PDFOptions): Promi
     return renderPdf(doc).toBlob()
 }
 
+function buildPdfFilename(session: SoloKYSession): string {
+    const date = new Date(session.createdAt)
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
+    const safeSiteName = session.siteName.replace(/[\\/:*?"<>|]/g, '_')
+    return `KY活動記録_${safeSiteName}_${dateStr}.pdf`
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+}
+
 export function usePDFGenerator() {
     const [isGenerating, setIsGenerating] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -68,27 +87,39 @@ export function usePDFGenerator() {
 
         try {
             const blob = await buildPdfBlob(session, options)
-
-            // ファイル名を生成
-            const date = new Date(session.createdAt)
-            const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
-            // ファイル名サニタイズ（/ \ : * ? " < > | を置換）
-            const safeSiteName = session.siteName.replace(/[\\/:*?"<>|]/g, '_')
-            const fileName = `KY活動記録_${safeSiteName}_${dateStr}.pdf`
-
-            // ダウンロード
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = url
-            link.download = fileName
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            URL.revokeObjectURL(url)
+            downloadBlob(blob, buildPdfFilename(session))
 
         } catch (e) {
             console.error('PDF generation error:', e)
             setError('PDF生成に失敗しました')
+        } finally {
+            setIsGenerating(false)
+        }
+    }, [])
+
+    const generateAndShare = useCallback(async (session: SoloKYSession, options?: PDFOptions): Promise<FileShareResult | null> => {
+        if (!session) {
+            setError('セッションデータがありません')
+            return null
+        }
+
+        setIsGenerating(true)
+        setError(null)
+
+        try {
+            const blob = await buildPdfBlob(session, options)
+            const fileName = buildPdfFilename(session)
+            return await shareFileOrDownload({
+                blob,
+                fileName,
+                title: 'KY活動記録',
+                text: `${session.siteName}のKY活動記録です。`,
+                fallbackDownload: () => downloadBlob(blob, fileName),
+            })
+        } catch (e) {
+            console.error('PDF share error:', e)
+            setError('PDF共有に失敗しました')
+            return null
         } finally {
             setIsGenerating(false)
         }
@@ -120,6 +151,7 @@ export function usePDFGenerator() {
 
     return {
         generateAndDownload,
+        generateAndShare,
         generateBlob,
         isGenerating,
         error,
