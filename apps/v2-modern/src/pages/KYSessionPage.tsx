@@ -16,6 +16,8 @@ import { useTTS } from '@/hooks/useTTS'
 import { shouldShowRiskLevelSelector } from '@/lib/riskLevelVisibility'
 import { isWorkItemComplete } from '@/lib/validation'
 import { isNonAnswerText } from '@/lib/nonAnswer'
+import { sendTelemetry } from '@/lib/observability/telemetry'
+import { getAiWaitStatus } from '@/lib/uxGuidance'
 import type { SafetyConfirmationChecks } from '@/types/ky'
 
 const DEFAULT_SAFETY_CHECKS: SafetyConfirmationChecks = {
@@ -56,6 +58,8 @@ export function KYSessionPage() {
     const [safetyChecksDraft, setSafetyChecksDraft] = useState<SafetyConfirmationChecks | null>(null)
     const { mode, setMode } = useVoiceConversationModeStore()
     const isTTSSpeaking = useTTSStore((state) => state.isSpeaking)
+    const [aiWaitElapsedMs, setAiWaitElapsedMs] = useState(0)
+    const lastWaitStageRef = useRef<string | null>(null)
 
     const sessionEntry = getSessionEntryFromState(location.state)
     const [isInitialVoiceBootPending, setIsInitialVoiceBootPending] = useState(
@@ -97,6 +101,7 @@ export function KYSessionPage() {
         retryLastMessage,
         canRetry,
     } = useChat()
+
     const [autoSpeakFromTimestamp] = useState(() => {
         if (sessionEntry !== 'resume') return 0
         const latestTimestamp = messages.reduce((latest, message) => {
@@ -199,6 +204,54 @@ export function KYSessionPage() {
         return () => cancelAnimationFrame(id)
     }, [messages])
 
+    useEffect(() => {
+        if (!isLoading) {
+            lastWaitStageRef.current = null
+            const resetTimer = window.setTimeout(() => {
+                setAiWaitElapsedMs(0)
+            }, 0)
+            return () => window.clearTimeout(resetTimer)
+        }
+
+        const resetTimer = window.setTimeout(() => {
+            setAiWaitElapsedMs(0)
+        }, 0)
+        const thinkingTimer = window.setTimeout(() => {
+            setAiWaitElapsedMs(1_200)
+        }, 1_200)
+        const slowTimer = window.setTimeout(() => {
+            setAiWaitElapsedMs(WAIT_NOTICE_AFTER_MS)
+        }, WAIT_NOTICE_AFTER_MS)
+
+        return () => {
+            window.clearTimeout(resetTimer)
+            window.clearTimeout(thinkingTimer)
+            window.clearTimeout(slowTimer)
+        }
+    }, [isLoading])
+
+    const loadingElapsedMs = isLoading ? aiWaitElapsedMs : 0
+    const aiWaitStatus = getAiWaitStatus(loadingElapsedMs, WAIT_NOTICE_AFTER_MS)
+
+    useEffect(() => {
+        if (!isLoading) return
+        if (!session) return
+        if (lastWaitStageRef.current === aiWaitStatus.stage) return
+        lastWaitStageRef.current = aiWaitStatus.stage
+
+        void sendTelemetry({
+            event: 'ux_ai_wait_stage_changed',
+            sessionId: session.id,
+            value: loadingElapsedMs,
+            data: {
+                stage: aiWaitStatus.stage,
+                status,
+                work_item_count: session.workItems.length,
+                network_online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+            },
+        })
+    }, [aiWaitStatus.stage, isLoading, loadingElapsedMs, session, status])
+
     const handleSend = async (text: string) => {
         await sendMessage(text)
     }
@@ -295,6 +348,37 @@ export function KYSessionPage() {
         return parsed >= autoSpeakFromTimestamp
     }
 
+    const handleRetryLastMessage = () => {
+        if (session) {
+            void sendTelemetry({
+                event: 'ux_error_recovery_action',
+                sessionId: session.id,
+                data: {
+                    action: 'retry',
+                    error_source: errorSource ?? 'unknown',
+                },
+            })
+        }
+        void retryLastMessage()
+    }
+
+    const handleContinueWithText = () => {
+        if (session) {
+            void sendTelemetry({
+                event: 'ux_error_recovery_action',
+                sessionId: session.id,
+                data: {
+                    action: 'focus_text_input',
+                    error_source: errorSource ?? 'unknown',
+                },
+            })
+        }
+        setMode('normal')
+        window.setTimeout(() => {
+            document.querySelector<HTMLTextAreaElement>('[data-testid="input-chat-message"]')?.focus()
+        }, 0)
+    }
+
     return (
         <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-[var(--surface-page)] flex flex-col overflow-hidden">
             {/* ヘッダー */}
@@ -376,22 +460,18 @@ export function KYSessionPage() {
                         <ChatBubble key={msg.id} message={msg} autoSpeak={shouldAutoSpeakMessage(msg.timestamp)} />
                     ))}
                     {isLoading && (
-                        <div className="flex justify-start mb-3">
-                            <div className="rounded-2xl border border-[color:var(--surface-border)] bg-[var(--surface-card)] px-4 py-2 text-slate-700">
-                                <span className="animate-pulse">考え中...</span>
-                            </div>
-                        </div>
-                    )}
-                    {isLoading && (
-                        <div
-                            className="flex justify-start mb-3 opacity-0 animate-[waitNoticeShow_1ms_linear_forwards]"
-                            style={{ animationDelay: `${WAIT_NOTICE_AFTER_MS}ms` }}
-                            data-testid="notice-wait-over-15s"
-                        >
-                            <div className="rounded-2xl border border-[color:var(--warning-border)] bg-[var(--warning-bg)] px-4 py-2 text-[var(--warning-text)]">
-                                <span className="text-sm">
-                                    応答に{Math.ceil(WAIT_NOTICE_AFTER_MS / 1000)}秒以上かかっています。混雑している可能性があります。このままお待ちください。
-                                </span>
+                        <div className="flex justify-start mb-3" data-testid="ai-wait-status">
+                            <div
+                                className={`max-w-[88%] rounded-2xl border px-4 py-2 ${
+                                    aiWaitStatus.stage === 'slow'
+                                        ? 'border-[color:var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]'
+                                        : 'border-[color:var(--surface-border)] bg-[var(--surface-card)] text-slate-700'
+                                }`}
+                                role="status"
+                                aria-live="polite"
+                            >
+                                <div className="text-sm font-semibold animate-pulse">{aiWaitStatus.label}</div>
+                                <div className="mt-0.5 text-xs leading-5">{aiWaitStatus.detail}</div>
                             </div>
                         </div>
                     )}
@@ -500,22 +580,47 @@ export function KYSessionPage() {
 
                 {/* エラー表示 */}
                 {error && (
-                    <div className="border-b border-[color:var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2">
-                        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 text-sm text-[var(--danger-text)]">
-                            <span>{error}</span>
-                            {errorSource === 'chat' && canRetry && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={retryLastMessage}
-                                    disabled={isLoading}
-                                    className="shrink-0 border-[color:var(--danger-border)] bg-[var(--surface-card)] text-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
-                                    data-testid="button-retry"
-                                >
-                                    リトライ
-                                </Button>
-                            )}
+                    <div className="border-b border-[color:var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2" data-testid="chat-error-recovery">
+                        <div className="max-w-4xl mx-auto flex flex-col gap-2 text-sm text-[var(--danger-text)] sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <div className="font-semibold">
+                                    {errorSource === 'validation' ? '入力内容を確認してください' : '応答を続けられませんでした'}
+                                </div>
+                                <div className="break-words">{error}</div>
+                                {errorSource === 'chat' && (
+                                    <div className="mt-1 text-xs leading-5">
+                                        入力済みの内容は残っています。再試行するか、テキスト入力で続けられます。
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                                {errorSource === 'chat' && canRetry && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleRetryLastMessage}
+                                        disabled={isLoading}
+                                        className="border-[color:var(--danger-border)] bg-[var(--surface-card)] text-[var(--danger-text)] hover:bg-[var(--danger-bg)]"
+                                        data-testid="button-retry"
+                                    >
+                                        リトライ
+                                    </Button>
+                                )}
+                                {errorSource === 'chat' && !shouldHideChatInput && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleContinueWithText}
+                                        disabled={isLoading}
+                                        className="border-[color:var(--surface-border)] bg-[var(--surface-card)] text-slate-700 hover:bg-[var(--brand-50)]"
+                                        data-testid="button-focus-text-input"
+                                    >
+                                        入力欄で続ける
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

@@ -8,8 +8,12 @@ const VALID_EVENTS = [
     'web_vital',
     'chat_error',
     'retry_clicked',
+    'retry_waiting',
     'retry_succeeded',
     'retry_failed',
+    'ux_start_condition_changed',
+    'ux_ai_wait_stage_changed',
+    'ux_error_recovery_action',
 ] as const
 
 describe('Metrics Route', () => {

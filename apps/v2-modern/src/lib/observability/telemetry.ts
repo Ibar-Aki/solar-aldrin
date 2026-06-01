@@ -11,6 +11,9 @@ export type TelemetryEventName =
     | 'retry_waiting'
     | 'retry_succeeded'
     | 'retry_failed'
+    | 'ux_start_condition_changed'
+    | 'ux_ai_wait_stage_changed'
+    | 'ux_error_recovery_action'
 
 export type TelemetryEvent = {
     event: TelemetryEventName

@@ -30,8 +30,15 @@ describe('HomePage session entry navigation', () => {
     it('新規開始時は entry=new を付与して session へ遷移する', () => {
         render(<HomePage />)
 
+        expect(screen.getByTestId('button-start-ky')).toBeDisabled()
+        expect(screen.getByTestId('home-start-readiness')).toHaveTextContent('作業者名と現場名を入力すると開始できます。')
+
         fireEvent.change(screen.getByTestId('input-username'), { target: { value: '田中太郎' } })
+        expect(screen.getByTestId('home-start-readiness')).toHaveTextContent('現場名を入力すると開始できます。')
+
         fireEvent.change(screen.getByTestId('input-sitename'), { target: { value: 'テスト現場' } })
+        expect(screen.getByTestId('home-start-readiness')).toHaveTextContent('入力OKです。KY活動を開始できます。')
+
         fireEvent.click(screen.getByTestId('button-start-ky'))
 
         expect(navigateMock).toHaveBeenCalledWith('/session', { state: { entry: 'new' } })

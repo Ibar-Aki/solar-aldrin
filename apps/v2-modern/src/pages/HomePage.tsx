@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +14,8 @@ import { History, Share2 } from 'lucide-react'
 import { clearApiToken, getApiToken, maskApiToken, setApiToken } from '@/lib/apiToken'
 import { shouldRequireApiTokenClient } from '@/lib/envFlags'
 import { shareUrl } from '@/lib/shareUtils'
+import { sendTelemetry } from '@/lib/observability/telemetry'
+import { getHomeStartReadiness } from '@/lib/uxGuidance'
 
 // Prefill型（HIS-03: 履歴からの引用）
 interface PrefillData {
@@ -50,6 +52,7 @@ export function HomePage() {
     const [apiTokenHint, setApiTokenHint] = useState<string | null>(null)
     const [shareHint, setShareHint] = useState<string | null>(null)
     const requireApiToken = shouldRequireApiTokenClient()
+    const lastStartReadinessReasonRef = useRef<string | null>(null)
 
     // Clear location state after prefill applied (prevent re-prefill on refresh)
     // P2: Router経由でstateをクリア（window.history.replaceStateはRouter履歴を壊す）
@@ -90,6 +93,28 @@ export function HomePage() {
     const fieldLabelClass = 'text-sm font-semibold text-slate-700'
     const requiredBadgeClass = 'ml-2 inline-flex rounded-full bg-[var(--brand-100)] px-2 py-0.5 text-[10px] font-medium text-[var(--brand-700)]'
     const helperTextClass = 'mt-1 text-xs text-[var(--text-muted)]'
+    const startReadiness = useMemo(
+        () => getHomeStartReadiness({ userName, siteName, isStarting }),
+        [userName, siteName, isStarting]
+    )
+    const startReadinessClass = startReadiness.canStart
+        ? 'border-[color:var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]'
+        : 'border-[color:var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]'
+
+    useEffect(() => {
+        if (lastStartReadinessReasonRef.current === startReadiness.reason) return
+        lastStartReadinessReasonRef.current = startReadiness.reason
+
+        void sendTelemetry({
+            event: 'ux_start_condition_changed',
+            value: startReadiness.canStart ? 1 : 0,
+            data: {
+                reason: startReadiness.reason,
+                missing_user_name: userName.trim().length === 0,
+                missing_site_name: siteName.trim().length === 0,
+            },
+        })
+    }, [siteName, startReadiness.canStart, startReadiness.reason, userName])
 
     const handleStart = async () => {
         if (!userName.trim() || !siteName.trim()) return
@@ -371,13 +396,20 @@ export function HomePage() {
                         <Button
                             className="h-12 w-full text-lg font-semibold bg-[var(--brand-600)] text-[var(--brand-foreground)] hover:bg-[var(--brand-700)]"
                             onClick={handleStart}
-                            disabled={isStarting || !userName.trim() || !siteName.trim()}
+                            disabled={!startReadiness.canStart}
+                            aria-describedby="home-start-readiness"
                             data-testid="button-start-ky"
                         >
                             {isStarting ? '準備中...' : 'KY活動を開始'}
                         </Button>
-                        <p className={helperTextClass}>
-                            作業者名と現場名を入力すると開始できます。完了後は履歴に自動保存されます。
+                        <p
+                            id="home-start-readiness"
+                            className={`${helperTextClass} rounded-md border px-3 py-2 ${startReadinessClass}`}
+                            role="status"
+                            aria-live="polite"
+                            data-testid="home-start-readiness"
+                        >
+                            {startReadiness.message}
                         </p>
                     </CardContent>
                 </Card>

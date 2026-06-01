@@ -11,6 +11,7 @@ const applyRiskLevelSelectionMock = vi.fn()
 const completeSafetyConfirmationMock = vi.fn()
 const initializeChatMock = vi.fn()
 const retryLastMessageMock = vi.fn()
+let canRetryMock = false
 
 vi.mock('react-router-dom', async () => {
     const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -30,7 +31,7 @@ vi.mock('@/hooks/useChat', () => ({
         completeSafetyConfirmation: completeSafetyConfirmationMock,
         initializeChat: initializeChatMock,
         retryLastMessage: retryLastMessageMock,
-        canRetry: false,
+        canRetry: canRetryMock,
     }),
 }))
 
@@ -46,6 +47,7 @@ describe('KYSessionPage first work item flow', () => {
         completeSafetyConfirmationMock.mockReset()
         initializeChatMock.mockReset()
         retryLastMessageMock.mockReset()
+        canRetryMock = false
         useKYStore.setState(initialState, true)
         window.localStorage.clear()
         useKYStore.getState().startSession('Test User', 'Test Site', '晴れ', 'フリー', 'good')
@@ -203,5 +205,28 @@ describe('KYSessionPage first work item flow', () => {
         expect(completeButton).not.toBeDisabled()
         fireEvent.click(completeButton)
         expect(completeSafetyConfirmationMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('AI待機中は段階化した待機ステータスを表示する', () => {
+        useKYStore.getState().setLoading(true)
+
+        render(<KYSessionPage />)
+
+        expect(screen.getByTestId('ai-wait-status')).toHaveTextContent('送信中...')
+        expect(screen.getByTestId('ai-wait-status')).toHaveTextContent('入力内容をAIに送っています。')
+    })
+
+    it('チャットエラー時は再試行と入力欄継続の復帰導線を表示する', () => {
+        canRetryMock = true
+        useKYStore.getState().setError('AI応答が遅れています。少し待ってから再送してください。', 'chat')
+
+        render(<KYSessionPage />)
+
+        expect(screen.getByTestId('chat-error-recovery')).toHaveTextContent('応答を続けられませんでした')
+        expect(screen.getByTestId('button-retry')).toBeInTheDocument()
+        expect(screen.getByTestId('button-focus-text-input')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByTestId('button-retry'))
+        expect(retryLastMessageMock).toHaveBeenCalledTimes(1)
     })
 })

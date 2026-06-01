@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 // PDFレンダリング/フォントのタイミングで稀にスナップショットが揺れるため、局所的に再試行を許可する。
 test.describe.configure({ retries: 2 })
+const PDF_RENDER_TIMEOUT_MS = 20_000
 
 test('PDF debug preview visual regression', async ({ page }) => {
     await page.goto('/debug/pdf')
@@ -12,8 +13,8 @@ test('PDF debug preview visual regression', async ({ page }) => {
     })
 
     const standardViewer = page.getByTestId('pdf-viewer-standard')
-    await expect(standardViewer).toHaveAttribute('data-ready', 'true')
-    await expect(standardViewer.locator('canvas').first()).toBeVisible()
+    await expect(standardViewer).toHaveAttribute('data-ready', 'true', { timeout: PDF_RENDER_TIMEOUT_MS })
+    await expect(standardViewer.locator('canvas').first()).toBeVisible({ timeout: PDF_RENDER_TIMEOUT_MS })
     // PDF/canvas rendering can lag slightly and cause flaky diffs under load.
     await page.waitForTimeout(500)
     await expect(standardViewer).toHaveScreenshot('pdf-standard.png', {
@@ -23,8 +24,8 @@ test('PDF debug preview visual regression', async ({ page }) => {
     })
 
     const longViewer = page.getByTestId('pdf-viewer-long')
-    await expect(longViewer).toHaveAttribute('data-ready', 'true')
-    await expect(longViewer.locator('canvas').first()).toBeVisible()
+    await expect(longViewer).toHaveAttribute('data-ready', 'true', { timeout: PDF_RENDER_TIMEOUT_MS })
+    await expect(longViewer.locator('canvas').first()).toBeVisible({ timeout: PDF_RENDER_TIMEOUT_MS })
     await page.waitForTimeout(500)
     await expect(longViewer).toHaveScreenshot('pdf-long.png', {
         animations: 'disabled',
